@@ -23,8 +23,53 @@ use crate::core::{
 };
 use crate::AgentRole;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
+
+/// Category of capability being offered by a node.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CapabilityKind {
+    Model,
+    Surface,
+    Tool,
+    Datum,
+}
+
+/// A single capability a node is willing to share with a peer.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CapabilityOffer {
+    pub kind: CapabilityKind,
+    pub name: String,
+    /// Endpoint the peer can call directly (e.g. an OpenAI-compatible URL).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub endpoint: Option<String>,
+    /// API key for the endpoint — only safe for local mesh traffic.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+    /// Arbitrary extra metadata (model params, surface config, etc.).
+    #[serde(default)]
+    pub params: HashMap<String, String>,
+}
+
+/// An indexed view of capabilities acquired from a peer after a successful handshake.
+#[derive(Debug, Clone, Default)]
+pub struct CapabilityRegistry(pub Vec<CapabilityOffer>);
+
+impl CapabilityRegistry {
+    pub fn models(&self) -> Vec<&CapabilityOffer> {
+        self.0.iter().filter(|o| o.kind == CapabilityKind::Model).collect()
+    }
+
+    pub fn surfaces(&self) -> Vec<&CapabilityOffer> {
+        self.0.iter().filter(|o| o.kind == CapabilityKind::Surface).collect()
+    }
+
+    pub fn find(&self, name: &str) -> Option<&CapabilityOffer> {
+        self.0.iter().find(|o| o.name == name)
+    }
+}
 
 /// The capability document exchanged between b00t and l3dg3rr.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,12 +80,15 @@ pub struct HandshakeDocument {
     pub variant_id: String,
     /// Hostname.
     pub host: String,
-    /// Available surfaces (short names).
+    /// Available surfaces (short names) — derived from `offers` for backwards compat.
     pub surfaces: Vec<String>,
-    /// Available LLM models.
+    /// Available LLM models — derived from `offers` for backwards compat.
     pub models: Vec<String>,
     /// Protocol version for forward compatibility.
     pub version: String,
+    /// Rich capability offers; supersedes `surfaces`/`models` when non-empty.
+    #[serde(default)]
+    pub offers: Vec<CapabilityOffer>,
 }
 
 /// Handshake result.
@@ -72,6 +120,12 @@ pub struct HandshakeSurface {
     pub heartbeat_interval: Duration,
     pub result: Option<HandshakeResult>,
     pub peer_doc: Option<HandshakeDocument>,
+    /// Optional override for the peer document path. When set, `read_peer` reads
+    /// from this path instead of the default `~/.b00t/mesh/l3dg3rr.handshake`.
+    /// Intended for testing two-node scenarios without touching the real home dir.
+    pub peer_path_override: Option<std::path::PathBuf>,
+    /// Capabilities this node advertises to peers.
+    pub local_offers: Vec<CapabilityOffer>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -120,6 +174,8 @@ pub struct HandshakeHandle {
     pub result: HandshakeResult,
     pub peer_surfaces: Vec<String>,
     pub peer_models: Vec<String>,
+    /// Rich capabilities acquired from the peer after a successful handshake.
+    pub acquired: Vec<CapabilityOffer>,
 }
 
 impl HandshakeSurface {
@@ -132,30 +188,67 @@ impl HandshakeSurface {
             heartbeat_interval: Duration::from_secs(30),
             result: None,
             peer_doc: None,
+            peer_path_override: None,
+            local_offers: Vec::new(),
         }
     }
 
-    fn doc_path(&self) -> std::path::PathBuf {
+    /// Override the path from which the peer document is read.
+    pub fn with_peer_path(mut self, path: std::path::PathBuf) -> Self {
+        self.peer_path_override = Some(path);
+        self
+    }
+
+    /// Set the capabilities this node will advertise to peers.
+    pub fn with_offers(mut self, offers: Vec<CapabilityOffer>) -> Self {
+        self.local_offers = offers;
+        self
+    }
+
+    pub fn doc_path(&self) -> std::path::PathBuf {
         self.handshake_dir.join("l3dg3rr.json")
     }
 
     /// Write our capability document to the handshake dir.
-    fn write_doc(&self) -> Result<(), HandshakeError> {
+    pub fn write_doc(&self) -> Result<(), HandshakeError> {
         let dir = &self.handshake_dir;
         std::fs::create_dir_all(dir).map_err(|e| HandshakeError::Dir(e.to_string()))?;
+
+        // Derive backwards-compat surface/model lists from offers; fall back to
+        // static defaults so existing peers that don't understand `offers` still work.
+        let surfaces: Vec<String> = if self.local_offers.is_empty() {
+            vec![
+                "datum-watcher".into(),
+                "autoresearch".into(),
+                "llm-machine".into(),
+                "opencode-provider".into(),
+            ]
+        } else {
+            self.local_offers
+                .iter()
+                .filter(|o| o.kind == CapabilityKind::Surface)
+                .map(|o| o.name.clone())
+                .collect()
+        };
+
+        let models: Vec<String> = if self.local_offers.is_empty() {
+            vec!["phi-4-mini-reasoning".into()]
+        } else {
+            self.local_offers
+                .iter()
+                .filter(|o| o.kind == CapabilityKind::Model)
+                .map(|o| o.name.clone())
+                .collect()
+        };
 
         let doc = HandshakeDocument {
             sender: self.identity.clone(),
             variant_id: self.variant_id.clone(),
             host: self.host.clone(),
-            surfaces: vec![
-                "datum-watcher".into(),
-                "autoresearch".into(),
-                "llm-machine".into(),
-                "opencode-provider".into(),
-            ],
-            models: vec!["phi-4-mini-reasoning".into()],
+            surfaces,
+            models,
             version: "1.0.0".into(),
+            offers: self.local_offers.clone(),
         };
 
         let json =
@@ -165,15 +258,24 @@ impl HandshakeSurface {
     }
 
     /// Read the peer's capability document.
+    ///
+    /// Checks `peer_path_override` first; falls back to the canonical
+    /// `~/.b00t/mesh/l3dg3rr.handshake` path.
     fn read_peer(&self) -> Result<Option<HandshakeDocument>, HandshakeError> {
-        // b00t writes to ~/.b00t/mesh/l3dg3rr.handshake;
-        // we check if it exists and parse it.
-        let b00t_path =
-            dirs::home_dir().map(|h| h.join(".b00t").join("mesh").join("l3dg3rr.handshake"));
-
-        let path = match b00t_path {
-            Some(p) if p.exists() => p,
-            _ => return Ok(None),
+        let path = if let Some(override_path) = &self.peer_path_override {
+            if override_path.exists() {
+                override_path.clone()
+            } else {
+                return Ok(None);
+            }
+        } else {
+            // b00t writes to ~/.b00t/mesh/l3dg3rr.handshake
+            let b00t_path =
+                dirs::home_dir().map(|h| h.join(".b00t").join("mesh").join("l3dg3rr.handshake"));
+            match b00t_path {
+                Some(p) if p.exists() => p,
+                _ => return Ok(None),
+            }
         };
 
         let content =
@@ -193,11 +295,12 @@ impl HandshakeSurface {
                     self.result = Some(HandshakeResult::Matched);
                     Ok(HandshakeResult::Matched)
                 } else {
-                    self.result = Some(HandshakeResult::VariantMismatch {
+                    let r = HandshakeResult::VariantMismatch {
                         expected: self.variant_id.clone(),
                         got: peer.variant_id,
-                    });
-                    Ok(self.result.clone().unwrap())
+                    };
+                    self.result = Some(r.clone());
+                    Ok(r)
                 }
             }
             None => {
@@ -256,6 +359,8 @@ impl ProcessSurface for HandshakeSurface {
             heartbeat_interval: self.heartbeat_interval,
             result: None,
             peer_doc: None,
+            peer_path_override: self.peer_path_override.clone(),
+            local_offers: self.local_offers.clone(),
         };
         let result = surface_clone.perform()?;
 
@@ -268,6 +373,11 @@ impl ProcessSurface for HandshakeSurface {
         }
 
         let peer_doc = surface_clone.peer_doc;
+        let acquired = if matches!(result, HandshakeResult::Matched) {
+            peer_doc.as_ref().map(|d| d.offers.clone()).unwrap_or_default()
+        } else {
+            Vec::new()
+        };
         Ok(HandshakeHandle {
             result,
             peer_surfaces: peer_doc
@@ -278,6 +388,7 @@ impl ProcessSurface for HandshakeSurface {
                 .as_ref()
                 .map(|d| d.models.clone())
                 .unwrap_or_default(),
+            acquired,
         })
     }
 
@@ -357,5 +468,75 @@ mod tests {
         s.init(config).expect("init");
         let handle = s.operate().expect("operate");
         assert_eq!(handle.result, HandshakeResult::NoPeer);
+        assert!(handle.acquired.is_empty());
+    }
+
+    #[test]
+    fn capability_registry_filters() {
+        let offers = vec![
+            CapabilityOffer {
+                kind: CapabilityKind::Model,
+                name: "phi-4-mini-reasoning".into(),
+                endpoint: Some("http://127.0.0.1:15115/v1/chat/completions".into()),
+                api_key: Some("local-tool-tray".into()),
+                params: HashMap::new(),
+            },
+            CapabilityOffer {
+                kind: CapabilityKind::Surface,
+                name: "datum-watcher".into(),
+                endpoint: None,
+                api_key: None,
+                params: HashMap::new(),
+            },
+        ];
+        let reg = CapabilityRegistry(offers);
+        assert_eq!(reg.models().len(), 1);
+        assert_eq!(reg.surfaces().len(), 1);
+        assert!(reg.find("phi-4-mini-reasoning").is_some());
+        assert!(reg.find("nonexistent").is_none());
+    }
+
+    #[test]
+    fn with_offers_builder_populates_doc() {
+        let tmp = TempDir::new().unwrap();
+        let offer = CapabilityOffer {
+            kind: CapabilityKind::Model,
+            name: "phi-4-mini-reasoning".into(),
+            endpoint: Some("http://127.0.0.1:15115/v1/chat/completions".into()),
+            api_key: Some("local-tool-tray".into()),
+            params: HashMap::new(),
+        };
+        let mut s = HandshakeSurface::new("l3dg3rr", "v1", "host")
+            .with_offers(vec![offer.clone()]);
+        s.handshake_dir = tmp.path().join("hs");
+        s.write_doc().expect("write doc");
+
+        let content = std::fs::read_to_string(s.doc_path()).unwrap();
+        assert!(content.contains("phi-4-mini-reasoning"));
+        assert!(content.contains("15115"));
+    }
+
+    #[test]
+    fn capability_offer_roundtrips_json() {
+        let offer = CapabilityOffer {
+            kind: CapabilityKind::Model,
+            name: "test-model".into(),
+            endpoint: Some("http://localhost:8080".into()),
+            api_key: None,
+            params: [("version".to_string(), "2".to_string())].into_iter().collect(),
+        };
+        let json = serde_json::to_string(&offer).expect("serialize");
+        let back: CapabilityOffer = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back.name, "test-model");
+        assert_eq!(back.kind, CapabilityKind::Model);
+        assert_eq!(back.endpoint.as_deref(), Some("http://localhost:8080"));
+        assert!(back.api_key.is_none());
+    }
+
+    #[test]
+    fn handshake_document_with_empty_offers_deserializes() {
+        let json = r#"{"sender":"b00t","variant_id":"v1","host":"h1","surfaces":[],"models":[],"version":"1.0.0"}"#;
+        let doc: HandshakeDocument = serde_json::from_str(json).expect("deserialize");
+        assert!(doc.offers.is_empty());
     }
 }
