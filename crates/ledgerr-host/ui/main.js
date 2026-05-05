@@ -127,13 +127,18 @@ function updateModelBadge(model,apiKey){
 }
 
 function setBusy(busy){
-  var di=document.getElementById('draft-input');if(di)di.disabled=busy;
   var sb=document.getElementById('send-btn');if(sb)sb.disabled=busy;
-  var rb=document.getElementById('rhai-btn');if(rb)rb.disabled=busy;
-  var pp=document.getElementById('pill-phi');if(pp)pp.disabled=busy;
-  var pf=document.getElementById('pill-foundry');if(pf)pf.disabled=busy;
-  var pc=document.getElementById('pill-cloud');if(pc)pc.disabled=busy;
   if(sb)sb.textContent=busy?'Sending…':'Send';
+  ['draft-input','rhai-btn','pill-phi','pill-foundry','pill-cloud',
+   'btn-use-phi','btn-use-foundry','btn-use-cloud',
+   'btn-open-docs','btn-load-rhai-mutation'].forEach(function(id){
+    var el=document.getElementById(id);if(el)el.disabled=busy;
+  });
+  ['input-endpoint','input-model','input-api-key','input-system-prompt'].forEach(function(id){
+    var el=document.getElementById(id);if(el)el.disabled=busy;
+  });
+  var saveBtn=document.getElementById('btn-save-settings');
+  if(saveBtn)saveBtn.textContent=busy?'Working…':'Save';
 }
 
 function applySettings(p){
@@ -271,13 +276,14 @@ document.addEventListener('DOMContentLoaded',function(){
   });
   var lr=document.getElementById('btn-load-rhai-mutation');
   if(lr)lr.addEventListener('click',function(){
+    var chatIdx=PANELS.findIndex(function(p){return p.id==='chat'});
+    if(chatIdx!==-1)showPanel(chatIdx);
     invoke('load_rhai_rule_prompt',{
       currentModel:document.getElementById('input-model')?.value||'',
       currentSystemPrompt:document.getElementById('input-system-prompt')?.value||''
     }).then(function(p){
       setTextSafe(document.getElementById('docs-rig-log'),p.review_log_text);
       setTextSafe(document.getElementById('docs-status-text'),p.status);
-      // Also seed the chat panel draft so user can switch and send
       setVal('draft-input',p.draft_message);
       setVal('input-system-prompt',p.system_prompt);
       if(p.suggested_model)setVal('input-model',p.suggested_model);

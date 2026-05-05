@@ -11,7 +11,7 @@ use crate::pipeline::{
     Classified, Committed, Ingested, KasuariSolver, NeedsReview, PipelineState, Reconciled,
     Validated,
 };
-use crate::validation::{CommitGate, Issue, MetaFlag, StageResult};
+use crate::validation::{CommitGate, Disposition, Issue, MetaCtx, MetaFlag, StageResult};
 
 // ============================================================================
 // PIPELINE STATES (z=1, Pipeline layer)
@@ -289,6 +289,40 @@ if anomaly_score > THRESHOLD {
     attach_flag(MetaFlag::AnomalyDetected { code: "AMT_SPIKE", impact: 0.9 });
 }"#),
             description: "Classification meta-annotation: NewVendor, AnomalyDetected, RepairApplied, LowUpstreamConf, or ConstraintWeak",
+        }
+    }
+}
+
+// ============================================================================
+// META CONTEXT AND DISPOSITION (z=1, Pipeline layer)
+// ============================================================================
+
+impl HasVisualization for MetaCtx {
+    fn viz_spec() -> VisualizationSpec {
+        VisualizationSpec {
+            semantic_type: SemanticType::Pipeline,
+            z_layer: ZLayer::Pipeline,
+            rhai_dsl: RhaiDsl::new(r#"let meta = MetaCtx::default();
+meta.accumulated_confidence = 0.85;
+meta.flags.push(MetaFlag::NewVendor { vendor: "ACME Corp" });
+meta.stage_trace.push(StageScore { stage: "ingest", confidence: 0.9 });
+meta.stage_trace.push(StageScore { stage: "validate", confidence: 0.8 });"#),
+            description: "Accumulated pipeline state flowing forward: confidence score, classification flags, and per-stage trace history",
+        }
+    }
+}
+
+impl HasVisualization for Disposition {
+    fn viz_spec() -> VisualizationSpec {
+        VisualizationSpec {
+            semantic_type: SemanticType::Result,
+            z_layer: ZLayer::Pipeline,
+            rhai_dsl: RhaiDsl::new(r#"match issue.disposition {
+    Disposition::Unrecoverable => halt_pipeline("critical failure"),
+    Disposition::Recoverable  => continue_with_degraded_confidence(),
+    Disposition::Advisory     => log_and_continue(),
+}"#),
+            description: "Issue handling strategy: Unrecoverable halts pipeline, Recoverable continues with degraded confidence, Advisory is informational only",
         }
     }
 }
