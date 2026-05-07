@@ -102,17 +102,202 @@ function refreshDashboard(){
   });
 }
 
+function setVal(id,v){var el=document.getElementById(id);if(el)el.value=v!=null?String(v):'';}
+
+function updateModelBadge(model,apiKey){
+  var isPhi=apiKey==='local-tool-tray';
+  var isFoundry=apiKey==='local-foundry';
+  var badge=document.getElementById('model-badge');
+  var icon=document.getElementById('model-badge-icon');
+  var text=document.getElementById('model-badge-text');
+  if(!badge)return;
+  badge.className='model-badge '+(isPhi?'phi':isFoundry?'foundry':'cloud');
+  if(icon)icon.textContent=isPhi?'⚡':isFoundry?'WA':'☁';
+  if(text)text.textContent=model||'No model — go to Settings';
+  // Update pill active states
+  var pillPhi=document.getElementById('pill-phi');
+  var pillFoundry=document.getElementById('pill-foundry');
+  var pillCloud=document.getElementById('pill-cloud');
+  if(pillPhi)pillPhi.classList.toggle('active',isPhi);
+  if(pillFoundry)pillFoundry.classList.toggle('active',isFoundry);
+  if(pillCloud)pillCloud.classList.toggle('active',!isPhi&&!isFoundry&&model!=='');
+  // Cloud hint: show when cloud is active
+  var ch=document.getElementById('cloud-hint');
+  if(ch)ch.classList.toggle('hidden',isPhi||isFoundry||model==='');
+}
+
+function setBusy(busy){
+  var sb=document.getElementById('send-btn');if(sb)sb.disabled=busy;
+  if(sb)sb.textContent=busy?'Sending…':'Send';
+  ['draft-input','rhai-btn','pill-phi','pill-foundry','pill-cloud',
+   'btn-use-phi','btn-use-foundry','btn-use-cloud',
+   'btn-open-docs','btn-load-rhai-mutation'].forEach(function(id){
+    var el=document.getElementById(id);if(el)el.disabled=busy;
+  });
+  ['input-endpoint','input-model','input-api-key','input-system-prompt'].forEach(function(id){
+    var el=document.getElementById(id);if(el)el.disabled=busy;
+  });
+  var saveBtn=document.getElementById('btn-save-settings');
+  if(saveBtn)saveBtn.textContent=busy?'Working…':'Save';
+}
+
+function applySettings(p){
+  setVal('input-endpoint',p.endpoint_text);
+  setVal('input-model',p.model_text);
+  setVal('input-api-key',p.api_key_text);
+  setVal('input-system-prompt',p.system_prompt_text);
+  setTextSafe(document.getElementById('status-bar'),p.status_text);
+  updateModelBadge(p.model_text,p.api_key_text);
+}
+
 document.addEventListener('DOMContentLoaded',function(){
   buildUI();
+
+  // Populate initial state from backend
+  invoke('get_initial_state').then(function(s){
+    setTextSafe(document.getElementById('version-text'),s.version_text);
+    setTextSafe(document.getElementById('status-bar'),s.status_text);
+    setVal('input-endpoint',s.endpoint_text);
+    setVal('input-model',s.model_text);
+    setVal('input-api-key',s.api_key_text);
+    setVal('input-system-prompt',s.system_prompt_text);
+    setTextSafe(document.getElementById('transcript'),s.transcript_text);
+    setTextSafe(document.getElementById('rig-log'),s.rig_log_text);
+    setTextSafe(document.getElementById('review-log'),s.review_log_text);
+    setVal('draft-input',s.draft_message_text);
+    setTextSafe(document.getElementById('docs-status-text'),s.docs_status_text);
+    updateModelBadge(s.model_text,s.api_key_text);
+  }).catch(function(){});
+
+  // Listen for chat-update events from send_message
+  listen('chat-update',function(ev){
+    var d=ev.payload;
+    setTextSafe(document.getElementById('transcript'),d.transcript_text);
+    setTextSafe(document.getElementById('rig-log'),d.rig_log_text);
+    if(d.review_log_text!=null)setTextSafe(document.getElementById('review-log'),d.review_log_text);
+    setVal('draft-input',d.draft_message_text);
+    setTextSafe(document.getElementById('status-bar'),d.status_text);
+    setBusy(!!d.busy);
+  }).catch(function(){});
+
+  // Sidebar collapse
+  var colBtn=document.getElementById('collapse-btn');
+  if(colBtn)colBtn.addEventListener('click',function(){
+    var sb=document.getElementById('sidebar');
+    if(!sb)return;
+    var collapsed=sb.classList.toggle('collapsed');
+    var mark=colBtn.querySelector('.mark');
+    if(mark)mark.textContent=collapsed?'>':'<';
+  });
+
+  // Dashboard refresh
   refreshDashboard();
-  // Wire dashboard refresh button
   var dr=document.getElementById('btn-refresh-dashboard');
   if(dr)dr.addEventListener('click',refreshDashboard);
-  // Wire settings
+
+  // Chat: send message
+  var sendBtn=document.getElementById('send-btn');
+  if(sendBtn)sendBtn.addEventListener('click',function(){
+    invoke('send_message',{
+      draft:document.getElementById('draft-input')?.value||'',
+      endpoint:document.getElementById('input-endpoint')?.value||'',
+      model:document.getElementById('input-model')?.value||'',
+      apiKey:document.getElementById('input-api-key')?.value||'',
+      systemPrompt:document.getElementById('input-system-prompt')?.value||''
+    }).then(function(s){setTextSafe(document.getElementById('status-bar'),s);}).catch(function(e){
+      setTextSafe(document.getElementById('status-bar'),'Send failed: '+(e&&e.message||e||'unknown'));
+    });
+  });
+
+  // Chat: load Rhai prompt seed
+  var rhaiBtn=document.getElementById('rhai-btn');
+  if(rhaiBtn)rhaiBtn.addEventListener('click',function(){
+    invoke('load_rhai_rule_prompt',{
+      currentModel:document.getElementById('input-model')?.value||'',
+      currentSystemPrompt:document.getElementById('input-system-prompt')?.value||''
+    }).then(function(p){
+      setVal('input-system-prompt',p.system_prompt);
+      if(p.suggested_model)setVal('input-model',p.suggested_model);
+      setVal('draft-input',p.draft_message);
+      setTextSafe(document.getElementById('review-log'),p.review_log_text);
+      setTextSafe(document.getElementById('status-bar'),p.status);
+    }).catch(function(){});
+  });
+
+  // Chat model pills
+  var pillPhi=document.getElementById('pill-phi');
+  if(pillPhi)pillPhi.addEventListener('click',function(){
+    invoke('use_internal_phi',{systemPrompt:document.getElementById('input-system-prompt')?.value||''}).then(applySettings).catch(function(){});
+  });
+  var pillFoundry=document.getElementById('pill-foundry');
+  if(pillFoundry)pillFoundry.addEventListener('click',function(){
+    invoke('use_foundry_local',{systemPrompt:document.getElementById('input-system-prompt')?.value||''}).then(applySettings).catch(function(){});
+  });
+  var pillCloud=document.getElementById('pill-cloud');
+  if(pillCloud)pillCloud.addEventListener('click',function(){
+    invoke('use_cloud_model',{systemPrompt:document.getElementById('input-system-prompt')?.value||''}).then(applySettings).catch(function(){
+      setTextSafe(document.getElementById('cloud-hint'),'edit endpoint/key in Settings');
+      var ch=document.getElementById('cloud-hint');if(ch)ch.classList.remove('hidden');
+    });
+  });
+
+  // Settings: model preset buttons
+  var usePhi=document.getElementById('btn-use-phi');
+  if(usePhi)usePhi.addEventListener('click',function(){
+    invoke('use_internal_phi',{systemPrompt:document.getElementById('input-system-prompt')?.value||''}).then(applySettings).catch(function(){});
+  });
+  var useFoundry=document.getElementById('btn-use-foundry');
+  if(useFoundry)useFoundry.addEventListener('click',function(){
+    invoke('use_foundry_local',{systemPrompt:document.getElementById('input-system-prompt')?.value||''}).then(applySettings).catch(function(){});
+  });
+  var useCloud=document.getElementById('btn-use-cloud');
+  if(useCloud)useCloud.addEventListener('click',function(){
+    invoke('use_cloud_model',{systemPrompt:document.getElementById('input-system-prompt')?.value||''}).then(applySettings).catch(function(){});
+  });
+
+  // Settings: save
   var sf=document.getElementById('btn-save-settings');
   if(sf)sf.addEventListener('click',function(){
-    var ep=document.getElementById('input-endpoint');var mo=document.getElementById('input-model');
-    var ak=document.getElementById('input-api-key');var sp=document.getElementById('input-system-prompt');
-    invoke('save_settings',{endpoint:ep?.value||'',model:mo?.value||'',apiKey:ak?.value||'',systemPrompt:sp?.value||''}).then(function(s){var sb=document.getElementById('status-bar');if(sb)sb.textContent=s}).catch(function(){});
+    invoke('save_settings',{
+      endpoint:document.getElementById('input-endpoint')?.value||'',
+      model:document.getElementById('input-model')?.value||'',
+      apiKey:document.getElementById('input-api-key')?.value||'',
+      systemPrompt:document.getElementById('input-system-prompt')?.value||''
+    }).then(function(s){setTextSafe(document.getElementById('status-bar'),s);}).catch(function(){});
+  });
+
+  // Docs: open and load rhai
+  var od=document.getElementById('btn-open-docs');
+  if(od)od.addEventListener('click',function(){
+    invoke('open_docs_playbook').then(function(s){
+      setTextSafe(document.getElementById('docs-status-text'),s);
+      setTextSafe(document.getElementById('docs-rig-log'),s);
+    }).catch(function(){});
+  });
+  var lr=document.getElementById('btn-load-rhai-mutation');
+  if(lr)lr.addEventListener('click',function(){
+    var chatIdx=PANELS.findIndex(function(p){return p.id==='chat'});
+    if(chatIdx!==-1)showPanel(chatIdx);
+    invoke('load_rhai_rule_prompt',{
+      currentModel:document.getElementById('input-model')?.value||'',
+      currentSystemPrompt:document.getElementById('input-system-prompt')?.value||''
+    }).then(function(p){
+      setTextSafe(document.getElementById('docs-rig-log'),p.review_log_text);
+      setTextSafe(document.getElementById('docs-status-text'),p.status);
+      setVal('draft-input',p.draft_message);
+      setVal('input-system-prompt',p.system_prompt);
+      if(p.suggested_model)setVal('input-model',p.suggested_model);
+    }).catch(function(){});
+  });
+
+  // Log tabs
+  document.querySelectorAll('.log-tab').forEach(function(tab){
+    tab.addEventListener('click',function(){
+      var idx=tab.dataset.log;
+      document.querySelectorAll('.log-tab').forEach(function(t){t.classList.remove('active');});
+      tab.classList.add('active');
+      document.getElementById('log-panel-0').classList.toggle('hidden',idx!=='0');
+      document.getElementById('log-panel-1').classList.toggle('hidden',idx!=='1');
+    });
   });
 });
