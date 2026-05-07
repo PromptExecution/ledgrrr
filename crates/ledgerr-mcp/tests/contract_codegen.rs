@@ -179,3 +179,5 @@ fn workflow_contract_allows_unknown_plugin_subcommand_for_postel_boundary_behavi
         other => panic!("unexpected variant: {other:?}"),
     }
 }
+
+
