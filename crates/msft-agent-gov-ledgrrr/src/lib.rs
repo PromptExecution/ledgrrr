@@ -17,7 +17,10 @@
 pub mod policy;
 pub mod rings;
 
-use agentmesh::{AgentMeshClient, ClientOptions, PolicyDecision, Ring, RingEnforcer, TrustConfig};
+use agentmesh::{
+    mcp::CredentialRedactor, AgentMeshClient, ClientOptions, PolicyDecision, Ring, RingEnforcer,
+    TrustConfig,
+};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use thiserror::Error;
@@ -32,6 +35,8 @@ pub enum AgtError {
     PolicyRead(#[from] std::io::Error),
     #[error("persistence error: {0}")]
     Persist(String),
+    #[error("credential redactor init error: {0}")]
+    Redactor(String),
 }
 
 /// Result of a governed tool call check.
@@ -63,6 +68,7 @@ struct RingSnapshot {
 /// - `RingEnforcer` — 4-tier execution privilege rings mapped to CommitGate tiers
 pub struct LedgrrAgtGateway {
     client: AgentMeshClient,
+    redactor: CredentialRedactor,
     rings: Arc<RwLock<RingEnforcer>>,
     /// Shadow map for ring persistence: mirrors `RingEnforcer.assignments`.
     /// Present only when `with_persist_path` was used.
@@ -121,8 +127,11 @@ impl LedgrrAgtGateway {
         enforcer.assign(agent_id, Ring::Standard);
         let mut shadow = HashMap::new();
         shadow.insert(agent_id.to_string(), Ring::Standard);
+        let redactor = CredentialRedactor::new()
+            .map_err(|e| AgtError::Redactor(e.to_string()))?;
         Ok(Self {
             client,
+            redactor,
             rings: Arc::new(RwLock::new(enforcer)),
             ring_shadow: Arc::new(RwLock::new(shadow)),
             rings_persist_path: None,
@@ -220,6 +229,14 @@ impl LedgrrAgtGateway {
             };
         }
 
+        // Dot-notation action: "ledgerr_documents.ingest_pdf"
+        // Redact before passing to the audit pipeline — bearer tokens or API keys
+        // embedded in a misconfigured action string never reach the hash-chain log.
+        let dot_action = self
+            .redactor
+            .redact(&format!("{}.{}", tool, action))
+            .sanitized;
+
         // Ring::Admin = operator already approved via Tauri toast; bypass policy gate.
         if ring == Ring::Admin {
             self.client.trust.record_success(&self.client.identity.did);
@@ -231,9 +248,6 @@ impl LedgrrAgtGateway {
                 reason: None,
             };
         }
-
-        // Dot-notation action: "ledgerr_documents.ingest_pdf"
-        let dot_action = format!("{}.{}", tool, action);
         let result = self.client.execute_with_governance(&dot_action, None);
 
         let reason = match &result.decision {
@@ -321,6 +335,13 @@ impl LedgrrAgtGateway {
     /// DID of the governed agent (e.g. `did:agentmesh:hermes`).
     pub fn agent_did(&self) -> &str {
         &self.client.identity.did
+    }
+
+    /// Redact credentials from `input` before passing it into any audit-visible
+    /// surface.  Delegates to [`CredentialRedactor`]; returns the sanitized string.
+    /// Call this on tool payloads before `check_tool_call_with_tx` (Gap 10).
+    pub fn redact(&self, input: &str) -> String {
+        self.redactor.redact(input).sanitized
     }
 }
 
@@ -451,6 +472,53 @@ mod tests {
         );
     }
 
+
+    // --- Gap 1 tests ---
+
+    /// Bearer tokens in a `redact()` call must be replaced; JWT prefix `eyJ`
+    /// must not appear in the output.
+    #[test]
+    fn redact_bearer_token() {
+        let gw = LedgrrAgtGateway::new("sec-agent").unwrap();
+        let output = gw.redact(
+            "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.foo.bar",
+        );
+        assert!(
+            !output.contains("eyJ"),
+            "JWT prefix must not appear in redacted output: {output}"
+        );
+    }
+
+    /// Normal dot-notation action strings must pass through unchanged.
+    #[test]
+    fn redact_leaves_normal_action_unchanged() {
+        let gw = LedgrrAgtGateway::new("sec-agent").unwrap();
+        let output = gw.redact("ledgerr_xero.sync_invoices");
+        assert_eq!(
+            output, "ledgerr_xero.sync_invoices",
+            "benign action string must be returned verbatim"
+        );
+    }
+
+    /// A credential-like string passed as the action parameter must not panic
+    /// and must leave the audit chain intact.
+    #[test]
+    fn check_tool_call_with_credential_in_action_does_not_panic() {
+        let gw = LedgrrAgtGateway::new("sec-agent").unwrap();
+        // Simulate a misconfigured caller passing a bearer token as the action.
+        let decision = gw.check_tool_call(
+            "sec-agent",
+            "ledgerr_documents",
+            "Bearer sk-live-abc123",
+        );
+        // Either Allow (redacted to an unknown action that hits Deny) or Deny —
+        // both are acceptable; the requirement is no panic and an intact chain.
+        let _ = decision;
+        assert!(
+            gw.verify_audit_chain(),
+            "audit chain must remain valid after credential-in-action call"
+        );
+    }
     // --- Gap 11 tests ---
 
     /// Ring promotion persists to disk and is reloaded on reconstruction.
