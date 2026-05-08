@@ -3,25 +3,85 @@
 This file is the persistent operator manual for future agents.  
 For product scope and status, read `README.md` first, then use this file for execution rules and MCP usage patterns.
 
-### Current Direction (2026-04-18)
+## System Identity — What ledgrrr Is
 
-Near-term product direction is shifting from pure MCP/server work toward a local desktop operator host around `l3dg3rr`.
+ledgrrr is a **local agentic governance proxy**: a memory-safe, deterministically executable knowledge-retrieval and poly-tool governance system for supervised AI/LLM workflows. It is a new class of software — not a CRM, not a cloud SaaS, not a plain ETL pipeline.
 
-Current planning assumptions:
-- `l3dg3rr` should become the Rust host/control plane for agent execution, policy, approvals, audit, notifications, and credential access.
-- Agent orchestration may run in a sidecar runtime (for example LangChain/LangGraph or another agent SDK), but secrets and process supervision should remain owned by `l3dg3rr`.
-- Xero is already part of the visible `ledgerr_*` capability direction; future work should treat it as an in-flight supervised capability, not a greenfield speculative add-on.
-- Xero access should be mediated through supervised MCP worker processes/tools, not by giving raw credentials directly to the model or relying on `.env` as the long-term secret model.
-- Windows 11 desktop support matters: toast/app notifications, tray/menubar control surface, and persistent settings are first-class operator features.
-- Slint is the legacy UI shell for the desktop window; tray/docked menubar icon integration uses `tray-icon` while the Slint window is available as a fallback surface. Tauri (`crates/ledgrrr`) is now the primary desktop host. CI checks the Tauri host; Slint CI is opt-in only.
-- arc-kit-au (`crates/arc-kit-au`) is the evidence traceability layer — a native Rust adaptation of the arc-kit governance model for bookkeeping provenance. It tracks source documents → extracted rows → transactions → classifications → proposals → approvals → workbook rows as a petgraph-backed evidence graph with deterministic Blake3 node identity.
+**Core capabilities (production-ready as of 2026-05)**:
 
-Desktop control-plane milestones currently in scope:
-- persistent notification settings (`enabled/disabled`, backend health, last test result),
-- tray icon with quick actions (`toast enabled`, `test toast`, `status`, `show window`, `quit`),
-- notifier abstraction with a practical Windows fallback path first and native Windows notifications next,
-- credential abstraction with Windows Credential Manager for long-lived secrets,
-- audit-friendly event flow from agent/tool execution to UI and notifications.
+| Capability | How it works |
+|---|---|
+| Deterministic knowledge retrieval | Blake3 content-hash IDs + idempotent ingest + rkyv sidecar snapshots — same source always produces the same tx_ids regardless of execution order |
+| Poly-tool governance | 10 published `ledgerr_*` MCP tools, each a supervised capability family with required `action` parameters; agent calls go through the governance proxy, never directly to raw APIs |
+| Workflow visualization | `HasVisualization` trait on 21+ domain types; isometric 3D + Mermaid 2D dual render paths; `WorkflowToml` compiles to operator Mermaid diagram + Rhai FSM execution graph |
+| Runtime-editable policy | Rhai scripting for classification rules, flag heuristics, and workflow FSM steps — agent/human editable without recompile |
+| Formal verification | `legal-z3` feature gate enables Z3-backed hard satisfiability checks on jurisdiction rules; Kasuari handles soft plausibility/layout constraints |
+| Self-generating docs | `contract.rs` is the single source of truth; `regen-docs` binary regenerates `docs/mcp-capability-contract.md`, `docs/agent-mcp-runbook.md`, and `scripts/mcp_cli_demo.sh` — drift is a CI failure |
+| Evidence traceability | arc-kit-au petgraph: source documents → extracted rows → transactions → classifications → proposals → approvals → workbook rows with deterministic Blake3 node identity |
+| Inter-node capability trading | `b00t-iface` `CapabilityOffer` handshake — nodes advertise and negotiate capabilities before wiring |
+
+**Local working recipe** (all components present in codebase):
+- **Tauri host** (`crates/ledgrrr-host`) — desktop control plane: notifications, tray, credential manager, agent runtime, Rig-backed model calls
+- **Local LLM chat** — `internal_openai.rs` OpenAI-compatible localhost server; selectable: `phi-4-mini-reasoning` (local), Foundry Local (Windows AI), or remote cloud
+- **Semantic knowledge graph** — codebase-memory-mcp for structural graph queries; HelixDB (or `heed`+`petgraph` fallback) for workbook fact projection
+- **KV cache** — rkyv sidecar archives per source document; JSON state sidecar for restart-visible service state (atomic rename pattern, fail-closed on corruption)
+- **Memory-safe Rust package** — workspace-wide `forbid(unsafe_code)` except Tauri/Slint macro boundaries; `rust_decimal` for all monetary values; no f64 in domain paths
+- **Rhai scripting** — classification rules via `fn classify(tx)`, workflow FSM compiler output, docs visualization DSL
+- **Introspectable docs** — `mdbook-rhai-mermaid` preprocessor; live Rhai diagram editor in browser; executable code examples as integration tests; deployed at promptexecution.github.io/l3dg3rr
+
+**Current phase: entering dogfood/integration.** Architecture is substantially complete. Next step is running ledgrrr inside the Hermes OpenAgent harness as the governance control surface (see roadmap below).
+
+---
+
+### Roadmap — Next Phase (2026-Q2/Q3)
+
+**Hermes OpenAgent integration** (dogfood harness):
+- Run ledgrrr as a governed MCP server inside the Hermes OpenAgent orchestration layer.
+- Hermes provides the outer agent loop; ledgrrr provides the governance proxy, audit trail, credential mediation, and policy enforcement.
+- Wire `McpProviderRegistry` into `ledgerr-mcp-server.rs` binary + add `handle_external_tool` dispatcher to route Hermes tool calls through the registry.
+- Current `McpProvider` trait (`crates/ledgerr-mcp/src/provider.rs`) is the invariant — `B00tProvider`, `JustProvider`, `Ir0ntologyProvider` already registered; Xero next.
+- Target: ledgrrr's own tax-ledger dataset is the first dogfood corpus.
+
+**MBSE / SysML-v2 isometric expansion**:
+- Extend the `HasVisualization` trait system to support MBSE meta-type modeling.
+- Integration path: Papyrus EMF bridge or direct SysML-v2 `*.sysml` parser → `VisualizationSpec` emission.
+- 3D workflow visualizations embedded in extensible domain types via the existing `ZLayer` stack (Document/Pipeline/Constraint/Legal/FormalProof/Attestation).
+- `SemanticType` enum gains `SysML` variant; `RhaiDsl` captures SysML block/port/flow definitions.
+- Output: operator can view a classified transaction as a SysML block diagram or an isometric pipeline diagram interchangeably.
+- `crates/ledger-core/src/iso.rs` is the extension point; new `VisualizationSpec` fields are additive.
+
+**Formal verification expansion**:
+- `microsoft/rust-z3` bindings behind `legal-z3` feature are the production path for hard SAT obligations.
+- Extend `Z3Result` / `LegalSolver` to cover: FBAR threshold proofs, Schedule C deductibility predicates, cross-jurisdiction double-taxation exclusion checks.
+- Kasuari (soft Cassowary constraint layout) handles plausibility + visualization bounds — not interchangeable with Z3.
+- Next: add `ProofAttestation` type with `HasVisualization` impl in the `ZLayer::Attestation` layer; link proof outcomes to arc-kit-au evidence nodes.
+
+**Local fine-tuning path**:
+- Phi-4-mini-reasoning is the default local model; fine-tuning target is tax classification heuristics from the operator's own transaction corpus.
+- Training pipeline: classified transactions → JSONL export → local fine-tune job → updated model weights loaded into Foundry Local.
+- Keep fine-tuning artifacts in the `rkyv` sidecar pattern so provenance is traceable.
+
+---
+
+### Current Direction (2026-05-05)
+
+Architecture is shifting from build phase to integration/dogfood phase. Core governance proxy capabilities are production-ready; next milestones are Hermes integration and MBSE visualization expansion.
+
+Current operating assumptions:
+- `l3dg3rr` is the Rust host/control plane for agent execution, policy, approvals, audit, notifications, and credential access.
+- Agent orchestration may run in a sidecar runtime (Hermes OpenAgent, LangGraph, etc.), but secrets and process supervision remain owned by `l3dg3rr`.
+- Xero access is mediated through supervised MCP worker processes — not raw credentials to the model.
+- Windows 11 desktop support is first-class: toast/app notifications, tray/menubar, persistent settings.
+- Slint is the legacy UI shell; Tauri (`crates/ledgrrr-host`) is the primary desktop host. CI checks Tauri; Slint CI is opt-in only.
+- arc-kit-au (`crates/arc-kit-au`) is the evidence traceability layer — petgraph-backed, deterministic Blake3 node identity, surfaced through `ledgerr_evidence` MCP tool.
+- b00t-iface CapabilityOffer handshake enables inter-node capability negotiation before tool wiring.
+
+Desktop control-plane milestones complete:
+- persistent notification settings (`enabled/disabled`, backend health, last test result)
+- tray icon with quick actions (`toast enabled`, `test toast`, `status`, `show window`, `quit`)
+- notifier abstraction with Windows Credential Manager for long-lived secrets
+- audit-friendly event flow from agent/tool execution to UI and notifications
+- Tauri dashboard with PANELS-array-generated sidebar (no manually numbered panel indices)
 
 ### Purpose (non-duplicate)
 
@@ -41,9 +101,12 @@ Use `TurboLedgerService` in `crates/ledgerr-mcp/src/lib.rs` as the canonical con
 Use `docs/mcp-capability-contract.md` as the canonical MCP surface map (tool names, arg contracts, service mapping, contrived usage flow).
 
 Published MCP surface rule:
-- Default `tools/list` should stay collapsed to the 8 top-level `ledgerr_*` capability families: `ledgerr_documents`, `ledgerr_review`, `ledgerr_reconciliation`, `ledgerr_workflow`, `ledgerr_audit`, `ledgerr_tax`, `ledgerr_ontology`, `ledgerr_xero`.
+- Default `tools/list` exposes **10** top-level `ledgerr_*` capability families: `ledgerr_documents`, `ledgerr_review`, `ledgerr_reconciliation`, `ledgerr_workflow`, `ledgerr_audit`, `ledgerr_tax`, `ledgerr_ontology`, `ledgerr_xero`, `ledgerr_evidence`, `ledgerr_focus`.
+- `ledgerr_evidence` — arc-kit-au evidence traceability graph (actions: `summary`, `list_nodes`, `node_detail`).
+- `ledgerr_focus` — FOCUS (FinOps Cost Usage Spec) v1.3 cost/usage analysis (always-on core capability, no feature gate).
 - Use required `action` parameters to expose sub-operations while keeping major capability families visible.
 - Keep any legacy `l3dg3rr_*` or proxy-style names hidden compatibility aliases only; do not advertise them in the default tool catalog.
+- Source of truth: `crates/ledgerr-mcp/src/contract.rs` → `PUBLISHED_TOOLS: [ToolContractSpec; 10]`. Drift from generated docs is a CI failure (`contract_docs_are_generated_from_rust_source`).
 
 Core methods:
 - `list_accounts` / `list_accounts_tool`: enumerate account ids from manifest.
@@ -443,6 +506,14 @@ Treat this as a standing operational gate, not a one-time migration task.
   - **Unmapped surfaces survey**: Confirmed `ConstraintSolver`/`Verb` traits are test+visualization-only but not truly dead (exercised by xtask + iso_lint). `LedgerOperation`/`SemanticRuleSelector`/`MultiModelVerifier` are future-feature stubs, not gaps. `HasVisualization` all 20 impls exercised. 13 ledger-core modules not consumed by MCP/host is architectural intent (iso/layout/render are visualization-only).
   - **Zero clippy warnings** across workspace (excluding pre-existing ledgerr-tauri WSL issue). Fixed: unused constants behind cfg gates, dead_code on struct fields used only in tests, large Err variant allow.
   - **Sub-agent pattern**: Used explore sub-agents with codebase-memory-mcp for survey (returned structured report in ~30s). Compare: previous grep-based survey attempt in PR #69 took 10+ minutes of CPU with truncated output. This validated the new tooling approach.
+- 2026-05-05: System identity retrospective + forward roadmap written into AGENTS.md.
+  - ledgrrr reframed as a new class of software: local agentic governance proxy, deterministically executable knowledge retrieval, poly-tool governance & workflow visualization.
+  - 10-tool MCP surface confirmed (`ledgerr_focus` + `ledgerr_evidence` added since last AGENTS update); `PUBLISHED_TOOLS: [ToolContractSpec; 10]` in `contract.rs` is authoritative.
+  - Root cause of prior CI failures: `FOCUS_TOOL` was wired into `PUBLISHED_TOOLS` and `handle_focus_tool` but missing from `tool_names_for()` core bucket in `mcp_adapter.rs` — all test assertions said 9 tools; fix was adding `FOCUS_TOOL` to the core bucket and bumping count to 10. Lesson: `tool_names_for()` core bucket must match `PUBLISHED_TOOLS` exactly; test count assertions flag the drift.
+  - `rotel-visual` metric counter test failure: empty `scopeMetrics: []` payload means `inc_metrics_ingested(0)` is a no-op; counter stays 0. Fix: include at least one named metric in test payloads.
+  - `iso_objects.rs` compile failure pattern: deleting an `impl<T: 'static> HasVisualization for StageResult<T> {` header while leaving the `fn viz_spec()` body produces "unexpected closing delimiter" — always delete entire `impl` block together or restore the header.
+  - On-disk generated docs (`docs/mcp-capability-contract.md`, `docs/agent-mcp-runbook.md`, `scripts/mcp_cli_demo.sh`) must be regenerated via `cargo run -p ledgerr-mcp --bin regen-docs` after any change to `contract.rs`. CI assertion is `checked_in == generated` (left=disk, right=generated) — stale artifacts are a test failure, not a lint warning.
+  - Roadmap forward: Hermes OpenAgent integration as governance harness, MBSE/SysML-v2 isometric expansion, formal Z3 proof attestation layer, local fine-tuning pipeline.
 - 2026-05-04: Evidence graph surfaced through MCP query tools and Tauri dashboard.
   - **arc-kit-au evidence graph (PR #76, issue #52)**: Added 3 new actions to `ledgerr_evidence` MCP tool: `summary` (node/edge counts + work queue), `list_nodes` (filterable node enumeration), `node_detail` (full node by NodeId). Handler uses local `parse_node_type` rather than pulling FromStr into the arc-kit-au crate.
   - **Tauri dashboard (PR #77→#78, issue #51)**: Panels refactored from hardcoded sequential numbering to a single `PANELS` JS array (`[{id, icon, label}, ...]`). `buildUI()` generates sidebar buttons and panel divs; `panelTemplate(id)` provides panel HTML. Adding a panel = edit one array + one template entry. Zero hardcoded indices.

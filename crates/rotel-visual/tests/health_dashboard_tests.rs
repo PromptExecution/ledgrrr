@@ -284,12 +284,16 @@ async fn test_metrics_endpoint_increments_after_ingestion() {
     let baseline_json: serde_json::Value = serde_json::from_slice(&baseline_body).unwrap();
     let baseline_logs = baseline_json["logs_ingested_total"].as_u64().unwrap();
 
-    // Ingest a metric
+    // Ingest a metric — must include a named metric so the counter increments
     let body = json!({
         "resourceMetrics": [
             {
                 "resource": { "attributes": [] },
-                "scopeMetrics": []
+                "scopeMetrics": [
+                    {
+                        "metrics": [{ "name": "test_counter" }]
+                    }
+                ]
             }
         ]
     });

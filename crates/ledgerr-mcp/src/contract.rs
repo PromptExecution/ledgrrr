@@ -690,8 +690,123 @@ pub fn tool_input_schema(name: &str) -> Value {
     }
 }
 
+/// Convert a `schemars` `RootSchema` to a `serde_json::Value` compatible with
+/// the Claude API `input_schema` constraint.
+///
+/// # DO NOT SIMPLIFY — read before touching
+///
+/// The Claude API (Anthropic) hard-rejects any tool whose `input_schema` JSON
+/// contains `"oneOf"`, `"anyOf"`, or `"allOf"` **at the top level**, returning
+/// HTTP 400: `input_schema does not support oneOf, allOf, or anyOf at the top level`.
+/// This is an API constraint, not a style preference. Ref: Anthropic tool-use docs.
+///
+/// `schemars` 0.8 generates a top-level `"oneOf"` for **all** Rust enums —
+/// including those with `#[serde(tag = "action")]`. Each variant becomes one
+/// branch. This is valid JSON Schema but is rejected by the Claude API at root.
+///
+/// # Why the previous `or_insert_with("type":"object")` was WRONG
+///
+/// The previous attempt added `"type": "object"` alongside the top-level
+/// `"oneOf"`, producing `{ "type": "object", "oneOf": [...] }`. The Claude API
+/// still rejects this — the constraint fires on `"oneOf"` presence at root
+/// regardless of whether `"type"` is also set.
+///
+/// # Correct approach: flatten to a discriminated-union object
+///
+/// All `*Args` enums carry `#[serde(tag = "action")]`. Schemars emits a
+/// `"oneOf"` where every branch is an object with `properties.action.enum`
+/// containing exactly one action name. `flatten_tagged_oneof_for_claude`
+/// collapses this into a single flat object:
+///   - `"action"`: string enum of all action names (required)
+///   - all other per-variant properties merged in as optional fields
+///
+/// Per-variant field exclusivity is enforced at deserialization time by serde
+/// (the `#[serde(tag)]` + `deny_unknown_fields` on each enum). The schema is
+/// intentionally looser — the action discriminator is preserved and tool
+/// descriptions carry per-action field documentation.
 fn root_schema_to_value(schema: RootSchema) -> Value {
-    serde_json::to_value(schema).expect("schema serializes")
+    let mut v = serde_json::to_value(schema).expect("schema serializes");
+    flatten_tagged_oneof_for_claude(&mut v);
+    v
+}
+
+/// Collapse a top-level schemars `oneOf` (emitted for `#[serde(tag = "action")]`
+/// enums) into a flat discriminated-union object the Claude API accepts.
+///
+/// # Invariant
+///
+/// Called only for `*Args` enums. All variants must have a
+/// `properties.action.enum` array containing exactly one string — the action
+/// name for that variant.
+///
+/// # DO NOT REMOVE OR SHORT-CIRCUIT
+///
+/// The Claude API returns HTTP 400 for any tool whose `input_schema` contains
+/// `"oneOf"`/`"anyOf"`/`"allOf"` at the JSON root. This function is the only
+/// thing standing between a valid MCP handshake and a 400 that silently
+/// corrupts the entire Claude session by poisoning tool schema loading.
+fn flatten_tagged_oneof_for_claude(v: &mut Value) {
+    let map = match v.as_object_mut() {
+        Some(m) => m,
+        None => return,
+    };
+
+    // All three composition keywords are rejected by Claude API at root.
+    let composition = map
+        .remove("oneOf")
+        .or_else(|| map.remove("anyOf"))
+        .or_else(|| map.remove("allOf"));
+
+    let variants = match composition {
+        Some(Value::Array(a)) => a,
+        Some(other) => {
+            // Unexpected shape — restore and leave schema unchanged rather than corrupt it.
+            map.insert("oneOf".to_string(), other);
+            return;
+        }
+        None => {
+            // No composition at root; ensure type is set and return.
+            map.entry("type".to_string())
+                .or_insert_with(|| Value::String("object".to_string()));
+            return;
+        }
+    };
+
+    let mut action_values: Vec<Value> = Vec::new();
+    let mut merged_props: serde_json::Map<String, Value> = serde_json::Map::new();
+
+    for variant in &variants {
+        let props = match variant.get("properties").and_then(|p| p.as_object()) {
+            Some(p) => p,
+            None => continue,
+        };
+        // Collect the action discriminator value for this variant.
+        if let Some(action_enum) = props
+            .get("action")
+            .and_then(|a| a.get("enum"))
+            .and_then(|e| e.as_array())
+        {
+            action_values.extend(action_enum.iter().cloned());
+        }
+        // Merge all non-action properties; first writer wins on collision.
+        for (k, val) in props {
+            if k != "action" {
+                merged_props.entry(k.clone()).or_insert_with(|| val.clone());
+            }
+        }
+    }
+
+    // Build the flat action discriminator property.
+    merged_props.insert(
+        "action".to_string(),
+        json!({ "type": "string", "enum": action_values }),
+    );
+
+    map.insert("type".to_string(), json!("object"));
+    map.insert("required".to_string(), json!(["action"]));
+    map.insert("properties".to_string(), Value::Object(merged_props));
+    // additionalProperties was per-variant; invalid on the merged flat schema.
+    map.remove("additionalProperties");
 }
 
 pub fn generated_capability_contract_markdown() -> String {

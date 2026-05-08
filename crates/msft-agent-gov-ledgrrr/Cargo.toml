@@ -1,0 +1,16 @@
+[package]
+name = "msft-agent-gov-ledgrrr"
+version.workspace = true
+edition.workspace = true
+description = "Microsoft Agent Governance Toolkit integration layer for ledgrrr"
+license.workspace = true
+
+[dependencies]
+agentmesh     = { path = "../../../agent-governance-toolkit/agent-governance-rust/agentmesh" }
+agentmesh-mcp = { path = "../../../agent-governance-toolkit/agent-governance-rust/agentmesh-mcp" }
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+thiserror     = { workspace = true }
+
+[lints]
+workspace = true
