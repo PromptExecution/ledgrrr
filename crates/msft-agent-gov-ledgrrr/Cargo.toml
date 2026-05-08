@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 agentmesh     = { path = "../../../agent-governance-toolkit/agent-governance-rust/agentmesh" }
+b00t-iface    = { path = "../../crates/b00t-iface", features = ["b00t"] }
 agentmesh-mcp = { path = "../../../agent-governance-toolkit/agent-governance-rust/agentmesh-mcp" }
 serde         = { workspace = true }
 serde_json    = { workspace = true }

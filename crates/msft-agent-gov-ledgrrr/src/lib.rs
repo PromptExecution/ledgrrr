@@ -14,6 +14,7 @@
 //! assert!(r.allowed);
 //! ```
 
+pub mod capability_bridge;
 pub mod policy;
 pub mod rings;
 
@@ -42,6 +43,8 @@ pub enum AgtError {
     Redactor(String),
     #[error("lifecycle error: {0}")]
     Lifecycle(String),
+    #[error("capability bridge error: {0}")]
+    Bridge(String),
 }
 
 /// Result of a governed tool call check.
