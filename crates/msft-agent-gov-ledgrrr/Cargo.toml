@@ -5,6 +5,11 @@ edition.workspace = true
 description = "Microsoft Agent Governance Toolkit integration layer for ledgrrr"
 license.workspace = true
 
+[features]
+## Phase 4: swap LEDGERR_POLICY_YAML for a Cedar policy bundle at construction time.
+## Cedar is NOT used by default; enable with `--features cedar-policy`.
+cedar-policy = ["dep:cedar-policy"]
+
 [dependencies]
 agentmesh     = { path = "../../../agent-governance-toolkit/agent-governance-rust/agentmesh" }
 b00t-iface    = { path = "../../crates/b00t-iface", features = ["b00t"] }
@@ -13,6 +18,9 @@ serde         = { workspace = true }
 serde_json    = { workspace = true }
 thiserror     = { workspace = true }
 tracing       = { workspace = true }
+
+# Optional Cedar policy backend (Phase 4). Pinned to match agentmesh workspace.
+cedar-policy  = { version = "=2.4.2", optional = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

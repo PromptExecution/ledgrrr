@@ -6608,6 +6608,7 @@ dependencies = [
  "agentmesh",
  "agentmesh-mcp",
  "b00t-iface",
+ "cedar-policy",
  "serde",
  "serde_json",
  "tempfile",

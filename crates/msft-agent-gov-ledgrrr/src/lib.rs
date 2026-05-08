@@ -49,6 +49,11 @@ pub enum AgtError {
     SubAgentDuplicate(String),
     #[error("sub-agent not found: {0}")]
     SubAgentNotFound(String),
+    /// Cedar policy failed to parse. Returned by [`LedgrrAgtGateway::with_cedar_policy`]
+    /// when the supplied Cedar source is syntactically invalid.
+    #[cfg(feature = "cedar-policy")]
+    #[error("cedar policy parse error: {0}")]
+    CedarParse(String),
 }
 
 /// Result of a governed tool call check.
@@ -138,7 +143,48 @@ impl LedgrrAgtGateway {
         Self::build_gateway(agent_id, &yaml, TrustConfig::default())
     }
 
-    /// Shared construction core used by `new`, `with_trust_config`, and `with_policy_path`.
+    /// Create a gateway using a Cedar policy bundle instead of YAML.
+    ///
+    /// # Phase 4 — Cedar backend (feature-gated)
+    ///
+    /// Cedar provides formally-verified authorization semantics. This constructor
+    /// validates that `cedar_src` parses correctly via the `cedar-policy` crate, then
+    /// falls back to [`policy::LEDGERR_POLICY_YAML`] for the AGT `ClientOptions.policy_yaml`
+    /// field, because [`agentmesh::ClientOptions`] has no native Cedar field.
+    ///
+    /// **Limitation:** Cedar→YAML translation is not implemented. The Cedar policy is
+    /// validated for parse correctness only. Runtime enforcement uses the ledgrrr default
+    /// YAML policy. A `tracing::warn!` is emitted to make this explicit in every run.
+    ///
+    /// Full Cedar→AGT integration is deferred to a dedicated Phase 4 task.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AgtError::CedarParse`] if `cedar_src` is not valid Cedar syntax.
+    /// Returns [`AgtError::Client`] / other variants on AGT construction failure.
+    #[cfg(feature = "cedar-policy")]
+    pub fn with_cedar_policy(agent_id: &str, cedar_src: &str) -> Result<Self, AgtError> {
+        use cedar_policy::PolicySet;
+        use std::str::FromStr;
+
+        // Validate Cedar syntax. Reject unparseable bundles immediately.
+        PolicySet::from_str(cedar_src)
+            .map_err(|e| AgtError::CedarParse(format!("{e:?}")))?;
+
+        // Cedar→YAML translation not yet implemented. Fall back to the built-in
+        // ledgrrr default policy and surface a structured warning so operators
+        // know Cedar enforcement is not active.
+        tracing::warn!(
+            agent_id,
+            "cedar-policy feature enabled but Cedar→YAML translation is not implemented; \
+             falling back to LEDGERR_POLICY_YAML. Cedar policy validated for syntax only."
+        );
+
+        Self::build_gateway(agent_id, policy::LEDGERR_POLICY_YAML, TrustConfig::default())
+    }
+
+    /// Shared construction core used by `new`, `with_trust_config`, `with_policy_path`,
+    /// and (when the `cedar-policy` feature is active) `with_cedar_policy`.
     fn build_gateway(
         agent_id: &str,
         policy_yaml: &str,
@@ -1602,6 +1648,76 @@ mod tests {
             matches!(result, Err(AgtError::SubAgentDuplicate(_))),
             "duplicate spawn must return SubAgentDuplicate; got: {:?}",
             result
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Cedar policy feature tests (compiled only with --features cedar-policy)
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+#[cfg(feature = "cedar-policy")]
+mod cedar_tests {
+    use super::*;
+
+    /// Minimal valid Cedar policy — permits all actions for any principal/resource.
+    const MINIMAL_CEDAR: &str = r#"
+        permit(principal, action, resource);
+    "#;
+
+    /// A Cedar policy with an intentional syntax error.
+    const INVALID_CEDAR: &str = r#"
+        this is not valid cedar syntax {{ broken
+    "#;
+
+    /// `with_cedar_policy` constructs successfully when the Cedar source is valid.
+    ///
+    /// The gateway falls back to LEDGERR_POLICY_YAML internally, so all standard
+    /// gateway behaviour (default-allow reads) must hold.
+    #[test]
+    fn cedar_gateway_constructs_with_valid_policy() {
+        let gw = LedgrrAgtGateway::with_cedar_policy("cedar-hermes", MINIMAL_CEDAR)
+            .expect("gateway must construct with a valid Cedar policy");
+
+        // Basic smoke-test: default reads must be allowed.
+        let decision = gw.check_tool_call("cedar-hermes", "ledgerr_documents", "list_accounts");
+        assert!(
+            decision.allowed,
+            "cedar gateway must allow reads by default; got: {:?}",
+            decision
+        );
+    }
+
+    /// `with_cedar_policy` returns `AgtError::CedarParse` for a syntactically invalid Cedar source.
+    ///
+    /// An empty string is valid Cedar (zero policies = deny-all by default), so we
+    /// test the invalid-syntax path explicitly with a broken source string.
+    #[test]
+    fn cedar_gateway_rejects_invalid_syntax() {
+        let result = LedgrrAgtGateway::with_cedar_policy("cedar-bad", INVALID_CEDAR);
+        assert!(
+            matches!(result, Err(AgtError::CedarParse(_))),
+            "invalid Cedar source must return CedarParse error; got non-CedarParse result",
+        );
+    }
+
+    /// `with_cedar_policy` accepts an empty Cedar source and falls back to the default
+    /// YAML policy without error.
+    ///
+    /// An empty Cedar PolicySet is syntactically valid (no permits → implicit deny).
+    /// The fallback warning is emitted; construction succeeds.
+    #[test]
+    fn cedar_gateway_falls_back_on_empty_policy() {
+        let gw = LedgrrAgtGateway::with_cedar_policy("cedar-empty", "")
+            .expect("empty Cedar source is valid (zero policies); construction must succeed");
+
+        // Fallback policy applies — reads are permitted.
+        let decision = gw.check_tool_call("cedar-empty", "ledgerr_documents", "list_accounts");
+        assert!(
+            decision.allowed,
+            "empty Cedar falls back to default YAML; reads must be allowed; got: {:?}",
+            decision
         );
     }
 }
