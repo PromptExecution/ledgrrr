@@ -359,7 +359,7 @@ Every public method in §4's phased API additions must have a companion test bef
 | `quarantined_agent_is_denied` | After `quarantine_agent`, `check_tool_call` returns `Deny` even if ring was Standard |
 | `decommissioned_agent_is_denied_and_terminal` | After `decommission_agent`, agent cannot be re-registered |
 | `policy_path_falls_back_to_default` | `with_policy_path(nonexistent)` uses `LEDGERR_POLICY_YAML` |
-| `trust_score_for_unregistered_agent_is_zero` | `trust_score_for_agent("nobody")` returns 0 without panic |
+| `trust_score_for_unregistered_agent_returns_initial` | `trust_score_for_agent("nobody")` returns `initial_score` (default 500) without panic — security enforcement is the ring gate, not the trust score |
 | `tx_id_appears_in_audit_entry` | `check_tool_call_with_tx(..., Some("abc123"))` produces `audit_entry.correlation_id == Some("abc123")` |
 | `rings_persist_across_construction` | Construct gateway, promote agent, drop, reconstruct from sidecar, assert ring == Admin |
 

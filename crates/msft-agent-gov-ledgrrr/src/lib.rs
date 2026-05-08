@@ -153,8 +153,28 @@ impl LedgrrAgtGateway {
     }
 
     /// Current trust score for any agent DID.
+    ///
+    /// # Deprecation
+    ///
+    /// Prefer [`trust_score_for_agent`](Self::trust_score_for_agent), which accepts a bare
+    /// `agent_id` string and constructs the `did:agentmesh:` prefix internally.  Passing a raw
+    /// `agent_id` here silently returns the default initial score instead of an error.
+    #[deprecated(
+        since = "1.8.1",
+        note = "use trust_score_for_agent(agent_id) instead"
+    )]
     pub fn trust_score(&self, did: &str) -> TrustScore {
         self.client.trust.get_trust_score(did)
+    }
+
+    /// Current trust score for a registered agent, identified by bare `agent_id`.
+    ///
+    /// Constructs `did:agentmesh:{agent_id}` internally so callers never need to
+    /// format the DID prefix manually.  Returns the configured initial score (default
+    /// 500) when the agent has no recorded trust events — it never panics.
+    pub fn trust_score_for_agent(&self, agent_id: &str) -> TrustScore {
+        let did = format!("did:agentmesh:{}", agent_id);
+        self.client.trust.get_trust_score(&did)
     }
 
     /// Verify the entire AGT audit hash-chain since gateway creation.
@@ -232,5 +252,34 @@ mod tests {
     fn did_format() {
         let gw = LedgrrAgtGateway::new("my-agent").unwrap();
         assert_eq!(gw.agent_did(), "did:agentmesh:my-agent");
+    }
+
+    /// Gap 12: trust_score_for_agent must agree with trust_score(full_did) after
+    /// a trust event has been recorded for that agent's DID.
+    #[test]
+    fn trust_score_for_agent_matches_did() {
+        // The gateway's own DID is `did:agentmesh:my-agent`.
+        // check_tool_call on Standard ring calls execute_with_governance which
+        // records a trust event under the gateway's identity DID.
+        let gw = LedgrrAgtGateway::new("my-agent").unwrap();
+        gw.check_tool_call("my-agent", "ledgerr_documents", "list_accounts");
+
+        #[allow(deprecated)]
+        let via_did = gw.trust_score("did:agentmesh:my-agent");
+        let via_agent = gw.trust_score_for_agent("my-agent");
+
+        assert_eq!(via_agent.score, via_did.score);
+        assert_eq!(via_agent.tier, via_did.tier);
+    }
+
+    /// Gap 12: trust_score_for_agent must not panic for an unknown agent id and
+    /// must return the configured initial score (500 by default — NOT zero).
+    #[test]
+    fn trust_score_bare_id_does_not_panic() {
+        let gw = LedgrrAgtGateway::new("owner").unwrap();
+        let result = gw.trust_score_for_agent("nobody");
+        // TrustManager returns initial_score (default 500) for unknown DIDs.
+        // The score is never zero unless initial_score is explicitly set to 0.
+        assert_eq!(result.score, 500);
     }
 }
