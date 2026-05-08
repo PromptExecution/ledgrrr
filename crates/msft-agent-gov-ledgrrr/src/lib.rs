@@ -15,8 +15,11 @@
 //! ```
 
 pub mod capability_bridge;
+pub mod compliance;
 pub mod policy;
 pub mod rings;
+
+pub use compliance::{ComplianceGrade, ComplianceStore, LedgrrComplianceReport, Z3Attestation};
 
 use agentmesh::{
     mcp::{
@@ -111,6 +114,10 @@ pub struct LedgrrAgtGateway {
     /// Each sub-agent gets a fresh `TrustConfig` cloned from this (no persist_path)
     /// so scores start at the configured initial value and diverge independently.
     trust_config_snapshot: TrustConfig,
+    /// Z3 attestation ledger + AGT compliance engine (Gap 6).
+    /// Accumulates Blake3 proof hashes from arc-kit-au that auto-satisfy
+    /// OWASP / EU AI Act / SOC 2 audit controls.
+    compliance_store: ComplianceStore,
 }
 
 impl LedgrrAgtGateway {
@@ -262,6 +269,7 @@ impl LedgrrAgtGateway {
             sub_agents: Arc::new(RwLock::new(HashMap::new())),
             policy_yaml: policy_yaml_owned,
             trust_config_snapshot,
+            compliance_store: ComplianceStore::new(),
         })
     }
 
@@ -310,6 +318,52 @@ impl LedgrrAgtGateway {
         }
 
         Ok(gw)
+    }
+
+    // -----------------------------------------------------------------------
+    // Gap 6 — ComplianceEngine + Z3 attestation feed
+    // -----------------------------------------------------------------------
+
+    /// Generate a compliance report graded against OWASP / EU AI Act / SOC 2 controls.
+    ///
+    /// The report reflects the current attestation state of all controls that
+    /// have been fed into the gateway via [`Self::attest_z3_proof`].  Controls
+    /// with no attestation appear in `controls_pending`; attested controls
+    /// appear in `controls_satisfied`.
+    ///
+    /// The `grade` field upgrades from `Unknown` → `Partial` → `Full` as
+    /// attestations are recorded.
+    pub fn compliance_report(&self) -> LedgrrComplianceReport {
+        self.compliance_store.ledgrrr_report()
+    }
+
+    /// Feed a Z3 attestation hash as evidence for a named compliance control.
+    ///
+    /// `control_id` — an audit control identifier such as `"soc2-cc6.1"` or
+    /// `"eu-ai-act-art-13"`.
+    ///
+    /// `blake3_hex` — hex-encoded Blake3 node ID produced by `arc-kit-au`.
+    /// Attestations are appended to the immutable ledger; calling this method
+    /// twice for the same `control_id` creates two ledger entries and does not
+    /// alter the satisfied state (idempotent as of the first call).
+    pub fn attest_z3_proof(&self, control_id: &str, blake3_hex: &str) {
+        tracing::info!(
+            control_id,
+            blake3_hex,
+            "attest_z3_proof: recording Z3 attestation for compliance control"
+        );
+        self.compliance_store.attest(control_id, blake3_hex);
+    }
+
+    /// Pre-declare a compliance control as required.
+    ///
+    /// Controls that are registered but not yet attested appear as pending in
+    /// the report.  Call this for the full set of required controls before any
+    /// attestations so that [`ComplianceGrade::Partial`] is reachable when
+    /// only a subset has been attested.
+    pub fn register_compliance_control(&self, control_id: &str) {
+        tracing::debug!(control_id, "register_compliance_control: pre-registering control");
+        self.compliance_store.register_control(control_id);
     }
 
     /// Serialize current ring shadow map to disk. No-op when no persist path is set.
@@ -1648,6 +1702,103 @@ mod tests {
             matches!(result, Err(AgtError::SubAgentDuplicate(_))),
             "duplicate spawn must return SubAgentDuplicate; got: {:?}",
             result
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Gap 6 — gateway compliance / Z3 attestation tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod compliance_gateway_tests {
+    use super::*;
+
+    /// A freshly constructed gateway has no satisfied controls.
+    #[test]
+    fn compliance_report_is_initially_empty() {
+        let gw = LedgrrAgtGateway::new("hermes-compliance").expect("gateway init");
+        let report = gw.compliance_report();
+        assert!(
+            report.controls_satisfied.is_empty(),
+            "fresh gateway must have no satisfied controls; got: {:?}",
+            report.controls_satisfied
+        );
+        assert!(
+            report.attestations.is_empty(),
+            "fresh gateway must have no attestations"
+        );
+        assert_eq!(
+            report.grade,
+            ComplianceGrade::Unknown,
+            "fresh gateway grade must be Unknown"
+        );
+    }
+
+    /// Attesting a control moves it to `controls_satisfied` with a ledger entry.
+    #[test]
+    fn attest_z3_proof_adds_to_report() {
+        let gw = LedgrrAgtGateway::new("hermes-attest").expect("gateway init");
+        gw.attest_z3_proof("soc2-cc6.1", "abc123def");
+        let report = gw.compliance_report();
+        assert!(
+            report.controls_satisfied.contains(&"soc2-cc6.1".to_string()),
+            "attested control must appear in controls_satisfied; got: {:?}",
+            report.controls_satisfied
+        );
+        assert_eq!(
+            report.attestations.len(),
+            1,
+            "exactly one attestation must be recorded"
+        );
+        assert_eq!(report.attestations[0].control_id, "soc2-cc6.1");
+        assert_eq!(report.attestations[0].blake3_hex, "abc123def");
+    }
+
+    /// Grade upgrades from Unknown to non-Unknown after receiving attestations.
+    #[test]
+    fn compliance_grade_upgrades_with_attestations() {
+        // Register 3 controls, attest only 2 → Partial
+        let gw = LedgrrAgtGateway::new("hermes-grade").expect("gateway init");
+        gw.register_compliance_control("soc2-cc6.1");
+        gw.register_compliance_control("eu-ai-act-art-13");
+        gw.register_compliance_control("soc2-cc7.2");
+        gw.attest_z3_proof("soc2-cc6.1", "aaabbbccc111");
+        gw.attest_z3_proof("eu-ai-act-art-13", "dddeeefff222");
+        let report = gw.compliance_report();
+        assert_eq!(
+            report.grade,
+            ComplianceGrade::Partial,
+            "2 of 3 controls attested → Partial; got: {:?}",
+            report.grade
+        );
+        assert_eq!(
+            report.controls_pending,
+            vec!["soc2-cc7.2".to_string()],
+            "one control must remain pending"
+        );
+    }
+
+    #[test]
+    fn compliance_grade_full_when_all_attested() {
+        // Register 3 controls, attest all 3 → Full
+        let gw = LedgrrAgtGateway::new("hermes-grade").expect("gateway init");
+        gw.register_compliance_control("soc2-cc6.1");
+        gw.register_compliance_control("eu-ai-act-art-13");
+        gw.register_compliance_control("soc2-cc7.2");
+        gw.attest_z3_proof("soc2-cc6.1", "aaabbbccc111");
+        gw.attest_z3_proof("eu-ai-act-art-13", "dddeeefff222");
+        gw.attest_z3_proof("soc2-cc7.2", "ggghhh333iii");
+        let report = gw.compliance_report();
+        assert_eq!(
+            report.grade,
+            ComplianceGrade::Full,
+            "all 3 controls attested → Full; got: {:?}",
+            report.grade
+        );
+        assert!(
+            report.controls_pending.is_empty(),
+            "no controls must remain pending"
         );
     }
 }
