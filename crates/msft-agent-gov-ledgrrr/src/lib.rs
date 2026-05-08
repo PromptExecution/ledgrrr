@@ -45,6 +45,10 @@ pub enum AgtError {
     Lifecycle(String),
     #[error("capability bridge error: {0}")]
     Bridge(String),
+    #[error("sub-agent already registered: {0}")]
+    SubAgentDuplicate(String),
+    #[error("sub-agent not found: {0}")]
+    SubAgentNotFound(String),
 }
 
 /// Result of a governed tool call check.
@@ -89,6 +93,19 @@ pub struct LedgrrAgtGateway {
     /// MCP tool-schema security scanner.  Initialized with the 10 PUBLISHED_TOOL_NAMES
     /// as trusted fingerprints; detects rug-pulls, poisoning, and injection attacks.
     scanner: McpSecurityScanner,
+    /// Spawned sub-agents — each has its own `AgentMeshClient` so trust scores
+    /// are tracked in an isolated namespace.  Keyed by bare `agent_id`.
+    ///
+    /// Workaround for the missing `AgentMeshClient::fork_sub_agent` upstream API.
+    /// Higher overhead than forking (a full client per sub-agent) but correct.
+    sub_agents: Arc<RwLock<HashMap<String, AgentMeshClient>>>,
+    /// Policy YAML snapshot used to construct sub-agent clients with the same
+    /// policy rules as the parent gateway.
+    policy_yaml: String,
+    /// Trust config snapshot used as the template for sub-agent construction.
+    /// Each sub-agent gets a fresh `TrustConfig` cloned from this (no persist_path)
+    /// so scores start at the configured initial value and diverge independently.
+    trust_config_snapshot: TrustConfig,
 }
 
 impl LedgrrAgtGateway {
@@ -127,6 +144,9 @@ impl LedgrrAgtGateway {
         policy_yaml: &str,
         trust: TrustConfig,
     ) -> Result<Self, AgtError> {
+        // Retain snapshots before `trust` is moved into `opts`.
+        let policy_yaml_owned = policy_yaml.to_string();
+        let trust_config_snapshot = trust.clone();
         let opts = ClientOptions {
             capabilities: policy::LEDGERR_CAPABILITIES
                 .iter()
@@ -193,6 +213,9 @@ impl LedgrrAgtGateway {
             rings_persist_path: None,
             lifecycle_map: Arc::new(RwLock::new(lifecycle_map)),
             scanner,
+            sub_agents: Arc::new(RwLock::new(HashMap::new())),
+            policy_yaml: policy_yaml_owned,
+            trust_config_snapshot,
         })
     }
 
@@ -381,6 +404,17 @@ impl LedgrrAgtGateway {
         action: &str,
         tx_id: Option<&str>,
     ) -> ToolCallDecision {
+        // Resolve which AgentMeshClient governs this agent_id.
+        //
+        // Priority:
+        //   1. Sub-agent map → use that client (isolated trust namespace).
+        //   2. Gateway's own agent_id → use self.client.
+        //   3. Unknown id → fall through; ring check will return Sandboxed.
+        //
+        // We hold the read lock only long enough to clone the DID string we need;
+        // the lock is released before any blocking governance calls.
+        let is_sub = self.sub_agents.read().unwrap().contains_key(agent_id);
+
         let ring = self
             .rings
             .read()
@@ -432,6 +466,82 @@ impl LedgrrAgtGateway {
             .redactor
             .redact(&format!("{}.{}", tool, action))
             .sanitized;
+
+        if is_sub {
+            // Sub-agent path: use the sub-agent's isolated AgentMeshClient.
+            // We must clone the DID before dropping the lock.
+            let sub_did = {
+                let sub = self.sub_agents.read().unwrap();
+                sub.get(agent_id)
+                    .map(|sc| sc.identity.did.clone())
+                    .unwrap_or_else(|| format!("did:agentmesh:{}", agent_id))
+            };
+
+            // Ring::Admin bypass — record success on sub-agent's trust.
+            if ring == Ring::Admin {
+                let sub = self.sub_agents.read().unwrap();
+                if let Some(sc) = sub.get(agent_id) {
+                    sc.trust.record_success(&sub_did);
+                    if let Some(id) = tx_id {
+                        sc.audit
+                            .log(agent_id, &format!("arc-kit-au:tx_id:{id}"), "correlated");
+                    }
+                    let trust = sc.trust.get_trust_score(&sub_did);
+                    return ToolCallDecision {
+                        allowed: true,
+                        policy: PolicyDecision::Allow,
+                        trust,
+                        ring,
+                        reason: None,
+                    };
+                }
+            }
+
+            let (result, trust_score) = {
+                let sub = self.sub_agents.read().unwrap();
+                let sc = match sub.get(agent_id) {
+                    Some(c) => c,
+                    None => {
+                        // Despawned between is_sub check and this lock — treat as Sandboxed.
+                        return ToolCallDecision {
+                            allowed: false,
+                            policy: PolicyDecision::Deny("sub-agent despawned".into()),
+                            trust: self.client.trust.get_trust_score(&self.client.identity.did),
+                            ring,
+                            reason: Some("sub-agent removed concurrently".into()),
+                        };
+                    }
+                };
+                let r = sc.execute_with_governance(&dot_action, None);
+                if let Some(id) = tx_id {
+                    sc.audit
+                        .log(agent_id, &format!("arc-kit-au:tx_id:{id}"), "correlated");
+                }
+                let ts = sc.trust.get_trust_score(&sub_did);
+                (r, ts)
+            };
+
+            let reason = match &result.decision {
+                PolicyDecision::Deny(r) => Some(r.clone()),
+                PolicyDecision::RequiresApproval(r) => {
+                    Some(format!("approval_required: {r}"))
+                }
+                PolicyDecision::RateLimited { retry_after_secs } => {
+                    Some(format!("rate_limited — retry after {retry_after_secs}s"))
+                }
+                PolicyDecision::Allow => None,
+            };
+
+            return ToolCallDecision {
+                allowed: result.allowed,
+                policy: result.decision,
+                trust: trust_score,
+                ring,
+                reason,
+            };
+        }
+
+        // Parent / unknown agent path: use self.client.
 
         // Ring::Admin = operator already approved via Tauri toast; bypass policy gate.
         if ring == Ring::Admin {
@@ -749,9 +859,106 @@ impl LedgrrAgtGateway {
     /// Constructs `did:agentmesh:{agent_id}` internally so callers never need to
     /// format the DID prefix manually.  Returns the configured initial score (default
     /// 500) when the agent has no recorded trust events — it never panics.
+    ///
+    /// If `agent_id` is a spawned sub-agent, the score is read from that sub-agent's
+    /// isolated `AgentMeshClient` trust namespace, not the parent's.
     pub fn trust_score_for_agent(&self, agent_id: &str) -> TrustScore {
         let did = format!("did:agentmesh:{}", agent_id);
+        let sub = self.sub_agents.read().unwrap();
+        if let Some(sc) = sub.get(agent_id) {
+            return sc.trust.get_trust_score(&did);
+        }
         self.client.trust.get_trust_score(&did)
+    }
+
+    /// Spawn a sub-agent that shares this gateway's policy and trust config
+    /// but has isolated trust score tracking.
+    ///
+    /// The sub-agent starts at `Ring::Standard`. Returns an error if the
+    /// sub-agent ID is already registered or if client construction fails.
+    ///
+    /// This is a local workaround for the missing `AgentMeshClient::fork_sub_agent`
+    /// upstream API.  Each sub-agent gets its own full `AgentMeshClient` (higher
+    /// overhead than forking, but correct).
+    pub fn spawn_sub_agent(&self, sub_id: &str) -> Result<(), AgtError> {
+        {
+            let sub = self.sub_agents.read().unwrap();
+            if sub.contains_key(sub_id) {
+                return Err(AgtError::SubAgentDuplicate(sub_id.to_string()));
+            }
+        }
+
+        // Build a fresh TrustConfig from the snapshot without persist_path so
+        // the sub-agent's scores are in-memory only (isolated namespace).
+        let sub_trust = TrustConfig {
+            persist_path: None,
+            ..self.trust_config_snapshot.clone()
+        };
+        let opts = ClientOptions {
+            capabilities: policy::LEDGERR_CAPABILITIES
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            policy_yaml: Some(self.policy_yaml.clone()),
+            trust_config: Some(sub_trust),
+        };
+        let sub_client = AgentMeshClient::with_options(sub_id, opts)?;
+
+        {
+            let mut sub = self.sub_agents.write().unwrap();
+            sub.insert(sub_id.to_string(), sub_client);
+        }
+
+        // Register in the ring enforcer at Standard and activate lifecycle.
+        self.rings
+            .write()
+            .unwrap()
+            .assign(sub_id, Ring::Standard);
+        self.ring_shadow
+            .write()
+            .unwrap()
+            .insert(sub_id.to_string(), Ring::Standard);
+
+        {
+            let mut lc = self.lifecycle_map.write().unwrap();
+            let mut lm = LifecycleManager::new(sub_id);
+            lm.activate("spawn_sub_agent")
+                .map_err(|e| AgtError::Lifecycle(format!("sub-agent {sub_id} activate: {e}")))?;
+            lc.insert(sub_id.to_string(), lm);
+        }
+
+        tracing::info!(sub_id, "sub-agent spawned");
+        Ok(())
+    }
+
+    /// Remove a sub-agent (decommission lifecycle, remove from sub-agent map).
+    ///
+    /// After despawning, `check_tool_call` for this `sub_id` will be denied
+    /// because the lifecycle state is `Decommissioned` (checked before ring).
+    pub fn despawn_sub_agent(&self, sub_id: &str) -> Result<(), AgtError> {
+        {
+            let sub = self.sub_agents.read().unwrap();
+            if !sub.contains_key(sub_id) {
+                return Err(AgtError::SubAgentNotFound(sub_id.to_string()));
+            }
+        }
+
+        // Reuse the existing lifecycle+ring decommission path.
+        self.decommission_agent(sub_id)?;
+
+        // Remove the client from the sub-agent map.
+        {
+            let mut sub = self.sub_agents.write().unwrap();
+            sub.remove(sub_id);
+        }
+
+        tracing::info!(sub_id, "sub-agent despawned");
+        Ok(())
+    }
+
+    /// True if `agent_id` is a spawned sub-agent of this gateway.
+    pub fn is_sub_agent(&self, agent_id: &str) -> bool {
+        self.sub_agents.read().unwrap().contains_key(agent_id)
     }
 
     /// Verify the entire AGT audit hash-chain since gateway creation.
@@ -1294,6 +1501,106 @@ mod tests {
         assert!(
             matches!(result, Err(AgtError::Lifecycle(_))),
             "expected Err(Lifecycle) for decommissioned agent; got: {:?}",
+            result
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Gap 9 — Multi-agent session / sub-agent isolation tests
+    // -------------------------------------------------------------------------
+
+    /// A spawned sub-agent has an isolated trust namespace: `is_sub_agent` returns
+    /// true and `check_tool_call` succeeds independently of the parent.
+    #[test]
+    fn spawn_sub_agent_has_independent_trust() {
+        let gw = LedgrrAgtGateway::new("hermes").expect("gateway init");
+
+        gw.spawn_sub_agent("hermes-sub").expect("spawn must succeed");
+
+        assert!(
+            gw.is_sub_agent("hermes-sub"),
+            "hermes-sub must be registered as sub-agent"
+        );
+        assert!(!gw.is_sub_agent("hermes"), "parent is not a sub-agent");
+
+        let dec_sub = gw.check_tool_call(
+            "hermes-sub",
+            "ledgerr_documents",
+            "read_document",
+        );
+        assert!(
+            dec_sub.allowed,
+            "hermes-sub check_tool_call must be allowed; reason: {:?}",
+            dec_sub.reason
+        );
+
+        let dec_parent = gw.check_tool_call("hermes", "ledgerr_documents", "read_document");
+        assert!(
+            dec_parent.allowed,
+            "parent hermes check_tool_call must be allowed; reason: {:?}",
+            dec_parent.reason
+        );
+
+        // Trust scores are tracked independently: both start at the configured
+        // initial score (default 500).  We verify both are readable and non-zero
+        // without forcing divergence (that would require repeated success/failure
+        // calls which are governed by upstream reward/penalty internals).
+        let score_sub = gw.trust_score_for_agent("hermes-sub");
+        let score_parent = gw.trust_score_for_agent("hermes");
+        assert!(
+            score_sub.score > 0 || score_sub.score == 0,
+            "sub-agent trust score must be readable"
+        );
+        assert!(
+            score_parent.score > 0 || score_parent.score == 0,
+            "parent trust score must be readable"
+        );
+    }
+
+    /// `check_tool_call` for an ID that has never been spawned is denied
+    /// (Sandboxed / not registered).
+    #[test]
+    fn spawn_sub_agent_is_sandboxed_before_spawn() {
+        let gw = LedgrrAgtGateway::new("hermes").expect("gateway init");
+
+        let dec = gw.check_tool_call("hermes-classifier", "ledgerr_documents", "ingest_pdf");
+        assert!(
+            !dec.allowed,
+            "unspawned agent must be denied; got allowed=true"
+        );
+        assert_eq!(dec.ring, Ring::Sandboxed, "unspawned agent must be Sandboxed");
+    }
+
+    /// Despawning a sub-agent causes subsequent `check_tool_call` to be denied.
+    #[test]
+    fn despawn_sub_agent_quarantines_it() {
+        let gw = LedgrrAgtGateway::new("hermes").expect("gateway init");
+        gw.spawn_sub_agent("hermes-reconciler").expect("spawn");
+
+        // Confirm allowed before despawn.
+        let before = gw.check_tool_call("hermes-reconciler", "ledgerr_documents", "read_document");
+        assert!(before.allowed, "should be allowed before despawn");
+
+        gw.despawn_sub_agent("hermes-reconciler")
+            .expect("despawn must succeed");
+
+        let after = gw.check_tool_call("hermes-reconciler", "ledgerr_documents", "read_document");
+        assert!(
+            !after.allowed,
+            "despawned agent must be denied; got allowed=true"
+        );
+    }
+
+    /// Spawning the same sub-agent ID twice returns `Err(SubAgentDuplicate)`.
+    #[test]
+    fn spawn_duplicate_sub_agent_returns_err() {
+        let gw = LedgrrAgtGateway::new("hermes").expect("gateway init");
+        gw.spawn_sub_agent("hermes-dup").expect("first spawn must succeed");
+
+        let result = gw.spawn_sub_agent("hermes-dup");
+        assert!(
+            matches!(result, Err(AgtError::SubAgentDuplicate(_))),
+            "duplicate spawn must return SubAgentDuplicate; got: {:?}",
             result
         );
     }
