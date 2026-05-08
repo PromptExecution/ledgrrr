@@ -15,6 +15,8 @@
 //! ```
 
 pub mod capability_bridge;
+pub mod http_gateway;
+pub use http_gateway::build_ledgrrr_mcp_gateway;
 pub mod compliance;
 pub mod policy;
 pub mod rings;
