@@ -226,7 +226,33 @@ impl LedgrrAgtGateway {
     /// 2. Policy engine — capability gate, approval rules, rate-limit rules.
     /// 3. Trust update — reward on Allow, penalty on Deny.
     /// 4. Ring sync — trust tier changes update the ring assignment.
+    /// Governance gate for a tool call.  Delegates to
+    /// [`check_tool_call_with_tx`] with no transaction correlation.
     pub fn check_tool_call(&self, agent_id: &str, tool: &str, action: &str) -> ToolCallDecision {
+        self.check_tool_call_with_tx(agent_id, tool, action, None)
+    }
+
+    /// Like [`check_tool_call`] but stamps a Blake3 hex `tx_id` from `arc-kit-au`
+    /// into the AGT audit hash-chain as a supplementary correlation entry.
+    ///
+    /// If `tx_id` is `Some(id)`, a second audit entry is appended immediately
+    /// after the governance decision with action `"arc-kit-au:tx_id:<id>"` and
+    /// decision `"correlated"`.  This enters the hash-chain without requiring
+    /// the AGT `AuditEntry` struct to carry a context field (it does not — the
+    /// struct is `seq | timestamp | agent_id | action | decision | hashes`).
+    ///
+    /// `tx_id` is a Blake3 hex digest produced by `arc-kit-au`, NOT user input.
+    /// It is therefore NOT passed through `CredentialRedactor` — a hash cannot
+    /// contain credentials and redacting it would corrupt the correlation key.
+    ///
+    /// If `tx_id` is `None`, behaviour is identical to `check_tool_call`.
+    pub fn check_tool_call_with_tx(
+        &self,
+        agent_id: &str,
+        tool: &str,
+        action: &str,
+        tx_id: Option<&str>,
+    ) -> ToolCallDecision {
         let ring = self
             .rings
             .read()
@@ -282,6 +308,13 @@ impl LedgrrAgtGateway {
         // Ring::Admin = operator already approved via Tauri toast; bypass policy gate.
         if ring == Ring::Admin {
             self.client.trust.record_success(&self.client.identity.did);
+            if let Some(id) = tx_id {
+                self.client.audit.log(
+                    agent_id,
+                    &format!("arc-kit-au:tx_id:{id}"),
+                    "correlated",
+                );
+            }
             return ToolCallDecision {
                 allowed: true,
                 policy: PolicyDecision::Allow,
@@ -290,7 +323,16 @@ impl LedgrrAgtGateway {
                 reason: None,
             };
         }
+
         let result = self.client.execute_with_governance(&dot_action, None);
+
+        if let Some(id) = tx_id {
+            self.client.audit.log(
+                agent_id,
+                &format!("arc-kit-au:tx_id:{id}"),
+                "correlated",
+            );
+        }
 
         let reason = match &result.decision {
             PolicyDecision::Deny(r) => Some(r.clone()),
@@ -846,5 +888,86 @@ mod tests {
         );
         let r = gw.check_tool_call("healthy", "ledgerr_documents", "list_accounts");
         assert!(r.allowed, "active agent must be allowed through lifecycle check");
+    }
+
+    // --- Gap 10 tests ---
+
+    /// A Blake3 hex tx_id from arc-kit-au is correlated into the audit hash-chain.
+    /// The call must succeed, the decision must be allowed for a registered agent,
+    /// and the chain must verify after the supplementary correlation entry is appended.
+    #[test]
+    fn tx_id_passed_as_some_does_not_panic() {
+        let gw = LedgrrAgtGateway::new("my-agent").unwrap();
+        let decision = gw.check_tool_call_with_tx(
+            "my-agent",
+            "ledgerr_documents",
+            "list_accounts",
+            Some("abc123def456"),
+        );
+        assert!(decision.allowed, "registered agent must be allowed");
+        assert_eq!(gw.audit_len(), 2, "governance entry + correlation entry");
+        assert!(
+            gw.verify_audit_chain(),
+            "audit chain must remain valid after tx_id correlation entry"
+        );
+    }
+
+    /// check_tool_call and check_tool_call_with_tx(…, None) must produce the same
+    /// allowed flag and policy variant — None is a strict no-op for correlation.
+    #[test]
+    fn tx_id_none_matches_check_tool_call() {
+        let gw_a = LedgrrAgtGateway::new("my-agent").unwrap();
+        let gw_b = LedgrrAgtGateway::new("my-agent").unwrap();
+
+        let a = gw_a.check_tool_call("my-agent", "ledgerr_documents", "list_accounts");
+        let b = gw_b.check_tool_call_with_tx(
+            "my-agent",
+            "ledgerr_documents",
+            "list_accounts",
+            None,
+        );
+
+        assert_eq!(
+            a.allowed, b.allowed,
+            "allowed must match between check_tool_call and check_tool_call_with_tx(None)"
+        );
+        // Compare policy discriminant without requiring PartialEq on the full variant.
+        assert_eq!(
+            std::mem::discriminant(&a.policy),
+            std::mem::discriminant(&b.policy),
+            "policy variant must match"
+        );
+    }
+
+    /// tx_id is a Blake3 hex digest — it is NOT passed through CredentialRedactor.
+    /// A hash cannot contain credentials; redacting it would corrupt the correlation key.
+    /// This test documents the invariant: a hex string in tx_id position passes through
+    /// unmodified (i.e., the audit chain contains the exact tx_id, not a redacted form).
+    #[test]
+    fn tx_id_with_credential_in_id_is_not_a_concern() {
+        // tx_id is always a Blake3 hex output from arc-kit-au — it is structurally
+        // impossible for it to contain bearer tokens or API keys.  We verify here
+        // that the correlation entry is present and unaltered in the audit chain.
+        let gw = LedgrrAgtGateway::new("my-agent").unwrap();
+        let tx_id = "a3f8e2d1c4b7901234567890abcdef0123456789abcdef0123456789abcdef01";
+        gw.check_tool_call_with_tx(
+            "my-agent",
+            "ledgerr_documents",
+            "list_accounts",
+            Some(tx_id),
+        );
+
+        let entries = gw.client.audit.entries();
+        let correlated = entries
+            .iter()
+            .find(|e| e.action.contains(tx_id));
+        assert!(
+            correlated.is_some(),
+            "correlation entry with exact tx_id must appear in audit chain; entries: {entries:?}"
+        );
+        assert!(
+            gw.verify_audit_chain(),
+            "audit chain must verify after correlation entry"
+        );
     }
 }
