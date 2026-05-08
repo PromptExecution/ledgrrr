@@ -107,11 +107,9 @@ pub fn accept_capability_offer(
         Ring::Restricted => {
             tracing::info!(
                 agent_id,
-                "CapabilityBridge: read-only cap — registering at Standard \
-                 (intended ring: Restricted; full Restricted assignment pending \
-                 register_agent_at_ring upstream extension)"
+                "CapabilityBridge: read-only cap — registering at Restricted"
             );
-            gw.register_agent(agent_id);
+            gw.register_agent_at_ring(agent_id, Ring::Restricted)?;
             Ok(Ring::Restricted)
         }
         Ring::Sandboxed => {
@@ -213,5 +211,25 @@ mod tests {
         let offer = make_offer("");
         let result = accept_capability_offer(&gw, &offer);
         assert!(result.is_err(), "empty agent_id must return Err");
+    }
+
+    // -----------------------------------------------------------------------
+    // Gap 4b — capability_bridge actually lands at Restricted
+    // -----------------------------------------------------------------------
+
+    /// A read-only offer (non-ledgerr name) must actually register the agent at
+    /// Ring::Restricted, not silently land at Standard.
+    #[test]
+    fn capability_bridge_restricted_offer_lands_at_restricted() {
+        let gw = make_gateway();
+        // "openai.completions.read" → ring_for_offer returns Restricted.
+        let offer = make_offer("openai.completions.read");
+        let ring = accept_capability_offer(&gw, &offer)
+            .expect("read-only offer must not error");
+        assert_eq!(
+            ring,
+            Ring::Restricted,
+            "read-only capability offer must land at Ring::Restricted"
+        );
     }
 }

@@ -548,6 +548,81 @@ impl LedgrrAgtGateway {
         }
     }
 
+    /// Register an external agent at a specific ring.
+    ///
+    /// Unlike `register_agent` which always starts at Standard, this lets
+    /// the capability bridge assign Restricted ring to read-only offers.
+    /// Cannot be used to assign `Ring::Admin` — use `promote_to_admin` for that.
+    /// Cannot register a decommissioned agent.
+    ///
+    /// Returns the ring actually assigned (`Ring::Admin` is clamped to `Ring::Standard`).
+    pub fn register_agent_at_ring(&self, agent_id: &str, ring: Ring) -> Result<Ring, AgtError> {
+        // Lifecycle guard: decommissioned agents cannot be re-registered.
+        {
+            let lc = self.lifecycle_map.read().unwrap();
+            if let Some(lm) = lc.get(agent_id) {
+                let state = lm.state();
+                if matches!(
+                    state,
+                    LifecycleState::Decommissioning | LifecycleState::Decommissioned
+                ) {
+                    return Err(AgtError::Lifecycle(
+                        "cannot register decommissioned agent".into(),
+                    ));
+                }
+            }
+        }
+
+        // Admin is off-limits to the capability bridge — operator must use
+        // promote_to_admin explicitly. Clamp and warn.
+        let actual_ring = if ring == Ring::Admin {
+            tracing::warn!(
+                agent_id,
+                "register_agent_at_ring: Ring::Admin requested — clamped to Standard; \
+                 use promote_to_admin for Admin assignment"
+            );
+            Ring::Standard
+        } else {
+            ring
+        };
+
+        self.rings
+            .write()
+            .unwrap()
+            .assign(agent_id, actual_ring);
+        self.ring_shadow
+            .write()
+            .unwrap()
+            .insert(agent_id.to_string(), actual_ring);
+
+        // Upsert lifecycle: activate fresh agents, leave non-terminal states untouched.
+        {
+            let mut lc = self.lifecycle_map.write().unwrap();
+            lc.entry(agent_id.to_string()).or_insert_with(|| {
+                let mut lm = LifecycleManager::new(agent_id);
+                if let Err(e) = lm.activate("register_agent_at_ring") {
+                    tracing::warn!(
+                        agent_id,
+                        error = %e,
+                        "lifecycle activate failed on register_agent_at_ring"
+                    );
+                }
+                lm
+            });
+        }
+
+        if let Err(e) = self.save_rings() {
+            tracing::warn!(
+                agent_id,
+                error = %e,
+                "ring persistence write failed after register_agent_at_ring"
+            );
+        }
+
+        tracing::info!(agent_id, ring = ?actual_ring, "agent registered at ring");
+        Ok(actual_ring)
+    }
+
     // -------------------------------------------------------------------------
     // Gap 2 — LifecycleManager public surface
     // -------------------------------------------------------------------------
@@ -1168,6 +1243,58 @@ mod tests {
             state,
             agentmesh::LifecycleState::Quarantined,
             "agent must be Quarantined after rug-pull detection"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Gap 4b — register_agent_at_ring
+    // -----------------------------------------------------------------------
+
+    /// Restricted registration lands at Restricted and passes read-only tool calls.
+    #[test]
+    fn register_at_restricted_lands_at_restricted() {
+        let gw = LedgrrAgtGateway::new("test_agt").expect("gateway init must succeed");
+        let ring = gw
+            .register_agent_at_ring("agent", Ring::Restricted)
+            .expect("register at Restricted must succeed");
+        assert_eq!(ring, Ring::Restricted);
+
+        let decision = gw.check_tool_call("agent", "ledgerr_documents", "list_accounts");
+        assert!(
+            decision.allowed,
+            "Restricted ring must allow ledgerr_documents.list_accounts; got: {:?}",
+            decision.policy
+        );
+    }
+
+    /// Admin ring is clamped to Standard — promote_to_admin is the correct path.
+    #[test]
+    fn register_at_admin_is_clamped_to_standard() {
+        let gw = LedgrrAgtGateway::new("test_agt").expect("gateway init must succeed");
+        let ring = gw
+            .register_agent_at_ring("agent", Ring::Admin)
+            .expect("register with Admin request must succeed (clamped)");
+        assert_eq!(
+            ring,
+            Ring::Standard,
+            "Admin must be clamped to Standard by register_agent_at_ring"
+        );
+    }
+
+    /// Attempting to register a decommissioned agent returns Err(Lifecycle).
+    #[test]
+    fn register_decommissioned_at_ring_returns_err() {
+        let gw = LedgrrAgtGateway::new("test_agt").expect("gateway init must succeed");
+        // Register then decommission.
+        gw.register_agent("agent");
+        gw.decommission_agent("agent")
+            .expect("decommission must succeed");
+
+        let result = gw.register_agent_at_ring("agent", Ring::Restricted);
+        assert!(
+            matches!(result, Err(AgtError::Lifecycle(_))),
+            "expected Err(Lifecycle) for decommissioned agent; got: {:?}",
+            result
         );
     }
 }
