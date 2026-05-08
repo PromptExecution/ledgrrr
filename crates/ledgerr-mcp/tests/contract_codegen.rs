@@ -2,8 +2,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use ledgerr_mcp::contract::{
-    self, DocumentsArgs, WorkflowArgs, AUDIT_TOOL, DOCUMENTS_TOOL, ONTOLOGY_TOOL,
-    RECONCILIATION_TOOL, REVIEW_TOOL, TAX_TOOL, WORKFLOW_TOOL,
+    self, DocumentsArgs, WorkflowArgs, AUDIT_TOOL, DOCUMENTS_TOOL, EVIDENCE_TOOL, FOCUS_TOOL,
+    ONTOLOGY_TOOL, RECONCILIATION_TOOL, REVIEW_TOOL, TAX_TOOL, WORKFLOW_TOOL, XERO_TOOL,
 };
 use serde_json::json;
 
@@ -152,11 +152,72 @@ fn published_tool_schema_generation_stays_wired_to_all_visible_tools() {
         AUDIT_TOOL,
         TAX_TOOL,
         ONTOLOGY_TOOL,
+        XERO_TOOL,
+        FOCUS_TOOL,
+        EVIDENCE_TOOL,
     ] {
         let schema = contract::tool_input_schema(tool);
         assert!(
             schema.is_object(),
             "schema for {tool} should serialize as an object"
+        );
+    }
+}
+
+/// Regression test: Claude API rejects `oneOf`/`anyOf`/`allOf` at the top level
+/// of a tool's `input_schema` with HTTP 400. schemars 0.8 generates top-level
+/// `oneOf` for ALL Rust enums including those with `#[serde(tag = "action")]`.
+///
+/// `flatten_tagged_oneof_for_claude` in `contract.rs` collapses this into a flat
+/// discriminated-union object. DO NOT remove or weaken this test — the broken
+/// `or_insert_with("type":"object")` approach would also pass `is_object()` above
+/// but would still emit a `oneOf` at root that the Claude API rejects.
+///
+/// If this test fails after a refactor, read the doc-comment on
+/// `flatten_tagged_oneof_for_claude` in `crates/ledgerr-mcp/src/contract.rs`
+/// before touching the schema generation path.
+#[test]
+fn all_tool_schemas_are_claude_api_compatible_no_root_composition_keywords() {
+    for tool in [
+        DOCUMENTS_TOOL,
+        REVIEW_TOOL,
+        RECONCILIATION_TOOL,
+        WORKFLOW_TOOL,
+        AUDIT_TOOL,
+        TAX_TOOL,
+        ONTOLOGY_TOOL,
+        XERO_TOOL,
+        FOCUS_TOOL,
+        EVIDENCE_TOOL,
+    ] {
+        let schema = contract::tool_input_schema(tool);
+        for keyword in ["oneOf", "anyOf", "allOf"] {
+            assert!(
+                schema.get(keyword).is_none(),
+                "schema for {tool} must not contain '{keyword}' at root — \
+                 Claude API rejects input_schema with top-level composition keywords (HTTP 400). \
+                 See flatten_tagged_oneof_for_claude in contract.rs before modifying."
+            );
+        }
+        assert_eq!(
+            schema.get("type").and_then(|t| t.as_str()),
+            Some("object"),
+            "schema for {tool} must have type=object at root"
+        );
+        assert!(
+            schema
+                .get("properties")
+                .and_then(|p| p.get("action"))
+                .is_some(),
+            "schema for {tool} must have an 'action' property (action discriminator)"
+        );
+        assert_eq!(
+            schema.get("required").and_then(|r| r.as_array()).map(|a| {
+                a.iter()
+                    .any(|v| v.as_str() == Some("action"))
+            }),
+            Some(true),
+            "schema for {tool} must require the 'action' field"
         );
     }
 }
