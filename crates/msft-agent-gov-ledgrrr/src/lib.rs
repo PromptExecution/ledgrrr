@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use thiserror::Error;
 
-pub use agentmesh::{ClientError, GovernanceResult, TrustScore, TrustTier};
+pub use agentmesh::{ClientError, GovernanceResult, LifecycleManager, LifecycleState, TrustScore, TrustTier};
 
 #[derive(Debug, Error)]
 pub enum AgtError {
@@ -37,6 +37,8 @@ pub enum AgtError {
     Persist(String),
     #[error("credential redactor init error: {0}")]
     Redactor(String),
+    #[error("lifecycle error: {0}")]
+    Lifecycle(String),
 }
 
 /// Result of a governed tool call check.
@@ -75,6 +77,9 @@ pub struct LedgrrAgtGateway {
     ring_shadow: Arc<RwLock<HashMap<String, Ring>>>,
     /// Path to write ring snapshot JSON on every mutation.
     rings_persist_path: Option<std::path::PathBuf>,
+    /// Per-agent lifecycle state machines.  One `LifecycleManager` per
+    /// registered agent; keyed by bare `agent_id` (no DID prefix).
+    lifecycle_map: Arc<RwLock<HashMap<String, LifecycleManager>>>,
 }
 
 impl LedgrrAgtGateway {
@@ -129,12 +134,22 @@ impl LedgrrAgtGateway {
         shadow.insert(agent_id.to_string(), Ring::Standard);
         let redactor = CredentialRedactor::new()
             .map_err(|e| AgtError::Redactor(e.to_string()))?;
+
+        // Register the gateway's own agent as Active in the lifecycle FSM.
+        // LifecycleManager::new starts at Provisioning; activate() moves it to Active.
+        let mut lm = LifecycleManager::new(agent_id);
+        lm.activate("gateway construction")
+            .map_err(|e| AgtError::Lifecycle(format!("initial activate failed: {e}")))?;
+        let mut lifecycle_map = HashMap::new();
+        lifecycle_map.insert(agent_id.to_string(), lm);
+
         Ok(Self {
             client,
             redactor,
             rings: Arc::new(RwLock::new(enforcer)),
             ring_shadow: Arc::new(RwLock::new(shadow)),
             rings_persist_path: None,
+            lifecycle_map: Arc::new(RwLock::new(lifecycle_map)),
         })
     }
 
@@ -219,6 +234,33 @@ impl LedgrrAgtGateway {
             .get_ring(agent_id)
             .unwrap_or(Ring::Sandboxed);
 
+        // Lifecycle gate: quarantined and decommissioned agents are denied regardless
+        // of their explicit ring assignment.  This check precedes the Sandboxed check
+        // so that a quarantined Standard-ring agent is never accidentally allowed.
+        let lifecycle_state = self
+            .lifecycle_map
+            .read()
+            .unwrap()
+            .get(agent_id)
+            .map(|lm| lm.state());
+        if matches!(
+            lifecycle_state,
+            Some(LifecycleState::Quarantined)
+                | Some(LifecycleState::Decommissioning)
+                | Some(LifecycleState::Decommissioned)
+        ) {
+            return ToolCallDecision {
+                allowed: false,
+                policy: PolicyDecision::Deny("agent quarantined or decommissioned".into()),
+                trust: self.client.trust.get_trust_score(&self.client.identity.did),
+                ring: Ring::Sandboxed,
+                reason: Some(format!(
+                    "lifecycle:{:?}",
+                    lifecycle_state.expect("matched Some above")
+                )),
+            };
+        }
+
         if ring == Ring::Sandboxed {
             return ToolCallDecision {
                 allowed: false,
@@ -283,7 +325,30 @@ impl LedgrrAgtGateway {
     }
 
     /// Register a new external agent at `Ring::Standard`.
+    ///
+    /// A decommissioned agent cannot be re-registered — the lifecycle gate
+    /// will continue to deny all calls regardless.  This is logged as a
+    /// warning and the ring assignment is skipped.
     pub fn register_agent(&self, agent_id: &str) {
+        // Lifecycle guard: refuse ring assignment for decommissioned agents.
+        {
+            let lc = self.lifecycle_map.read().unwrap();
+            if let Some(lm) = lc.get(agent_id) {
+                let state = lm.state();
+                if matches!(
+                    state,
+                    LifecycleState::Decommissioning | LifecycleState::Decommissioned
+                ) {
+                    tracing::warn!(
+                        agent_id,
+                        state = ?state,
+                        "register_agent rejected: agent is decommissioned (terminal)"
+                    );
+                    return;
+                }
+            }
+        }
+
         self.rings
             .write()
             .unwrap()
@@ -292,9 +357,131 @@ impl LedgrrAgtGateway {
             .write()
             .unwrap()
             .insert(agent_id.to_string(), Ring::Standard);
+
+        // Upsert lifecycle entry: add Active entry for new agents; leave existing
+        // non-terminal entries untouched (e.g. already Active, Suspended, etc.).
+        {
+            let mut lc = self.lifecycle_map.write().unwrap();
+            lc.entry(agent_id.to_string()).or_insert_with(|| {
+                let mut lm = LifecycleManager::new(agent_id);
+                // Best-effort activate; if the FSM rejects (shouldn't happen for
+                // a fresh Provisioning entry), log and leave in Provisioning.
+                if let Err(e) = lm.activate("register_agent") {
+                    tracing::warn!(agent_id, error = %e, "lifecycle activate failed on register_agent");
+                }
+                lm
+            });
+        }
+
         if let Err(e) = self.save_rings() {
             tracing::warn!(agent_id, error = %e, "ring persistence write failed after register_agent");
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Gap 2 — LifecycleManager public surface
+    // -------------------------------------------------------------------------
+
+    /// Quarantine `agent_id`.
+    ///
+    /// A quarantined agent is denied by `check_tool_call` regardless of its
+    /// explicit ring assignment, and its ring is demoted to `Ring::Restricted`
+    /// as a belt-and-suspenders measure.
+    ///
+    /// The AGT lifecycle FSM only permits `Quarantined` from `Degraded`, so
+    /// this method will first transition `Active → Degraded` if needed before
+    /// moving to `Quarantined`.  Any transition error is logged as a warning
+    /// (the agent is left in the partial state, which the lifecycle gate will
+    /// still deny if it reached Quarantined).
+    pub fn quarantine_agent(&self, agent_id: &str) {
+        {
+            let mut lc = self.lifecycle_map.write().unwrap();
+            let lm = lc.entry(agent_id.to_string()).or_insert_with(|| {
+                let mut m = LifecycleManager::new(agent_id);
+                let _ = m.activate("quarantine_agent bootstrap");
+                m
+            });
+            // Active → Degraded is required before Degraded → Quarantined.
+            if lm.state() == LifecycleState::Active {
+                if let Err(e) = lm.transition(LifecycleState::Degraded, "quarantine_agent pre-step", "system") {
+                    tracing::warn!(agent_id, error = %e, "quarantine_agent: Active→Degraded transition failed");
+                    return;
+                }
+            }
+            if let Err(e) = lm.quarantine("quarantine_agent") {
+                tracing::warn!(agent_id, error = %e, "quarantine_agent: quarantine transition failed");
+                return;
+            }
+        }
+
+        // Demote ring in both RingEnforcer and ring_shadow.
+        self.rings
+            .write()
+            .unwrap()
+            .assign(agent_id, Ring::Restricted);
+        self.ring_shadow
+            .write()
+            .unwrap()
+            .insert(agent_id.to_string(), Ring::Restricted);
+
+        if let Err(e) = self.save_rings() {
+            tracing::warn!(agent_id, error = %e, "ring persistence write failed after quarantine_agent");
+        }
+
+        tracing::info!(agent_id, "agent quarantined and ring demoted to Restricted");
+    }
+
+    /// Decommission `agent_id`.
+    ///
+    /// Transitions through `Decommissioning → Decommissioned` (two FSM steps),
+    /// removes the agent from `RingEnforcer` and `ring_shadow`, and persists.
+    ///
+    /// Returns `Err(AgtError::Lifecycle)` if the agent is not registered or
+    /// is already decommissioned.
+    pub fn decommission_agent(&self, agent_id: &str) -> Result<(), AgtError> {
+        {
+            let mut lc = self.lifecycle_map.write().unwrap();
+            let lm = lc.get_mut(agent_id).ok_or_else(|| {
+                AgtError::Lifecycle(format!("decommission_agent: agent '{agent_id}' not registered"))
+            })?;
+
+            match lm.state() {
+                LifecycleState::Decommissioning | LifecycleState::Decommissioned => {
+                    return Err(AgtError::Lifecycle(format!(
+                        "decommission_agent: agent '{agent_id}' is already decommissioned"
+                    )));
+                }
+                _ => {}
+            }
+
+            // Transition to Decommissioning first (required FSM step).
+            lm.decommission("decommission_agent")
+                .map_err(|e| AgtError::Lifecycle(format!("decommission transition failed: {e}")))?;
+            // Then to terminal Decommissioned.
+            lm.transition(LifecycleState::Decommissioned, "decommission_agent finalize", "system")
+                .map_err(|e| AgtError::Lifecycle(format!("Decommissioned finalize failed: {e}")))?;
+        }
+
+        // Demote to Sandboxed in ring structures (RingEnforcer has no remove method).
+        // The lifecycle gate fires before the ring check, so this is belt-and-suspenders.
+        self.rings.write().unwrap().assign(agent_id, Ring::Sandboxed);
+        self.ring_shadow.write().unwrap().remove(agent_id);
+
+        if let Err(e) = self.save_rings() {
+            tracing::warn!(agent_id, error = %e, "ring persistence write failed after decommission_agent");
+        }
+
+        tracing::info!(agent_id, "agent decommissioned");
+        Ok(())
+    }
+
+    /// Current lifecycle state for `agent_id`, or `None` if not tracked.
+    pub fn agent_lifecycle_state(&self, agent_id: &str) -> Option<LifecycleState> {
+        self.lifecycle_map
+            .read()
+            .unwrap()
+            .get(agent_id)
+            .map(|lm| lm.state())
     }
 
     /// Current trust score for any agent DID.
@@ -572,5 +759,92 @@ mod tests {
         let r = gw2.check_tool_call("gamma", "ledgerr_reconciliation", "commit_entry");
         assert_eq!(r.ring, Ring::Admin, "ring must be Admin after reload");
         assert!(r.allowed, "Admin ring must allow commit_entry");
+    }
+
+    // --- Gap 2 tests ---
+
+    /// A quarantined agent is denied by check_tool_call regardless of ring.
+    #[test]
+    fn quarantined_agent_is_denied() {
+        let gw = LedgrrAgtGateway::new("q-agent").unwrap();
+        gw.register_agent("q-agent");
+        // Confirm it's allowed before quarantine.
+        assert!(
+            gw.check_tool_call("q-agent", "ledgerr_documents", "list_accounts").allowed,
+            "registered agent must be allowed before quarantine"
+        );
+        gw.quarantine_agent("q-agent");
+        let r = gw.check_tool_call("q-agent", "ledgerr_documents", "list_accounts");
+        assert!(!r.allowed, "quarantined agent must be denied");
+        assert!(
+            matches!(r.policy, PolicyDecision::Deny(_)),
+            "policy must be Deny for quarantined agent"
+        );
+        assert!(
+            r.reason.as_deref().unwrap_or("").contains("Quarantined"),
+            "reason must name the lifecycle state: {:?}", r.reason
+        );
+    }
+
+    /// A decommissioned agent is denied by check_tool_call.
+    #[test]
+    fn decommissioned_agent_is_denied() {
+        let gw = LedgrrAgtGateway::new("d-agent").unwrap();
+        gw.register_agent("d-agent");
+        gw.decommission_agent("d-agent")
+            .expect("decommission must succeed for registered agent");
+        let r = gw.check_tool_call("d-agent", "ledgerr_documents", "list_accounts");
+        assert!(!r.allowed, "decommissioned agent must be denied");
+        assert!(matches!(r.policy, PolicyDecision::Deny(_)));
+    }
+
+    /// A decommissioned agent cannot be re-registered; check_tool_call still denies.
+    #[test]
+    fn decommissioned_agent_cannot_be_reregistered() {
+        let gw = LedgrrAgtGateway::new("dr-agent").unwrap();
+        gw.register_agent("dr-agent");
+        gw.decommission_agent("dr-agent")
+            .expect("decommission must succeed");
+        // Attempt re-registration — must be silently rejected.
+        gw.register_agent("dr-agent");
+        // Lifecycle state must still be Decommissioned.
+        assert_eq!(
+            gw.agent_lifecycle_state("dr-agent"),
+            Some(LifecycleState::Decommissioned),
+            "lifecycle state must remain Decommissioned after attempted re-registration"
+        );
+        // check_tool_call must still deny.
+        let r = gw.check_tool_call("dr-agent", "ledgerr_documents", "list_accounts");
+        assert!(!r.allowed, "re-registered decommissioned agent must still be denied");
+    }
+
+    /// quarantine_agent demotes the ring and records Quarantined lifecycle state.
+    #[test]
+    fn quarantine_demotes_ring() {
+        let gw = LedgrrAgtGateway::new("qr-agent").unwrap();
+        gw.register_agent("qr-agent");
+        gw.quarantine_agent("qr-agent");
+        assert_eq!(
+            gw.agent_lifecycle_state("qr-agent"),
+            Some(LifecycleState::Quarantined),
+            "lifecycle state must be Quarantined after quarantine_agent"
+        );
+        // Ring must be Restricted (belt-and-suspenders demotion).
+        let ring = gw.rings.read().unwrap().get_ring("qr-agent");
+        assert_eq!(ring, Some(Ring::Restricted), "ring must be Restricted after quarantine");
+    }
+
+    /// An active, unaffected agent's check_tool_call is unchanged by lifecycle machinery.
+    #[test]
+    fn active_agent_unaffected_by_lifecycle_check() {
+        let gw = LedgrrAgtGateway::new("healthy").unwrap();
+        gw.register_agent("healthy");
+        assert_eq!(
+            gw.agent_lifecycle_state("healthy"),
+            Some(LifecycleState::Active),
+            "registered agent must be Active"
+        );
+        let r = gw.check_tool_call("healthy", "ledgerr_documents", "list_accounts");
+        assert!(r.allowed, "active agent must be allowed through lifecycle check");
     }
 }
