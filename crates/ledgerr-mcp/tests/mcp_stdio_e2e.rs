@@ -155,7 +155,7 @@ fn doc_01_mcp_only_ingest_via_tools_call() {
         .iter()
         .filter_map(|entry| entry.get("name").and_then(Value::as_str))
         .collect::<Vec<_>>();
-    assert_eq!(tool_names.len(), 9);
+    assert_eq!(tool_names.len(), 10);
     assert!(tool_names.contains(&"ledgerr_documents"));
 
     let tempdir = tempfile::tempdir().expect("tempdir");

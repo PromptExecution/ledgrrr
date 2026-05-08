@@ -328,6 +328,7 @@ pub fn tool_names_for(features: &[&str]) -> Vec<String> {
         tools.push(DOCUMENTS_TOOL.to_string());
         tools.push(WORKFLOW_TOOL.to_string());
         tools.push(EVIDENCE_TOOL.to_string());
+        tools.push(FOCUS_TOOL.to_string());
     }
     if features.contains(&"classification") {
         tools.push(REVIEW_TOOL.to_string());
