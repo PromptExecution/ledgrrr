@@ -18,6 +18,7 @@ pub mod policy;
 pub mod rings;
 
 use agentmesh::{AgentMeshClient, ClientOptions, PolicyDecision, Ring, RingEnforcer, TrustConfig};
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use thiserror::Error;
 
@@ -29,6 +30,8 @@ pub enum AgtError {
     Client(#[from] ClientError),
     #[error("policy file read error: {0}")]
     PolicyRead(#[from] std::io::Error),
+    #[error("persistence error: {0}")]
+    Persist(String),
 }
 
 /// Result of a governed tool call check.
@@ -46,6 +49,13 @@ pub struct ToolCallDecision {
     pub reason: Option<String>,
 }
 
+/// Private snapshot type for ring assignment persistence.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct RingSnapshot {
+    /// agent_id → Ring variant
+    assignments: HashMap<String, Ring>,
+}
+
 /// Unified AGT governance surface for ledgrrr.
 ///
 /// Combines:
@@ -54,6 +64,11 @@ pub struct ToolCallDecision {
 pub struct LedgrrAgtGateway {
     client: AgentMeshClient,
     rings: Arc<RwLock<RingEnforcer>>,
+    /// Shadow map for ring persistence: mirrors `RingEnforcer.assignments`.
+    /// Present only when `with_persist_path` was used.
+    ring_shadow: Arc<RwLock<HashMap<String, Ring>>>,
+    /// Path to write ring snapshot JSON on every mutation.
+    rings_persist_path: Option<std::path::PathBuf>,
 }
 
 impl LedgrrAgtGateway {
@@ -104,10 +119,80 @@ impl LedgrrAgtGateway {
         let mut enforcer = RingEnforcer::new();
         rings::configure_default_rings(&mut enforcer);
         enforcer.assign(agent_id, Ring::Standard);
+        let mut shadow = HashMap::new();
+        shadow.insert(agent_id.to_string(), Ring::Standard);
         Ok(Self {
             client,
             rings: Arc::new(RwLock::new(enforcer)),
+            ring_shadow: Arc::new(RwLock::new(shadow)),
+            rings_persist_path: None,
         })
+    }
+
+    /// Create a gateway that persists ring assignments to
+    /// `sidecar_dir/{agent_id}.agt-rings.json` and trust scores to
+    /// `sidecar_dir/{agent_id}.agt-trust.json`. Loads existing state on
+    /// construction if the files exist.
+    pub fn with_persist_path(
+        agent_id: &str,
+        sidecar_dir: &std::path::Path,
+    ) -> Result<Self, AgtError> {
+        let rings_path = sidecar_dir.join(format!("{}.agt-rings.json", agent_id));
+        let trust_path = sidecar_dir.join(format!("{}.agt-trust.json", agent_id));
+
+        let trust = TrustConfig {
+            persist_path: Some(
+                trust_path
+                    .to_str()
+                    .ok_or_else(|| AgtError::Persist("trust path contains invalid UTF-8".into()))?
+                    .to_string(),
+            ),
+            ..TrustConfig::default()
+        };
+
+        let mut gw = Self::build_gateway(agent_id, policy::LEDGERR_POLICY_YAML, trust)?;
+        gw.rings_persist_path = Some(rings_path.clone());
+
+        // Load existing ring snapshot if present.
+        if rings_path.exists() {
+            let raw = std::fs::read_to_string(&rings_path)
+                .map_err(|e| AgtError::Persist(format!("read rings snapshot: {e}")))?;
+            let snapshot: RingSnapshot = serde_json::from_str(&raw)
+                .map_err(|e| AgtError::Persist(format!("deserialize rings snapshot: {e}")))?;
+            let mut enforcer = gw
+                .rings
+                .write()
+                .expect("rings RwLock poisoned during construction");
+            let mut shadow = gw
+                .ring_shadow
+                .write()
+                .expect("ring_shadow RwLock poisoned during construction");
+            for (id, ring) in &snapshot.assignments {
+                enforcer.assign(id, *ring);
+                shadow.insert(id.clone(), *ring);
+            }
+        }
+
+        Ok(gw)
+    }
+
+    /// Serialize current ring shadow map to disk. No-op when no persist path is set.
+    fn save_rings(&self) -> Result<(), AgtError> {
+        let Some(ref path) = self.rings_persist_path else {
+            return Ok(());
+        };
+        let shadow = self
+            .ring_shadow
+            .read()
+            .expect("ring_shadow RwLock poisoned during save");
+        let snapshot = RingSnapshot {
+            assignments: shadow.clone(),
+        };
+        let json = serde_json::to_string(&snapshot)
+            .map_err(|e| AgtError::Persist(format!("serialize rings snapshot: {e}")))?;
+        std::fs::write(path, json)
+            .map_err(|e| AgtError::Persist(format!("write rings snapshot: {e}")))?;
+        Ok(())
     }
 
     /// Check whether `agent_id` may call `tool` with `action`.
@@ -170,13 +255,32 @@ impl LedgrrAgtGateway {
     }
 
     /// Promote `agent_id` to `Ring::Admin` after a Tauri toast operator approval.
-    pub fn promote_to_admin(&self, agent_id: &str) {
+    ///
+    /// Returns `Err` if the ring snapshot cannot be persisted. Callers must
+    /// surface this failure — a silent persist failure means the operator sees
+    /// "promoted" in the UI but the promotion is lost on restart.
+    pub fn promote_to_admin(&self, agent_id: &str) -> Result<(), AgtError> {
         self.rings.write().unwrap().assign(agent_id, Ring::Admin);
+        self.ring_shadow
+            .write()
+            .unwrap()
+            .insert(agent_id.to_string(), Ring::Admin);
+        self.save_rings()
     }
 
     /// Register a new external agent at `Ring::Standard`.
     pub fn register_agent(&self, agent_id: &str) {
-        self.rings.write().unwrap().assign(agent_id, Ring::Standard);
+        self.rings
+            .write()
+            .unwrap()
+            .assign(agent_id, Ring::Standard);
+        self.ring_shadow
+            .write()
+            .unwrap()
+            .insert(agent_id.to_string(), Ring::Standard);
+        if let Err(e) = self.save_rings() {
+            tracing::warn!(agent_id, error = %e, "ring persistence write failed after register_agent");
+        }
     }
 
     /// Current trust score for any agent DID.
@@ -260,7 +364,7 @@ mod tests {
     #[test]
     fn promote_to_admin_sets_ring() {
         let gw = LedgrrAgtGateway::new("hermes").unwrap();
-        gw.promote_to_admin("hermes");
+        gw.promote_to_admin("hermes").expect("promote_to_admin must persist");
         let r = gw.check_tool_call("hermes", "ledgerr_reconciliation", "commit_entry");
         assert_eq!(r.ring, Ring::Admin);
     }
@@ -345,5 +449,60 @@ mod tests {
             matches!(result, Err(AgtError::PolicyRead(_))),
             "expected PolicyRead error"
         );
+    }
+
+    // --- Gap 11 tests ---
+
+    /// Ring promotion persists to disk and is reloaded on reconstruction.
+    #[test]
+    fn rings_persist_and_reload() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let gw = LedgrrAgtGateway::with_persist_path("alpha", dir.path())
+                .expect("gateway construction must succeed");
+            gw.promote_to_admin("alpha").expect("promote_to_admin must persist");
+            // gw drops here — in-memory state gone
+        }
+        let gw2 = LedgrrAgtGateway::with_persist_path("alpha", dir.path())
+            .expect("reload must succeed");
+        let ring = gw2
+            .rings
+            .read()
+            .unwrap()
+            .get_ring("alpha")
+            .expect("alpha must be present after reload");
+        assert_eq!(ring, Ring::Admin, "promoted ring must survive restart");
+    }
+
+    /// Fresh construction into an empty sidecar dir succeeds and starts Standard.
+    #[test]
+    fn rings_start_fresh_if_no_sidecar() {
+        let dir = tempfile::tempdir().unwrap();
+        let gw = LedgrrAgtGateway::with_persist_path("beta", dir.path())
+            .expect("gateway must build without pre-existing sidecar files");
+        let ring = gw
+            .rings
+            .read()
+            .unwrap()
+            .get_ring("beta")
+            .expect("beta must be registered");
+        assert_eq!(ring, Ring::Standard, "default ring must be Standard");
+    }
+
+    /// Promoted ring survives restart and check_tool_call returns allowed on reload.
+    #[test]
+    fn promoted_ring_survives_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let gw = LedgrrAgtGateway::with_persist_path("gamma", dir.path())
+                .expect("gateway construction must succeed");
+            gw.promote_to_admin("gamma").expect("promote_to_admin must persist");
+        }
+        let gw2 = LedgrrAgtGateway::with_persist_path("gamma", dir.path())
+            .expect("reload must succeed");
+        // Admin ring bypasses policy gate — commit must be allowed.
+        let r = gw2.check_tool_call("gamma", "ledgerr_reconciliation", "commit_entry");
+        assert_eq!(r.ring, Ring::Admin, "ring must be Admin after reload");
+        assert!(r.allowed, "Admin ring must allow commit_entry");
     }
 }
