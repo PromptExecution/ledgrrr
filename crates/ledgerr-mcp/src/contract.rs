@@ -805,8 +805,14 @@ fn flatten_tagged_oneof_for_claude(v: &mut Value) {
     map.insert("type".to_string(), json!("object"));
     map.insert("required".to_string(), json!(["action"]));
     map.insert("properties".to_string(), Value::Object(merged_props));
-    // additionalProperties was per-variant; invalid on the merged flat schema.
-    map.remove("additionalProperties");
+    // Remove additionalProperties only for the merged union case: the per-variant
+    // constraint ("no extra fields beyond this variant's props") is invalid on the
+    // flattened object that contains ALL variants' properties. For plain struct
+    // schemas (no variants merged), we leave additionalProperties intact.
+    // Variants were merged iff action_values is non-empty.
+    if !action_values.is_empty() {
+        map.remove("additionalProperties");
+    }
 }
 
 pub fn generated_capability_contract_markdown() -> String {
