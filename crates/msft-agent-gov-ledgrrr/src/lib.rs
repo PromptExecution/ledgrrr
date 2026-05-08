@@ -27,6 +27,8 @@ pub use agentmesh::{ClientError, GovernanceResult, TrustScore, TrustTier};
 pub enum AgtError {
     #[error("client error: {0}")]
     Client(#[from] ClientError),
+    #[error("policy file read error: {0}")]
+    PolicyRead(#[from] std::io::Error),
 }
 
 /// Result of a governed tool call check.
@@ -65,12 +67,37 @@ impl LedgrrAgtGateway {
 
     /// Create a gateway with a custom initial trust config.
     pub fn with_trust_config(agent_id: &str, trust: TrustConfig) -> Result<Self, AgtError> {
+        Self::build_gateway(agent_id, policy::LEDGERR_POLICY_YAML, trust)
+    }
+
+    /// Create a gateway that loads its policy from `policy_path` at runtime.
+    ///
+    /// Falls back to [`policy::LEDGERR_POLICY_YAML`] if the path does not exist.
+    /// Returns an error if the path exists but cannot be read or contains invalid UTF-8.
+    pub fn with_policy_path(
+        agent_id: &str,
+        policy_path: &std::path::Path,
+    ) -> Result<Self, AgtError> {
+        let yaml = if policy_path.exists() {
+            std::fs::read_to_string(policy_path)?
+        } else {
+            policy::LEDGERR_POLICY_YAML.to_string()
+        };
+        Self::build_gateway(agent_id, &yaml, TrustConfig::default())
+    }
+
+    /// Shared construction core used by `new`, `with_trust_config`, and `with_policy_path`.
+    fn build_gateway(
+        agent_id: &str,
+        policy_yaml: &str,
+        trust: TrustConfig,
+    ) -> Result<Self, AgtError> {
         let opts = ClientOptions {
             capabilities: policy::LEDGERR_CAPABILITIES
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
-            policy_yaml: Some(policy::LEDGERR_POLICY_YAML.to_string()),
+            policy_yaml: Some(policy_yaml.to_string()),
             trust_config: Some(trust),
         };
         let client = AgentMeshClient::with_options(agent_id, opts)?;
@@ -281,5 +308,42 @@ mod tests {
         // TrustManager returns initial_score (default 500) for unknown DIDs.
         // The score is never zero unless initial_score is explicitly set to 0.
         assert_eq!(result.score, 500);
+    }
+
+    // --- Gap 8 tests ---
+
+    #[test]
+    fn policy_path_fallback_on_missing_file() {
+        let gw = LedgrrAgtGateway::with_policy_path(
+            "agent",
+            std::path::Path::new("/nonexistent/gap8-policy.yaml"),
+        )
+        .expect("should succeed with fallback to default policy");
+        let result = gw.check_tool_call("agent", "ledgerr_documents", "list_accounts");
+        assert!(result.allowed, "default policy must allow list_accounts");
+    }
+
+    #[test]
+    fn policy_path_loads_custom_yaml() {
+        use std::io::Write as _;
+        let mut tmp = tempfile::NamedTempFile::new().unwrap();
+        // Write a minimal valid policy — same content as the built-in default so
+        // construction succeeds; YAML semantics are tested in agentmesh unit tests.
+        tmp.write_all(policy::LEDGERR_POLICY_YAML.as_bytes())
+            .unwrap();
+        let path = tmp.path().to_owned();
+        LedgrrAgtGateway::with_policy_path("agent", &path)
+            .expect("gateway must construct from a readable policy file");
+    }
+
+    #[test]
+    fn policy_path_returns_error_on_unreadable() {
+        // A directory path passed to read_to_string yields an io::Error on Linux.
+        let dir = tempfile::tempdir().unwrap();
+        let result = LedgrrAgtGateway::with_policy_path("agent", dir.path());
+        assert!(
+            matches!(result, Err(AgtError::PolicyRead(_))),
+            "expected PolicyRead error"
+        );
     }
 }
