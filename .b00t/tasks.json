@@ -36,7 +36,7 @@
     {
       "id": 4,
       "title": "Gap 2: WorkbookWriter append capability",
-      "status": "pending",
+      "status": "done",
       "priority": 2,
       "tags": [
         "workbook",
@@ -44,12 +44,13 @@
         "append",
         "rust_xlsxwriter"
       ],
-      "created_at": "2026-05-09T04:59:23Z"
+      "created_at": "2026-05-09T04:59:23Z",
+      "updated_at": "2026-05-09T10:26:19Z"
     },
     {
       "id": 5,
       "title": "Gap 3: PdfIngestOp subprocess integration",
-      "status": "pending",
+      "status": "done",
       "priority": 3,
       "tags": [
         "pdf",
@@ -58,12 +59,13 @@
         "reqif-opa-mcp",
         "blake3"
       ],
-      "created_at": "2026-05-09T04:59:24Z"
+      "created_at": "2026-05-09T04:59:24Z",
+      "updated_at": "2026-05-09T11:47:11Z"
     },
     {
       "id": 6,
       "title": "Gap 4: Replace OpaGateOp with Cedar/AGT",
-      "status": "pending",
+      "status": "done",
       "priority": 4,
       "tags": [
         "cedar",
@@ -72,12 +74,13 @@
         "opa",
         "gate"
       ],
-      "created_at": "2026-05-09T04:59:25Z"
+      "created_at": "2026-05-09T04:59:25Z",
+      "updated_at": "2026-05-09T12:18:36Z"
     },
     {
       "id": 7,
       "title": "Gap 5: notify watcher for rule hot-reload",
-      "status": "pending",
+      "status": "done",
       "priority": 4,
       "tags": [
         "notify",
@@ -86,7 +89,8 @@
         "rhai",
         "pdf"
       ],
-      "created_at": "2026-05-09T04:59:38Z"
+      "created_at": "2026-05-09T04:59:38Z",
+      "updated_at": "2026-05-09T14:14:46Z"
     }
   ],
   "version": "1"

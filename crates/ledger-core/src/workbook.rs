@@ -48,12 +48,12 @@ fn setup_transactions_sheet(worksheet: &mut Worksheet) -> Result<(), rust_xlsxwr
     let text_format = Format::new().set_num_format("@");
     worksheet.set_column_format(4, &text_format)?;
 
-    let categories: Vec<String> = TaxCategory::VARIANTS.iter().map(|s| s.to_string()).collect();
-    let validation = DataValidation::new().set_multi_range(&categories);
+    let categories: Vec<String> = TaxCategory::VARIANTS.iter().map(|c| c.to_string()).collect();
+    let validation = DataValidation::new().allow_list_strings(&categories)?;
     worksheet.add_data_validation(1, 5, 1000, 5, &validation)?;
 
-    let flags: Vec<String> = Flag::VARIANTS.iter().map(|s| s.to_string()).collect();
-    let flag_validation = DataValidation::new().set_multi_range(&flags);
+    let flags: Vec<String> = Flag::VARIANTS.iter().map(|f| f.to_string()).collect();
+    let flag_validation = DataValidation::new().allow_list_strings(&flags)?;
     worksheet.add_data_validation(1, 8, 1000, 8, &flag_validation)?;
 
     Ok(())
@@ -71,9 +71,23 @@ impl WorkbookWriter {
     }
 
     fn get_row_count(&self, sheet_name: &str) -> Result<u32, Box<dyn std::error::Error>> {
-        let workbook: Xlsx<_> = open_workbook(&self.path)?;
+        let mut workbook: Xlsx<_> = open_workbook(&self.path)?;
         let range = workbook.worksheet_range(sheet_name)?;
         Ok(range.height() as u32)
+    }
+
+    pub fn get_existing_tx_ids(&self) -> Result<std::collections::HashSet<String>, Box<dyn std::error::Error>> {
+        let mut workbook: Xlsx<_> = open_workbook(&self.path)?;
+        let range = workbook.worksheet_range("TRANSACTIONS")?;
+        let mut tx_ids = std::collections::HashSet::new();
+
+        for row in range.rows().skip(1) {
+            if let Some(Data::String(tx_id)) = row.get(0) {
+                tx_ids.insert(tx_id.clone());
+            }
+        }
+
+        Ok(tx_ids)
     }
 
     fn copy_sheet_data(
@@ -82,18 +96,21 @@ impl WorkbookWriter {
     ) -> Result<(), rust_xlsxwriter::XlsxError> {
         for (r_idx, row) in range.rows().enumerate() {
             for (c_idx, cell) in row.iter().enumerate() {
-                let result: Result<(), rust_xlsxwriter::XlsxError> = match cell {
-                    Data::String(s) => worksheet.write_string(r_idx as u32, c_idx as u16, s),
-                    Data::Int(i) => worksheet.write_number(r_idx as u32, c_idx as u16, *i as f64),
-                    Data::Float(f) => worksheet.write_number(r_idx as u32, c_idx as u16, *f),
-                    Data::Bool(b) => worksheet.write_boolean(r_idx as u32, c_idx as u16, *b),
-                    Data::Empty => continue,
-                    Data::DateTime(_) => continue,
-                    Data::DateTimeIso(_) => continue,
-                    Data::DurationIso(_) => continue,
-                    Data::Error(_) => continue,
+                let should_skip = matches!(cell,
+                    Data::Empty | Data::DateTime(_) | Data::DateTimeIso(_) | Data::DurationIso(_) | Data::Error(_)
+                );
+
+                if should_skip {
+                    continue;
+                }
+
+                match cell {
+                    Data::String(s) => worksheet.write_string(r_idx as u32, c_idx as u16, s)?,
+                    Data::Int(i) => worksheet.write_number(r_idx as u32, c_idx as u16, *i as f64)?,
+                    Data::Float(f) => worksheet.write_number(r_idx as u32, c_idx as u16, *f)?,
+                    Data::Bool(b) => worksheet.write_boolean(r_idx as u32, c_idx as u16, *b)?,
+                    _ => unreachable!(),
                 };
-                result?;
             }
         }
         Ok(())
@@ -198,7 +215,7 @@ impl WorkbookWriter {
 
     pub fn append_mutation(
         &self,
-        timestamp: &str,
+        _timestamp: &str,
         tx_id: &str,
         agent_id: &str,
         ring: &str,
@@ -298,9 +315,9 @@ mod tests {
         
         initialize_workbook(path).unwrap();
         
-        let workbook: Xlsx<_> = open_workbook(path).unwrap();
+        let mut workbook: Xlsx<_> = open_workbook(path).unwrap();
         for sheet_name in REQUIRED_SHEETS {
-            assert!(workbook.worksheet_range(sheet_name).is_ok(), 
+            assert!(workbook.worksheet_range(sheet_name).is_ok(),
                 "Sheet {} should exist", sheet_name);
         }
     }
@@ -350,8 +367,8 @@ mod tests {
         assert_eq!(range.get((1, 3)).unwrap().to_string(), "CHK-001");
         assert_eq!(range.get((1, 4)).unwrap().to_string(), "1234.56");
         assert_eq!(range.get((1, 5)).unwrap().to_string(), "office_supplies");
-        assert_eq!(range.get((1, 6)).to_string(), "0.95");
-        assert_eq!(range.get((1, 7)).to_string(), "FALSE");
+        assert_eq!(range.get((1, 6)).unwrap().to_string(), "0.95");
+        assert_eq!(range.get((1, 7)).unwrap().to_string(), "false");
     }
 
     #[test]
@@ -464,16 +481,18 @@ mod tests {
     fn test_tax_category_variants_exist() {
         let variants = TaxCategory::VARIANTS;
         assert!(variants.len() > 0);
-        assert!(variants.contains(&&"office_supplies"));
-        assert!(variants.contains(&&"travel"));
+        let variant_strings: Vec<String> = variants.iter().map(|c| c.to_string()).collect();
+        assert!(variant_strings.contains(&"office_supplies".to_string()));
+        assert!(variant_strings.contains(&"travel".to_string()));
     }
 
     #[test]
     fn test_flag_variants_exist() {
         let variants = Flag::VARIANTS;
         assert!(variants.len() > 0);
-        assert!(variants.contains(&&"unusual_amount"));
-        assert!(variants.contains(&&"missing_receipt"));
+        let variant_strings: Vec<String> = variants.iter().map(|f| f.to_string()).collect();
+        assert!(variant_strings.contains(&"unusual_amount".to_string()));
+        assert!(variant_strings.contains(&"missing_receipt".to_string()));
     }
 
     #[test]
@@ -508,9 +527,9 @@ mod tests {
     fn test_initialize_followed_by_two_appends_produces_valid_xlsx() {
         let temp_file = NamedTempFile::new().unwrap();
         let path = temp_file.path();
-        
+
         initialize_workbook(path).unwrap();
-        
+
         let writer = WorkbookWriter::new(path);
         writer.append_row(
             "tx_001",
@@ -523,7 +542,7 @@ mod tests {
             false,
             None,
         ).unwrap();
-        
+
         writer.append_row(
             "tx_002",
             "2023-01-16",
@@ -535,9 +554,46 @@ mod tests {
             true,
             Some("unusual_amount"),
         ).unwrap();
-        
-        let workbook: Xlsx<_> = open_workbook(path).unwrap();
+
+        let mut workbook: Xlsx<_> = open_workbook(path).unwrap();
         assert!(workbook.worksheet_range("TRANSACTIONS").is_ok());
         assert!(workbook.worksheet_range("MUTATION_HISTORY").is_ok());
+    }
+
+    #[test]
+    fn test_decimal_amount_stored_as_string_not_float() {
+        use rust_decimal::Decimal;
+
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        initialize_workbook(path).unwrap();
+
+        let amount = Decimal::from_str_exact("1234.56").unwrap();
+        let amount_str = amount.to_string();
+
+        let writer = WorkbookWriter::new(path);
+        writer.append_row(
+            "tx_001",
+            "2023-01-15",
+            "Test Vendor",
+            "CHK-001",
+            &amount_str,
+            "office_supplies",
+            0.95,
+            false,
+            None,
+        ).unwrap();
+
+        let mut workbook: Xlsx<_> = open_workbook(path).unwrap();
+        let range = workbook.worksheet_range("TRANSACTIONS").unwrap();
+
+        let amount_cell = range.get((1, 4)).unwrap();
+        match amount_cell {
+            Data::String(s) => assert_eq!(s, "1234.56"),
+            Data::Float(_) => panic!("Amount should be stored as string, not float"),
+            Data::Int(_) => panic!("Amount should be stored as string, not int"),
+            _ => panic!("Unexpected cell type"),
+        }
     }
 }
