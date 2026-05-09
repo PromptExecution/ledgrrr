@@ -330,10 +330,10 @@ pub fn accept_capability_offer(
 ) -> Result<Ring, AgtError>;
 ```
 
-Maps `CapabilityOffer.capabilities` → ring:
-- `ledgerr_reconciliation.commit` in offer → request Admin (requires operator confirmation)
-- Any `ledgerr_*` write cap → Standard
-- Read-only caps only → Restricted
+Maps `CapabilityOffer.name` → ring (actual field — `capabilities` does not exist on the struct):
+- `ledgerr_reconciliation.commit` substring in `offer.name` → intent Admin, assigned Standard pending operator confirmation
+- Any `ledgerr_*` write cap name → Standard
+- Read-only cap names only → Restricted (note: `register_agent_at_ring` not yet implemented; Restricted currently lands at Standard — tracked as pre-Gap-5 debt)
 
 ### Phase 4 — Cedar / Compliance / HTTP boundary (Gaps 5, 6, 7)
 

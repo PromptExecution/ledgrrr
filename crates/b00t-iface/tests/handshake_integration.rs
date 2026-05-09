@@ -11,6 +11,7 @@ use b00t_iface::handshake::{
     CapabilityKind, CapabilityOffer, HandshakeDocument, HandshakeResult, HandshakeSurface,
 };
 use b00t_iface::core::ProcessSurface;
+use serde_json;
 use std::collections::HashMap;
 use tempfile::TempDir;
 
