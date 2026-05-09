@@ -5676,6 +5676,7 @@ dependencies = [
  "serde_json",
  "static_assertions",
  "statig",
+ "strum 0.27.2",
  "tempfile",
  "thiserror 2.0.18",
  "toml 0.8.2",
@@ -5747,6 +5748,7 @@ dependencies = [
 name = "ledgerr-mcp"
 version = "1.8.1"
 dependencies = [
+ "agentmesh",
  "arc-kit-au",
  "blake3",
  "calamine",
@@ -5759,6 +5761,7 @@ dependencies = [
  "ledgerr-mcp",
  "ledgerr-mcp-core",
  "ledgerr-xero",
+ "msft-agent-gov-ledgrrr",
  "reqwest 0.12.28",
  "rust_decimal",
  "rust_xlsxwriter",

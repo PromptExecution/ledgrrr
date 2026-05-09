@@ -355,6 +355,10 @@ pub enum ToolError {
     InvalidInput(String),
     #[error("internal error: {0}")]
     Internal(String),
+    #[error("policy denied: {0}")]
+    PolicyDenied(String),
+    #[error("rate limited: retry after {retry_after_secs}s")]
+    RateLimited { retry_after_secs: u64 },
 }
 
 impl From<FilenameError> for ToolError {

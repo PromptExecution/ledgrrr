@@ -16,6 +16,7 @@ thiserror = "2"
 blake3 = "1.8.3"
 regex = "1"
 rhai = "1.24.0"
+strum = { version = "0.27", features = ["derive"] }
 z3 = { workspace = true, optional = true }
 kasuari = { workspace = true }
 statig = { workspace = true }
