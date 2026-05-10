@@ -25,13 +25,17 @@ use crate::{
     contract::{
         self, AuditArgs, DocumentsArgs, EvidenceArgs, OntologyArgs, ReconciliationArgs, ReviewArgs,
         TaxArgs, WorkflowArgs,
+        BatchClassifyRequest, BatchResolveFlagsRequest, ApplyMappingBulkRequest,
+        BatchItemStatus,
     },
+        FetchQueueRequest,
+        QueueItemType, QueueStatus,
     ClassifyIngestedRequest, ClassifyTransactionRequest, DocumentInventoryRequest,
     DocumentQueueStatusRequest, EventHistoryFilter, ExportCpaWorkbookRequest, FlagStatusRequest,
     GetRawContextRequest, GetScheduleSummaryRequest, HsmResumeRequest, HsmStatusRequest,
     HsmTransitionRequest, IngestPdfRequest, IngestStatementRowsRequest, ListAccountsRequest,
     OntologyExportSnapshotRequest, OntologyQueryPathRequest, OntologyUpsertEdgesRequest,
-    OntologyUpsertEntitiesRequest, QueryAuditLogRequest, QueryFlagsRequest,
+    OntologyUpsertEntitiesRequest, QueryAuditLogRequest, QueryFlagsRequest, QueryTransactionsRequest,
     ReconcileExcelClassificationRequest, ReconciliationStageRequest, ReplayLifecycleRequest,
     RunRhaiRuleRequest, SampleTxRequest, ScheduleKindRequest, TaxAmbiguityReviewRequest,
     TaxAssistRequest, TaxEvidenceChainRequest, ToolError, TurboLedgerService, TurboLedgerTools,
@@ -931,6 +935,44 @@ pub fn handle_review_tool(service: &TurboLedgerService, arguments: &Value) -> Va
                 "actor": actor,
                 "note": note,
             }),
+        ),
+        ReviewArgs::QueryTransactions { filters, sort, pagination } => {
+            match service.query_transactions(QueryTransactionsRequest {
+                filters,
+                sort,
+                pagination,
+            }) {
+                Ok(response) => json!({
+                    "content": [text_content(json!({
+                        "transactions": response.transactions,
+                        "total_count": response.total_count,
+                    }))],
+                    "isError": false
+                }),
+                Err(err) => error_envelope(&err),
+            }
+        }
+        ReviewArgs::BatchClassify {
+            request,
+        } => handle_batch_classify(
+            service,
+            &json!({ "request": request }),
+        ),
+        ReviewArgs::BatchResolveFlags {
+            request,
+        } => handle_bulk_resolve_flags(
+            service,
+            &json!({ "request": request }),
+        ),
+        ReviewArgs::ApplyMappingBulk {
+            request,
+        } => handle_apply_mapping_bulk(
+            service,
+            &json!({ "request": request }),
+        ),
+        ReviewArgs::FetchQueue { request } => handle_fetch_queue(
+            service,
+            &serde_json::json!({ "item_types": request.item_types, "statuses": request.statuses, "updated_after": request.updated_after, "limit": request.limit, "offset": request.offset }),
         ),
     }
 }
@@ -1889,6 +1931,220 @@ pub fn handle_reconcile_excel_classification(
     }
 }
 
+pub fn handle_batch_classify(service: &TurboLedgerService, arguments: &Value) -> Value {
+    let request_obj = match arguments.get("request") {
+        Some(req) => req,
+        None => return error_envelope(&ToolError::InvalidInput("missing 'request' field".to_string())),
+    };
+    
+    let request = match serde_json::from_value::<BatchClassifyRequest>(request_obj.clone()) {
+        Ok(req) => req,
+        Err(err) => return error_envelope(&ToolError::InvalidInput(format!("invalid BatchClassifyRequest: {}", err))),
+    };
+
+    match service.batch_classify(request) {
+        Ok(response) => {
+            let items_json: Vec<Value> = response.items
+                .into_iter()
+                .map(|item| {
+                    let audit_entries_json: Vec<Value> = item.audit_entries
+                        .into_iter()
+                        .map(|e| json!({
+                            "timestamp": e.timestamp,
+                            "actor": e.actor,
+                            "tx_id": e.tx_id,
+                            "field": e.field,
+                            "old_value": e.old_value,
+                            "new_value": e.new_value,
+                            "note": e.note,
+                        }))
+                        .collect();
+                    
+                    {
+                        let mut obj = serde_json::Map::new();
+                        obj.insert("tx_id".to_string(), json!(item.tx_id));
+                        
+                        match item.status {
+                            BatchItemStatus::Succeeded => {
+                                obj.insert("status".to_string(), json!("succeeded"));
+                            }
+                            BatchItemStatus::Failed { error } => {
+                                obj.insert("status".to_string(), json!("failed"));
+                                obj.insert("error".to_string(), json!(error));
+                            }
+                            BatchItemStatus::Skipped { reason } => {
+                                obj.insert("status".to_string(), json!("skipped"));
+                                obj.insert("reason".to_string(), json!(reason));
+                            }
+                        }
+                        
+                        obj.insert("audit_entries".to_string(), json!(audit_entries_json));
+                        json!(obj)
+                    }
+                })
+                .collect();
+            
+            json!({
+                "content": [text_content(json!({
+                    "summary": {
+                        "total_requested": response.summary.total_requested,
+                        "succeeded": response.summary.succeeded,
+                        "failed": response.summary.failed,
+                        "skipped": response.summary.skipped,
+                        "batch_duration_ms": response.summary.batch_duration_ms,
+                    },
+                    "items": items_json,
+                }))],
+                "isError": false
+            })
+        }
+        Err(err) => error_envelope(&err),
+    }
+}
+
+pub fn handle_bulk_resolve_flags(service: &TurboLedgerService, arguments: &Value) -> Value {
+    let request_obj = match arguments.get("request") {
+        Some(req) => req,
+        None => return error_envelope(&ToolError::InvalidInput("missing 'request' field".to_string())),
+    };
+    
+    let request = match serde_json::from_value::<BatchResolveFlagsRequest>(request_obj.clone()) {
+        Ok(req) => req,
+        Err(err) => return error_envelope(&ToolError::InvalidInput(format!("invalid BatchResolveFlagsRequest: {}", err))),
+    };
+
+    match service.bulk_resolve_flags(request) {
+        Ok(response) => {
+            let items_json: Vec<Value> = response.items
+                .into_iter()
+                .map(|item| {
+                    let audit_entries_json: Vec<Value> = item.audit_entries
+                        .into_iter()
+                        .map(|e| json!({
+                            "timestamp": e.timestamp,
+                            "actor": e.actor,
+                            "tx_id": e.tx_id,
+                            "field": e.field,
+                            "old_value": e.old_value,
+                            "new_value": e.new_value,
+                            "note": e.note,
+                        }))
+                        .collect();
+                    
+                    {
+                        let mut obj = serde_json::Map::new();
+                        obj.insert("tx_id".to_string(), json!(item.tx_id));
+                        
+                        match item.status {
+                            BatchItemStatus::Succeeded => {
+                                obj.insert("status".to_string(), json!("succeeded"));
+                            }
+                            BatchItemStatus::Failed { error } => {
+                                obj.insert("status".to_string(), json!("failed"));
+                                obj.insert("error".to_string(), json!(error));
+                            }
+                            BatchItemStatus::Skipped { reason } => {
+                                obj.insert("status".to_string(), json!("skipped"));
+                                obj.insert("reason".to_string(), json!(reason));
+                            }
+                        }
+                        
+                        obj.insert("audit_entries".to_string(), json!(audit_entries_json));
+                        json!(obj)
+                    }
+                })
+                .collect();
+            
+            json!({
+                "content": [text_content(json!({
+                    "summary": {
+                        "total_requested": response.summary.total_requested,
+                        "succeeded": response.summary.succeeded,
+                        "failed": response.summary.failed,
+                        "skipped": response.summary.skipped,
+                        "batch_duration_ms": response.summary.batch_duration_ms,
+                    },
+                    "items": items_json,
+                }))],
+                "isError": false
+            })
+        }
+        Err(err) => error_envelope(&err),
+    }
+}
+
+pub fn handle_apply_mapping_bulk(service: &TurboLedgerService, arguments: &Value) -> Value {
+    let request_obj = match arguments.get("request") {
+        Some(req) => req,
+        None => return error_envelope(&ToolError::InvalidInput("missing 'request' field".to_string())),
+    };
+    
+    let request = match serde_json::from_value::<ApplyMappingBulkRequest>(request_obj.clone()) {
+        Ok(req) => req,
+        Err(err) => return error_envelope(&ToolError::InvalidInput(format!("invalid ApplyMappingBulkRequest: {}", err))),
+    };
+
+    match service.apply_mapping_bulk(request) {
+        Ok(response) => {
+            let items_json: Vec<Value> = response.items
+                .into_iter()
+                .map(|item| {
+                    let audit_entries_json: Vec<Value> = item.audit_entries
+                        .into_iter()
+                        .map(|e| json!({
+                            "timestamp": e.timestamp,
+                            "actor": e.actor,
+                            "tx_id": e.tx_id,
+                            "field": e.field,
+                            "old_value": e.old_value,
+                            "new_value": e.new_value,
+                            "note": e.note,
+                        }))
+                        .collect();
+                    
+                    {
+                        let mut obj = serde_json::Map::new();
+                        obj.insert("tx_id".to_string(), json!(item.tx_id));
+                        
+                        match item.status {
+                            BatchItemStatus::Succeeded => {
+                                obj.insert("status".to_string(), json!("succeeded"));
+                            }
+                            BatchItemStatus::Failed { error } => {
+                                obj.insert("status".to_string(), json!("failed"));
+                                obj.insert("error".to_string(), json!(error));
+                            }
+                            BatchItemStatus::Skipped { reason } => {
+                                obj.insert("status".to_string(), json!("skipped"));
+                                obj.insert("reason".to_string(), json!(reason));
+                            }
+                        }
+                        
+                        obj.insert("audit_entries".to_string(), json!(audit_entries_json));
+                        json!(obj)
+                    }
+                })
+                .collect();
+            
+            json!({
+                "content": [text_content(json!({
+                    "classification_summary": {
+                        "total_requested": response.classification_summary.total_requested,
+                        "succeeded": response.classification_summary.succeeded,
+                        "failed": response.classification_summary.failed,
+                        "skipped": response.classification_summary.skipped,
+                        "batch_duration_ms": response.classification_summary.batch_duration_ms,
+                    },
+                    "matched_tx_ids": response.matched_tx_ids,
+                    "items": items_json,
+                }))],
+                "isError": false
+            })
+        }
+        Err(err) => error_envelope(&err),
+    }
+}
+
 #[cfg(feature = "legacy")]
 pub fn handle_get_schedule_summary(service: &TurboLedgerService, arguments: &Value) -> Value {
     let request = match parse_get_schedule_summary_request(arguments) {
@@ -1940,6 +2196,119 @@ pub fn handle_export_cpa_workbook(service: &TurboLedgerService, arguments: &Valu
             "content": [text_content(json!({ "sheets_written": response.sheets_written }))],
             "isError": false
         }),
+        Err(err) => error_envelope(&err),
+    }
+}
+
+/// Parse FetchQueueRequest from MCP arguments
+fn parse_fetch_queue_request(arguments: &Value) -> Result<FetchQueueRequest, ToolError> {
+    let item_types = parse_optional_queue_item_types(arguments.get("item_types"))?;
+    let statuses = parse_optional_queue_statuses(arguments.get("statuses"))?;
+    let updated_after = optional_str(arguments, "updated_after");
+    let limit = arguments
+        .get("limit")
+        .and_then(Value::as_u64)
+        .unwrap_or(100) as usize;
+    let offset = arguments
+        .get("offset")
+        .and_then(Value::as_u64)
+        .unwrap_or(0) as usize;
+    
+    Ok(FetchQueueRequest {
+        item_types,
+        statuses,
+        updated_after,
+        limit,
+        offset,
+    })
+}
+
+/// Parse optional queue item types array
+fn parse_optional_queue_item_types(value: Option<&Value>) -> Result<Option<Vec<QueueItemType>>, ToolError> {
+    match value {
+        None => Ok(None),
+        Some(v) => {
+            let items = v.as_array()
+                .ok_or_else(|| ToolError::InvalidInput("item_types must be an array".to_string()))?;
+            let result = items.iter()
+                .map(|item| {
+                    let s = item.as_str()
+                        .ok_or_else(|| ToolError::InvalidInput("item_types must contain strings".to_string()))?;
+                    match s {
+                        "flag" => Ok(QueueItemType::Flag),
+                        "ambiguity" => Ok(QueueItemType::Ambiguity),
+                        "blocker" => Ok(QueueItemType::Blocker),
+                        "document_issue" => Ok(QueueItemType::DocumentIssue),
+                        "manual_change" => Ok(QueueItemType::ManualChange),
+                        _ => Err(ToolError::InvalidInput(format!("Unknown item_type: {}", s))),
+                    }
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Some(result))
+        }
+    }
+}
+
+/// Parse optional queue statuses array
+fn parse_optional_queue_statuses(value: Option<&Value>) -> Result<Option<Vec<QueueStatus>>, ToolError> {
+    match value {
+        None => Ok(None),
+        Some(v) => {
+            let items = v.as_array()
+                .ok_or_else(|| ToolError::InvalidInput("statuses must be an array".to_string()))?;
+            let result = items.iter()
+                .map(|item| {
+                    let s = item.as_str()
+                        .ok_or_else(|| ToolError::InvalidInput("statuses must contain strings".to_string()))?;
+                    match s {
+                        "open" => Ok(QueueStatus::Open),
+                        "in_progress" => Ok(QueueStatus::InProgress),
+                        "resolved" => Ok(QueueStatus::Resolved),
+                        "dismissed" => Ok(QueueStatus::Dismissed),
+                        _ => Err(ToolError::InvalidInput(format!("Unknown status: {}", s))),
+                    }
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Some(result))
+        }
+    }
+}
+
+/// Handle fetch_work_queue tool call
+#[cfg(feature = "legacy")]
+pub fn handle_fetch_queue(service: &TurboLedgerService, arguments: &Value) -> Value {
+    let request = match parse_fetch_queue_request(arguments) {
+        Ok(request) => request,
+        Err(err) => return error_envelope(&err),
+    };
+
+    match service.fetch_work_queue(request) {
+        Ok(response) => {
+            let items = response.items.into_iter().map(|item| {
+                json!({
+                    "id": item.id,
+                    "item_type": item.item_type,
+                    "severity": item.severity,
+                    "created_at": item.created_at,
+                    "status": item.status,
+                    "provenance": item.provenance,
+                    "related_tx_ids": item.related_tx_ids,
+                    "summary": item.summary,
+                    "tx_id": item.tx_id,
+                    "document_ref": item.document_ref,
+                    "metadata": item.metadata,
+                })
+            }).collect::<Vec<_>>();
+
+            json!({
+                "content": [text_content(json!({
+                    "items": items,
+                    "total_count": response.total_count,
+                    "offset": response.offset,
+                    "limit": response.limit,
+                }))],
+            })
+        }
         Err(err) => error_envelope(&err),
     }
 }
