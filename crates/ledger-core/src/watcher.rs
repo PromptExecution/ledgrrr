@@ -11,8 +11,10 @@
 //! - `.pdf` create events are sent immediately to the ingest channel without debounce
 
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
 };
 
 use notify::Watcher;
@@ -95,14 +97,25 @@ impl PipelineWatcher {
         let ingest_dir = self.ingest_dir.clone();
         let registry = Arc::clone(&self.registry);
         let ingest_tx = self.ingest_tx.clone();
+        let debounce_ms = self.debounce_ms;
+        let debounce_state = Arc::new(Mutex::new(HashMap::<PathBuf, Instant>::new()));
 
         let rule_dir_for_watch = rule_dir.clone();
         let ingest_dir_for_watch = ingest_dir.clone();
+        let debounce_state_for_watch = Arc::clone(&debounce_state);
 
         // Use debounced watcher with configurable debounce duration
         let mut watcher = notify::recommended_watcher(move |res: Result<notify::Event, _>| {
             if let Ok(event) = res {
-                Self::handle_event(event, &rule_dir, &ingest_dir, &registry, &ingest_tx);
+                Self::handle_event(
+                    event,
+                    &rule_dir,
+                    &ingest_dir,
+                    &registry,
+                    &ingest_tx,
+                    debounce_ms,
+                    &debounce_state_for_watch,
+                );
             }
         })?;
 
@@ -119,18 +132,26 @@ impl PipelineWatcher {
         ingest_dir: &Path,
         registry: &Arc<RwLock<RuleRegistry>>,
         ingest_tx: &mpsc::Sender<PathBuf>,
+        debounce_ms: u64,
+        debounce_state: &Arc<Mutex<HashMap<PathBuf, Instant>>>,
     ) {
         for path in event.paths {
             // Check if this is a rule file modification
-            if path.starts_with(rule_dir) && path.extension().and_then(|e| e.to_str()) == Some("rhai") {
-                if Self::is_data_modification(&event.kind) {
+            if path.starts_with(rule_dir)
+                && path.extension().and_then(|e| e.to_str()) == Some("rhai")
+            {
+                if Self::is_data_modification(&event.kind)
+                    && Self::should_process_rule_change(&path, debounce_ms, debounce_state)
+                {
                     tracing::debug!("Rule file modified: {:?}", path);
                     Self::reload_registry(registry, path.clone());
                 }
             }
 
             // Check if this is a PDF create event
-            if path.starts_with(ingest_dir) && path.extension().and_then(|e| e.to_str()) == Some("pdf") {
+            if path.starts_with(ingest_dir)
+                && path.extension().and_then(|e| e.to_str()) == Some("pdf")
+            {
                 if Self::is_create_event(&event.kind) {
                     tracing::debug!("New PDF detected: {:?}", path);
                     let _ = ingest_tx.blocking_send(path);
@@ -155,6 +176,28 @@ impl PipelineWatcher {
         )
     }
 
+    fn should_process_rule_change(
+        path: &Path,
+        debounce_ms: u64,
+        debounce_state: &Arc<Mutex<HashMap<PathBuf, Instant>>>,
+    ) -> bool {
+        let Ok(mut state) = debounce_state.lock() else {
+            tracing::warn!("debounce state lock poisoned; processing rule change immediately");
+            return true;
+        };
+
+        let now = Instant::now();
+        let debounce_window = Duration::from_millis(debounce_ms);
+        if let Some(last_seen) = state.get(path) {
+            if now.duration_since(*last_seen) < debounce_window {
+                return false;
+            }
+        }
+
+        state.insert(path.to_path_buf(), now);
+        true
+    }
+
     /// Reload the rule registry from disk.
     ///
     /// Note: This runs in the notify callback thread (not tokio runtime),
@@ -163,8 +206,12 @@ impl PipelineWatcher {
     fn reload_registry(registry: &Arc<RwLock<RuleRegistry>>, path: PathBuf) {
         let registry = Arc::clone(registry);
         std::thread::spawn(move || {
+            let Some(rule_dir) = path.parent() else {
+                tracing::warn!("Skipping rule reload for path without parent: {:?}", path);
+                return;
+            };
             // Perform blocking reload in dedicated thread
-            match RuleRegistry::load_from_dir(path.parent().unwrap()) {
+            match RuleRegistry::load_from_dir(rule_dir) {
                 Ok(new_registry) => {
                     // Spawn tokio runtime for async write
                     let rt = tokio::runtime::Handle::try_current();
@@ -263,13 +310,11 @@ mod tests {
         fs::File::create(&pdf_path).unwrap();
 
         // Wait for event (within 600ms per AC)
-        let received = tokio::time::timeout(
-            tokio::time::Duration::from_millis(600),
-            ingest_rx.recv(),
-        )
-        .await
-        .unwrap()
-        .unwrap();
+        let received =
+            tokio::time::timeout(tokio::time::Duration::from_millis(600), ingest_rx.recv())
+                .await
+                .unwrap()
+                .unwrap();
 
         assert_eq!(received, pdf_path);
 
@@ -313,10 +358,8 @@ mod tests {
         assert_eq!(registry.read().await.rule_count(), initial_rule_count);
 
         // Verify no ingest events were sent
-        let timeout = tokio::time::timeout(
-            tokio::time::Duration::from_millis(200),
-            ingest_rx.recv(),
-        );
+        let timeout =
+            tokio::time::timeout(tokio::time::Duration::from_millis(200), ingest_rx.recv());
         assert!(timeout.await.is_err());
 
         drop(watcher);
@@ -358,5 +401,30 @@ mod tests {
         assert_eq!(registry.read().await.rule_count(), 1);
 
         drop(watcher);
+    }
+
+    #[test]
+    fn rule_changes_are_debounced_per_path() {
+        let debounce_state = Arc::new(Mutex::new(HashMap::<PathBuf, Instant>::new()));
+        let path = PathBuf::from("/tmp/test_rule.rhai");
+
+        assert!(PipelineWatcher::should_process_rule_change(
+            &path,
+            100,
+            &debounce_state,
+        ));
+        assert!(!PipelineWatcher::should_process_rule_change(
+            &path,
+            100,
+            &debounce_state,
+        ));
+
+        std::thread::sleep(Duration::from_millis(120));
+
+        assert!(PipelineWatcher::should_process_rule_change(
+            &path,
+            100,
+            &debounce_state,
+        ));
     }
 }

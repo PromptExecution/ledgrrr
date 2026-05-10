@@ -123,11 +123,12 @@ impl WorkbookWriter {
         let mut workbook: Xlsx<_> = open_workbook(&self.path)?;
         
         for sheet_name in REQUIRED_SHEETS {
+            let worksheet = new_workbook.add_worksheet().set_name(*sheet_name)?;
+            if *sheet_name == "TRANSACTIONS" {
+                setup_transactions_sheet(worksheet)?;
+            }
             if let Ok(range) = workbook.worksheet_range(*sheet_name) {
-                let worksheet = new_workbook.add_worksheet().set_name(*sheet_name)?;
                 Self::copy_sheet_data(worksheet, &range)?;
-            } else {
-                new_workbook.add_worksheet().set_name(*sheet_name)?;
             }
         }
         
@@ -174,7 +175,7 @@ impl WorkbookWriter {
         }
 
         new_workbook.save(&self.path)?;
-        self.append_mutation_internal("append_row", tx_id, "agent", "workflow", "", &format!("Added transaction {}", tx_id))?;
+        self.append_mutation_internal(None, "append_row", tx_id, "agent", "workflow", "", &format!("Added transaction {}", tx_id))?;
         Ok(())
     }
 
@@ -209,13 +210,13 @@ impl WorkbookWriter {
         worksheet.write_string(row, 8, flagged_by)?;
 
         new_workbook.save(&self.path)?;
-        self.append_mutation_internal("append_flag", tx_id, "agent", "workflow", "", &format!("Flagged: {}", flag_reason))?;
+        self.append_mutation_internal(None, "append_flag", tx_id, "agent", "workflow", "", &format!("Flagged: {}", flag_reason))?;
         Ok(())
     }
 
     pub fn append_mutation(
         &self,
-        _timestamp: &str,
+        timestamp: &str,
         tx_id: &str,
         agent_id: &str,
         ring: &str,
@@ -223,11 +224,12 @@ impl WorkbookWriter {
         before: &str,
         after: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.append_mutation_internal(action, tx_id, agent_id, ring, before, after)
+        self.append_mutation_internal(Some(timestamp), action, tx_id, agent_id, ring, before, after)
     }
 
     fn append_mutation_internal(
         &self,
+        timestamp: Option<&str>,
         action: &str,
         tx_id: &str,
         agent_id: &str,
@@ -240,7 +242,10 @@ impl WorkbookWriter {
         let mut new_workbook = Workbook::new();
         self.copy_all_sheets(&mut new_workbook)?;
 
-        let timestamp = chrono::Utc::now().to_rfc3339();
+        let timestamp = timestamp
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
         let worksheet = Self::find_worksheet_by_name(&mut new_workbook, "MUTATION_HISTORY")
             .ok_or("MUTATION_HISTORY sheet not found")?;
         
@@ -475,6 +480,31 @@ mod tests {
         
         let row_count = range.height();
         assert!(row_count >= 2, "Should have at least 2 mutation history entries");
+    }
+
+    #[test]
+    fn test_append_mutation_uses_explicit_timestamp() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        initialize_workbook(path).unwrap();
+
+        let writer = WorkbookWriter::new(path);
+        writer.append_mutation(
+            "2026-05-10T11:43:55Z",
+            "tx_001",
+            "agent-001",
+            "workflow",
+            "adjust_transaction",
+            "before",
+            "after",
+        ).unwrap();
+
+        let mut workbook: Xlsx<_> = open_workbook(path).unwrap();
+        let range = workbook.worksheet_range("MUTATION_HISTORY").unwrap();
+
+        assert_eq!(range.get((0, 0)).unwrap().to_string(), "2026-05-10T11:43:55Z");
+        assert_eq!(range.get((0, 4)).unwrap().to_string(), "adjust_transaction");
     }
 
     #[test]
