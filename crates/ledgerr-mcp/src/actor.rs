@@ -10,7 +10,7 @@ use crate::{
     ListTaggedRequest, NormalizeFilenameRequest, OntologyExportSnapshotRequest,
     OntologyQueryPathRequest, OntologyUpsertEdgesRequest, OntologyUpsertEntitiesRequest,
     QueryAuditLogRequest, QueryFlagsRequest, ReconciliationStageRequest, ReplayLifecycleRequest,
-    RunRhaiRuleRequest, SyncFsMetadataRequest, TaxAmbiguityReviewRequest,
+    RunRhaiRuleRequest, SampleTxRequest, SyncFsMetadataRequest, TaxAmbiguityReviewRequest,
     TaxAssistRequest, TaxEvidenceChainRequest, ToolError, TurboLedgerService, TurboLedgerTools,
 };
 
@@ -444,6 +444,19 @@ impl ServiceActor {
         }
 
         Ok(())
+    }
+
+    /// Emit arc-kit-au provenance edge after successful tool dispatch.
+    ///
+    /// **Gap 1 (PRD-10) Scope**: This is out-of-scope for Gap 1.
+    /// Full implementation will be in Gap 10 (arc-kit-au integration).
+    ///
+    /// TODO (Gap 10): Extract tx_id from successful responses and emit ExecutedBy edge:
+    /// - Parse response to extract transaction IDs where applicable
+    /// - Call arc-kit-au to create ExecutedBy(agent_id, tx_id, tool_name, ring) edges
+    /// - Ensure provenance traceability across the financial pipeline
+    fn emit_provenance_edge(&self, _agent_id: &str, _tool_name: &str, _tx_id: Option<&str>) {
+        tracing::debug!("emit_provenance_edge: placeholder - full implementation in Gap 10");
     }
 
     fn dispatch(&mut self, msg: GateMessage) {
@@ -1193,4 +1206,29 @@ mod tests {
         }
     }
 
+    /// PRD-10 AC 230: arc-kit-au provenance edge emitted with correct tx_id, agent_id, ring
+    /// after successful dispatch.
+    ///
+    /// Note: This is a placeholder test. Full provenance edge emission is Gap 10 (out of scope
+    /// for Gap 1). This test verifies the hook exists and doesn't panic.
+    #[test]
+    fn provenance_edge_hook_exists() {
+        let service =
+            TurboLedgerService::from_manifest_str(&test_manifest()).expect("manifest must parse");
+        
+        let agent_id = "provenance-test";
+        let (_tx, rx) = crossbeam::channel::unbounded::<GateMessage>();
+        let gateway = Arc::new(
+            LedgrrAgtGateway::new(&agent_id).expect("gateway must initialize"),
+        );
+        gateway.register_agent(&agent_id);
+        
+        let actor = ServiceActor::new(service, gateway, rx);
+        
+        // Call emit_provenance_edge directly to ensure it doesn't panic
+        // This is a no-op in Gap 1, but the hook must exist
+        actor.emit_provenance_edge(&agent_id, "ledgerr_documents.ingest_pdf", Some("test-tx-id"));
+        
+        // Test passes if no panic occurred
+    }
 }
