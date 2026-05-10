@@ -181,9 +181,12 @@ impl PipelineWatcher {
         debounce_ms: u64,
         debounce_state: &Arc<Mutex<HashMap<PathBuf, Instant>>>,
     ) -> bool {
-        let Ok(mut state) = debounce_state.lock() else {
-            tracing::warn!("debounce state lock poisoned; processing rule change immediately");
-            return true;
+        let mut state = match debounce_state.lock() {
+            Ok(state) => state,
+            Err(poisoned) => {
+                tracing::warn!("debounce state lock poisoned; recovering state");
+                poisoned.into_inner()
+            }
         };
 
         let now = Instant::now();

@@ -21,13 +21,14 @@ pub const REQUIRED_SHEETS: &[&str] = &[
     "FBAR.accounts",
     "AUDIT.log",
 ];
+const TRANSACTIONS_SHEET: &str = "TRANSACTIONS";
 
 pub fn initialize_workbook(path: &Path) -> Result<(), rust_xlsxwriter::XlsxError> {
     let mut workbook = Workbook::new();
     for sheet_name in REQUIRED_SHEETS {
         let worksheet = workbook.add_worksheet().set_name(*sheet_name)?;
         
-        if *sheet_name == "TRANSACTIONS" {
+        if *sheet_name == TRANSACTIONS_SHEET {
             setup_transactions_sheet(worksheet)?;
         }
     }
@@ -154,12 +155,12 @@ impl WorkbookWriter {
         needs_review: bool,
         flag: Option<&str>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let row = self.get_row_count("TRANSACTIONS")?;
+        let row = self.get_row_count(TRANSACTIONS_SHEET)?;
         
         let mut new_workbook = Workbook::new();
         self.copy_all_sheets(&mut new_workbook)?;
 
-        let worksheet = Self::find_worksheet_by_name(&mut new_workbook, "TRANSACTIONS")
+        let worksheet = Self::find_worksheet_by_name(&mut new_workbook, TRANSACTIONS_SHEET)
             .ok_or("TRANSACTIONS sheet not found")?;
         
         worksheet.write_string(row, 0, tx_id)?;
@@ -224,6 +225,9 @@ impl WorkbookWriter {
         before: &str,
         after: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        if timestamp.is_empty() {
+            return Err("timestamp cannot be empty".into());
+        }
         self.append_mutation_internal(Some(timestamp), action, tx_id, agent_id, ring, before, after)
     }
 

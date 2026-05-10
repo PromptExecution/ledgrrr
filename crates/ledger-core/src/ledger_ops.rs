@@ -617,7 +617,11 @@ impl LedgerOperation for PdfIngestOp {
         // Use tokio runtime for async subprocess with timeout
         let runtime = tokio::runtime::Runtime::new()
             .map_err(|e| LedgerOpError::ExternalProcessFailed(format!("runtime creation failed: {e}")))?;
-        let input_path = self.input_path.to_string_lossy().into_owned();
+        let input_path = self
+            .input_path
+            .to_str()
+            .ok_or_else(|| LedgerOpError::InvalidInput("input path must be valid UTF-8".to_string()))?
+            .to_string();
 
         let output = runtime.block_on(async {
             let timeout_duration = Duration::from_secs(120);
@@ -724,7 +728,7 @@ impl LedgerOperation for PdfIngestOp {
 
         // Get existing tx_ids from workbook for deduplication
         let writer = WorkbookWriter::new(&self.workbook_path);
-        let mut existing_tx_ids = writer.get_existing_tx_ids()
+        let mut seen_tx_ids = writer.get_existing_tx_ids()
             .unwrap_or_else(|_| std::collections::HashSet::new());
 
         let mut processed = 0;
@@ -742,7 +746,7 @@ impl LedgerOperation for PdfIngestOp {
             let tx_id = crate::ingest::deterministic_tx_id(&tx_input);
 
             // Blake3 deduplication: skip if tx_id already exists
-            if existing_tx_ids.contains(&tx_id) {
+            if seen_tx_ids.contains(&tx_id) {
                 continue;
             }
 
@@ -773,7 +777,7 @@ impl LedgerOperation for PdfIngestOp {
                         outcome.needs_review,
                         None,
                     ).map_err(|e| LedgerOpError::Workbook(format!("failed to persist {}: {}", tx_id, e)))?;
-                    existing_tx_ids.insert(tx_id);
+                    seen_tx_ids.insert(tx_id);
                 }
                 Err(e) => {
                     row_errors.push(IngestRowError {
