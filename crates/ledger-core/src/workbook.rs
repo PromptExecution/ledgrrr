@@ -125,7 +125,7 @@ impl WorkbookWriter {
         
         for sheet_name in REQUIRED_SHEETS {
             let worksheet = new_workbook.add_worksheet().set_name(*sheet_name)?;
-            if *sheet_name == "TRANSACTIONS" {
+            if *sheet_name == TRANSACTIONS_SHEET {
                 setup_transactions_sheet(worksheet)?;
             }
             if let Ok(range) = workbook.worksheet_range(*sheet_name) {
@@ -247,7 +247,6 @@ impl WorkbookWriter {
         self.copy_all_sheets(&mut new_workbook)?;
 
         let timestamp = timestamp
-            .filter(|value| !value.is_empty())
             .map(ToOwned::to_owned)
             .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
         let worksheet = Self::find_worksheet_by_name(&mut new_workbook, "MUTATION_HISTORY")
