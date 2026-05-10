@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+agentmesh = { path = "../../../agent-governance-toolkit/agent-governance-rust/agentmesh" }
 arc-kit-au = { path = "../arc-kit-au" }
 blake3 = "1.8.3"
 chrono = { workspace = true }
@@ -12,6 +13,7 @@ ledger-core = { version = "=1.8.1", path = "../ledger-core" }
 ledgerr-focus = { workspace = true }
 ledgerr-mcp-core = { workspace = true }
 ledgerr-xero = { version = "=1.8.1", path = "../ledgerr-xero", optional = true }
+msft-agent-gov-ledgrrr = { path = "../msft-agent-gov-ledgrrr" }
 crossbeam = "0.8"
 cfg-if = "1.0"
 ledgerr-llm = { version = "=1.8.1", path = "../ledgerr-llm", optional = true }

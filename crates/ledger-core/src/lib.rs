@@ -25,6 +25,7 @@ pub mod tags;
 pub mod validation;
 pub mod verify;
 pub mod visualize;
+pub mod watcher;
 pub mod workbook;
 pub mod workflow;
 

@@ -3,6 +3,7 @@ use std::path::Path;
 use crate::ingest::{deterministic_tx_id, TransactionInput};
 use rhai::{Dynamic, Engine, EvalAltResult, Map, Scope, AST};
 use serde::{Deserialize, Serialize};
+use strum::{Display, EnumString};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClassificationError {
@@ -31,6 +32,44 @@ pub struct ClassificationOutcome {
     pub confidence: f64,
     pub needs_review: bool,
     pub reason: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, Display, Serialize, Deserialize, strum::VariantArray)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum TaxCategory {
+    OfficeSupplies,
+    Travel,
+    MealsAndEntertainment,
+    SoftwareAndSubscriptions,
+    ProfessionalServices,
+    RentAndUtilities,
+    MarketingAndAdvertising,
+    Insurance,
+    Payroll,
+    Other,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, Display, Serialize, Deserialize, strum::VariantArray)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum Flag {
+    UnusualAmount,
+    MissingReceipt,
+    UnclearDescription,
+    PotentialPersonal,
+    ReviewRequired,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MutationRecord {
+    pub timestamp: String,
+    pub tx_id: String,
+    pub agent_id: String,
+    pub ring: String,
+    pub action: String,
+    pub before: String,
+    pub after: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]

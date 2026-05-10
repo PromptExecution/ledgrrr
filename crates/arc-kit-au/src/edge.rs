@@ -24,6 +24,8 @@ pub enum EdgeType {
     ExportedTo,
     /// Transaction has a validation issue
     ValidatedAs,
+    /// Transaction/tool was executed by an agent
+    ExecutedBy,
 }
 
 impl EdgeType {
@@ -36,6 +38,7 @@ impl EdgeType {
             Self::ApprovedBy => "approved_by",
             Self::ExportedTo => "exported_to",
             Self::ValidatedAs => "validated_as",
+            Self::ExecutedBy => "executed_by",
         }
     }
 }
@@ -88,6 +91,8 @@ mod tests {
         assert_eq!(EdgeType::ProposedBy.label(), "proposed_by");
         assert_eq!(EdgeType::ApprovedBy.label(), "approved_by");
         assert_eq!(EdgeType::ExportedTo.label(), "exported_to");
+        assert_eq!(EdgeType::ValidatedAs.label(), "validated_as");
+        assert_eq!(EdgeType::ExecutedBy.label(), "executed_by");
     }
 
     #[test]

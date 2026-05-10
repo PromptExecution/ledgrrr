@@ -548,6 +548,17 @@ pub fn error_payload(error: &ToolError) -> Value {
             "error_type": "Internal",
             "message": message,
         }),
+        ToolError::PolicyDenied(reason) => json!({
+            "isError": true,
+            "error_type": "PolicyDenied",
+            "message": reason,
+        }),
+        ToolError::RateLimited { retry_after_secs } => json!({
+            "isError": true,
+            "error_type": "RateLimited",
+            "message": format!("Rate limited. Retry after {} seconds", retry_after_secs),
+            "retry_after_secs": retry_after_secs,
+        }),
     }
 }
 

@@ -16,6 +16,7 @@ thiserror = "2"
 blake3 = "1.8.3"
 regex = "1"
 rhai = "1.24.0"
+strum = { version = "0.27", features = ["derive"] }
 z3 = { workspace = true, optional = true }
 kasuari = { workspace = true }
 statig = { workspace = true }
@@ -26,6 +27,9 @@ glam = "0.27"
 femtovg = "0.9"
 arrow = { version = "58.2.0", optional = true }
 arc-kit-au = { path = "../arc-kit-au", optional = true }
+tokio = { workspace = true }
+tracing = "0.1"
+notify = "8.2"
 
 # filesystem metadata — xattr on Linux; sidecar fallback is pure std
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -35,6 +39,11 @@ xattr = "1"
 default = ["arc-kit-au"]
 legal-z3 = ["dep:z3"]
 otel-arrow = ["dep:arrow"]
+cedar-policy = ["dep:msft-agent-gov-ledgrrr"]
+
+[dependencies.msft-agent-gov-ledgrrr]
+path = "../msft-agent-gov-ledgrrr"
+optional = true
 
 [lints]
 workspace = true
@@ -45,3 +54,4 @@ static_assertions = "1.1"
 frunk = "0.4"
 trybuild = "1.0"
 automod = "1.0"
+filetime = "0.2"

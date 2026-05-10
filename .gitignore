@@ -1,21 +1,37 @@
-
 # Editor/backup artifacts
-# Generated local state sidecars (should not be committed)
-# Local codex/runtime metadata
-# Local environment secrets
-# Local planning input docs
-# Rust build outputs
-# Windows Mark-of-the-Web metadata files
-# mdbook output
-*.ledgerr-state.json
-*:Zone.Identifier
 *~
+
+# Windows Mark-of-the-Web metadata files
+*:Zone.Identifier
+
+# Rust build outputs
+target/
+target-windows/
+
+# Generated local state sidecars (should not be committed)
+*.ledgerr-state.json
+
+# b00t runtime state
+_b00t_/
 .b00t/datums/*.txt
+.b00t/datums/*.toml
 .b00t/scratch/
-.claude/scheduled_tasks.lock
-.claude/worktrees/
+
+# Local codex/runtime metadata
 .codex/
+.codebase-memory/
+
+# Local environment secrets
 .env
 .env.*
+
+# Claude Code runtime
+.claude/scheduled_tasks.lock
+.claude/worktrees/
+
+# Bouncer/review session artifacts
+.gap*-review.md
+.gap*-verdict.md
+
+# mdbook output
 book/book/
-.codebase-memory/
