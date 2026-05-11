@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet};
-use chrono::Datelike;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Mutex;
@@ -2434,14 +2433,12 @@ impl TurboLedgerTools for TurboLedgerService {
         
         // 1. Query flags (open + resolved across known transaction years)
         if request.item_types.as_ref().map_or(true, |v| v.is_empty() || v.contains(&QueueItemType::Flag)) {
-            let mut years: BTreeSet<i32> = classification
+            let years: BTreeSet<i32> = classification
                 .tx_rows
                 .values()
                 .map(|tx| derive_year(&tx.date))
+                .filter(|year| (1900..=9999).contains(year))
                 .collect();
-            if years.is_empty() {
-                years.insert(chrono::Utc::now().naive_utc().year() as i32);
-            }
 
             for year in years {
                 let open_flags = classification
