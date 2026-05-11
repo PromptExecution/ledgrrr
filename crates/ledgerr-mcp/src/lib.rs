@@ -2432,40 +2432,47 @@ impl TurboLedgerTools for TurboLedgerService {
         // Phase 1: Gather data from all sources
         let mut items = Vec::new();
         
-        // 1. Query flags (open + resolved by year if no updated_after filter)
+        // 1. Query flags (open + resolved across known transaction years)
         if request.item_types.as_ref().map_or(true, |v| v.is_empty() || v.contains(&QueueItemType::Flag)) {
-            let year = chrono::Utc::now().naive_utc().year() as i32;
-            
-            // Query open flags
-            let open_flags = classification
-                .engine
-                .query_flags(year, FlagStatus::Open);
-            for flag in open_flags {
-                let flag_resp = FlagRecordResponse {
-                    tx_id: flag.tx_id,
-                    year: flag.year,
-                    status: FlagStatusRequest::Open,
-                    reason: flag.reason,
-                    category: flag.category,
-                    confidence: flag.confidence,
-                };
-                items.push(flag_to_queue_item(&flag_resp));
+            let mut years: BTreeSet<i32> = classification
+                .tx_rows
+                .values()
+                .map(|tx| derive_year(&tx.date))
+                .collect();
+            if years.is_empty() {
+                years.insert(chrono::Utc::now().naive_utc().year() as i32);
             }
-            
-            // Query resolved flags
-            let resolved_flags = classification
-                .engine
-                .query_flags(year, FlagStatus::Resolved);
-            for flag in resolved_flags {
-                let flag_resp = FlagRecordResponse {
-                    tx_id: flag.tx_id,
-                    year: flag.year,
-                    status: FlagStatusRequest::Resolved,
-                    reason: flag.reason,
-                    category: flag.category,
-                    confidence: flag.confidence,
-                };
-                items.push(flag_to_queue_item(&flag_resp));
+
+            for year in years {
+                let open_flags = classification
+                    .engine
+                    .query_flags(year, FlagStatus::Open);
+                for flag in open_flags {
+                    let flag_resp = FlagRecordResponse {
+                        tx_id: flag.tx_id,
+                        year: flag.year,
+                        status: FlagStatusRequest::Open,
+                        reason: flag.reason,
+                        category: flag.category,
+                        confidence: flag.confidence,
+                    };
+                    items.push(flag_to_queue_item(&flag_resp));
+                }
+
+                let resolved_flags = classification
+                    .engine
+                    .query_flags(year, FlagStatus::Resolved);
+                for flag in resolved_flags {
+                    let flag_resp = FlagRecordResponse {
+                        tx_id: flag.tx_id,
+                        year: flag.year,
+                        status: FlagStatusRequest::Resolved,
+                        reason: flag.reason,
+                        category: flag.category,
+                        confidence: flag.confidence,
+                    };
+                    items.push(flag_to_queue_item(&flag_resp));
+                }
             }
         }
         

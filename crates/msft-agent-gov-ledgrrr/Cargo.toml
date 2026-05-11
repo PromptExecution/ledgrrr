@@ -11,9 +11,9 @@ license.workspace = true
 cedar-policy = ["dep:cedar-policy"]
 
 [dependencies]
-agentmesh     = { path = "../../../agent-governance-toolkit/agent-governance-rust/agentmesh" }
+agentmesh     = { workspace = true }
 b00t-iface    = { path = "../../crates/b00t-iface", features = ["b00t"] }
-agentmesh-mcp = { path = "../../../agent-governance-toolkit/agent-governance-rust/agentmesh-mcp" }
+agentmesh-mcp = { workspace = true }
 serde         = { workspace = true }
 serde_json    = { workspace = true }
 thiserror     = { workspace = true }

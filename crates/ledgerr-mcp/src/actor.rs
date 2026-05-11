@@ -10,7 +10,7 @@ use crate::{
     ListTaggedRequest, NormalizeFilenameRequest, OntologyExportSnapshotRequest,
     OntologyQueryPathRequest, OntologyUpsertEdgesRequest, OntologyUpsertEntitiesRequest,
     QueryAuditLogRequest, QueryFlagsRequest, ReconciliationStageRequest, ReplayLifecycleRequest,
-    RunRhaiRuleRequest, SampleTxRequest, SyncFsMetadataRequest, TaxAmbiguityReviewRequest,
+    RunRhaiRuleRequest, SyncFsMetadataRequest, TaxAmbiguityReviewRequest,
     TaxAssistRequest, TaxEvidenceChainRequest, ToolError, TurboLedgerService, TurboLedgerTools,
 };
 
@@ -455,6 +455,7 @@ impl ServiceActor {
     /// - Parse response to extract transaction IDs where applicable
     /// - Call arc-kit-au to create ExecutedBy(agent_id, tx_id, tool_name, ring) edges
     /// - Ensure provenance traceability across the financial pipeline
+    #[allow(dead_code)]
     fn emit_provenance_edge(&self, _agent_id: &str, _tool_name: &str, _tx_id: Option<&str>) {
         tracing::debug!("emit_provenance_edge: placeholder - full implementation in Gap 10");
     }

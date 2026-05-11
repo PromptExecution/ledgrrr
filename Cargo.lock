@@ -137,6 +137,8 @@ dependencies = [
 [[package]]
 name = "agentmesh"
 version = "3.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d7c24cefa6011f193d4a34c199e6374e87ae26e746a34693fcdb4e48eeab5ff"
 dependencies = [
  "base64 0.22.1",
  "cedar-policy",
@@ -155,6 +157,8 @@ dependencies = [
 [[package]]
 name = "agentmesh-mcp"
 version = "3.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8bee291b3cfb512ca51a5bd5e20c2eba542ab03fe01661fc2e5805088814fc68"
 dependencies = [
  "base64 0.22.1",
  "hmac",

@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use ledger_core::ingest::TransactionInput;
 use ledgerr_mcp::{
     ClassifyTransactionRequest, FetchQueueRequest, IngestStatementRowsRequest,
-    QueueItemType, QueueStatus, QueueSeverity, TurboLedgerService, TurboLedgerTools,
+    QueueItemType, QueueStatus, TurboLedgerService, TurboLedgerTools,
 };
 
 fn service() -> TurboLedgerService {
@@ -48,7 +48,7 @@ fn test_fetch_queue_returns_all_types() {
         svc.classify_transaction(ClassifyTransactionRequest {
             tx_id: tx_id.clone(),
             category: "Test".to_string(),
-            confidence: "0.91".to_string(),
+            confidence: "0.70".to_string(),
             note: Some("test".to_string()),
             actor: "agent".to_string(),
         })
@@ -216,7 +216,7 @@ fn test_fetch_queue_sorts_by_created_at_desc() {
         svc.classify_transaction(ClassifyTransactionRequest {
             tx_id: tx_id.clone(),
             category: "Test".to_string(),
-            confidence: "0.91".to_string(),
+            confidence: "0.70".to_string(),
             note: Some("test".to_string()),
             actor: "agent".to_string(),
         })
@@ -270,7 +270,7 @@ fn test_fetch_queue_pagination_works() {
         svc.classify_transaction(ClassifyTransactionRequest {
             tx_id: tx_id.clone(),
             category: "Test".to_string(),
-            confidence: "0.91".to_string(),
+            confidence: "0.70".to_string(),
             note: Some("test".to_string()),
             actor: "agent".to_string(),
         })
