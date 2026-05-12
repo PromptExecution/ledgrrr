@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::classify::{TaxCategory, Flag};
 use crate::validation::{CommitGate, Disposition, Issue, MetaCtx};
+use crate::attest::{Attested, AttestationSpec};
+use ledger_attest::attested;
 use strum::VariantArray;
 
 pub const REQUIRED_SHEETS: &[&str] = &[
@@ -312,6 +314,7 @@ impl WorkbookWriter {
 }
 
 /// One audit row per committed transaction for the AUDIT.log sheet.
+#[attested("audit_row_entry_id_deterministic")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditRow {
     pub entry_id: String,
@@ -384,6 +387,17 @@ impl AuditRow {
             flags,
             invoice_arithmetic_ok,
             commit_gate,
+        }
+    }
+}
+
+impl Attested for AuditRow {
+    fn attestation_spec() -> AttestationSpec {
+        AttestationSpec {
+            invariant: "audit_row_entry_id_deterministic",
+            z3_predicate: None,
+            kasuari_description: Some("entry_id = blake3(document_id | source_ref) — same inputs always produce the same hash"),
+            kani_module: None,
         }
     }
 }

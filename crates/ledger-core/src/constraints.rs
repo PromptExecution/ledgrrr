@@ -123,6 +123,7 @@ impl Attested for ConstraintEvaluation {
 }
 
 /// A historical constraint set for a vendor or category.
+#[attested("vendor_constraint_bounds_ordered")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VendorConstraintSet {
     pub vendor_id: String,
@@ -161,6 +162,17 @@ impl VendorConstraintSet {
             strong_ratio,
             medium_ratio,
             weak_ratio,
+        }
+    }
+}
+
+impl Attested for VendorConstraintSet {
+    fn attestation_spec() -> AttestationSpec {
+        AttestationSpec {
+            invariant: "vendor_constraint_bounds_ordered",
+            z3_predicate: None,
+            kasuari_description: Some("evaluate() strong_ratio in [0.0, 1.0] for all finite f64 inputs"),
+            kani_module: Some("kani_proofs::vendor_constraints"),
         }
     }
 }

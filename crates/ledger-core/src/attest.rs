@@ -25,8 +25,11 @@ pub trait Attested {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constraints::{ConstraintEvaluation, InvoiceVerification};
-    use crate::validation::CommitGate;
+    use crate::constraints::{ConstraintEvaluation, InvoiceVerification, VendorConstraintSet};
+    use crate::legal::Z3Result;
+    use crate::pipeline::DocumentFields;
+    use crate::validation::{CommitGate, MetaCtx};
+    use crate::workbook::AuditRow;
 
     #[test]
     fn attestation_spec_invariant_strings_are_correct() {
@@ -39,6 +42,26 @@ mod tests {
             "invoice_arithmetic_valid"
         );
         assert_eq!(CommitGate::attestation_spec().invariant, "commit_gate_total");
+        assert_eq!(
+            Z3Result::attestation_spec().invariant,
+            "z3_result_confidence_total"
+        );
+        assert_eq!(
+            MetaCtx::attestation_spec().invariant,
+            "meta_ctx_confidence_bounded"
+        );
+        assert_eq!(
+            DocumentFields::attestation_spec().invariant,
+            "document_fields_decimal_safe"
+        );
+        assert_eq!(
+            VendorConstraintSet::attestation_spec().invariant,
+            "vendor_constraint_bounds_ordered"
+        );
+        assert_eq!(
+            AuditRow::attestation_spec().invariant,
+            "audit_row_entry_id_deterministic"
+        );
     }
 
     #[test]
@@ -46,5 +69,8 @@ mod tests {
         assert!(ConstraintEvaluation::attestation_spec().kani_module.is_some());
         assert!(InvoiceVerification::attestation_spec().kani_module.is_some());
         assert!(CommitGate::attestation_spec().kani_module.is_some());
+        assert!(Z3Result::attestation_spec().kani_module.is_some());
+        assert!(MetaCtx::attestation_spec().kani_module.is_some());
+        assert!(VendorConstraintSet::attestation_spec().kani_module.is_some());
     }
 }

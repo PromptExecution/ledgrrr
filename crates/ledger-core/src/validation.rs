@@ -94,6 +94,7 @@ impl Issue {
 }
 
 /// Accumulated state flowing forward through the pipeline.
+#[attested("meta_ctx_confidence_bounded")]
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct MetaCtx {
     pub accumulated_confidence: f32,
@@ -332,6 +333,17 @@ pub mod verbs {
     }
 }
 
+
+impl Attested for MetaCtx {
+    fn attestation_spec() -> AttestationSpec {
+        AttestationSpec {
+            invariant: "meta_ctx_confidence_bounded",
+            z3_predicate: Some("forall c in [0,1]: advance(c).accumulated_confidence in [0,1]"),
+            kasuari_description: None,
+            kani_module: Some("kani_proofs::meta_ctx"),
+        }
+    }
+}
 
 impl Attested for CommitGate {
     fn attestation_spec() -> AttestationSpec {

@@ -3,6 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
+use ledger_attest::attested;
+use crate::attest::{Attested, AttestationSpec};
 
 // ============================================================================
 // TYPE-STATE: Compile-time valid transitions
@@ -21,6 +23,7 @@ pub struct Committed;
 #[derive(Debug)]
 pub struct NeedsReview;
 
+#[attested("document_fields_decimal_safe")]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DocumentFields {
     pub vendor_jurisdiction: Option<String>,
@@ -30,6 +33,17 @@ pub struct DocumentFields {
     pub is_business_activity: Option<bool>,
     pub is_ordinary: Option<bool>,
     pub is_necessary: Option<bool>,
+}
+
+impl Attested for DocumentFields {
+    fn attestation_spec() -> AttestationSpec {
+        AttestationSpec {
+            invariant: "document_fields_decimal_safe",
+            z3_predicate: None,
+            kasuari_description: Some("amount: Option<Decimal> — parsed via Decimal::from_str, never f64"),
+            kani_module: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

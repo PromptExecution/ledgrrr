@@ -4,3 +4,7 @@ mod invoice_arithmetic;
 mod vendor_constraints;
 #[cfg(kani)]
 mod commit_gate;
+#[cfg(kani)]
+mod z3_result;
+#[cfg(kani)]
+mod meta_ctx;

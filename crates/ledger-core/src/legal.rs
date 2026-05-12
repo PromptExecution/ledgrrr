@@ -2,6 +2,8 @@
 //! Encodes hard legal predicates as satisfiability checks over transaction facts.
 
 use serde::{Deserialize, Serialize};
+use ledger_attest::attested;
+use crate::attest::{Attested, AttestationSpec};
 #[cfg(feature = "legal-z3")]
 use z3::{ast::Bool, Config, Context, SatResult, Solver};
 
@@ -44,6 +46,7 @@ impl Jurisdiction {
 }
 
 /// Result of Z3 SAT check.
+#[attested("z3_result_confidence_total")]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Z3Result {
     Satisfied,
@@ -95,6 +98,17 @@ impl Z3Result {
 impl From<Z3Result> for Vec<crate::validation::Issue> {
     fn from(result: Z3Result) -> Self {
         result.to_issues()
+    }
+}
+
+impl Attested for Z3Result {
+    fn attestation_spec() -> AttestationSpec {
+        AttestationSpec {
+            invariant: "z3_result_confidence_total",
+            z3_predicate: Some("to_confidence: Satisfied->1.0 | Violated->0.0 | Unknown->0.5"),
+            kasuari_description: None,
+            kani_module: Some("kani_proofs::z3_result"),
+        }
     }
 }
 
