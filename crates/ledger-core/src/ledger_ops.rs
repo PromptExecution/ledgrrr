@@ -387,7 +387,7 @@ impl LedgerOperation for ClassifyTransactionsOp {
         "Run the Rhai rule waterfall over unclassified transactions"
     }
 
-    fn execute(&self, _ctx: &OperationContext) -> Result<OperationResult, LedgerOpError> {
+    fn execute(&self, ctx: &OperationContext) -> Result<OperationResult, LedgerOpError> {
         // Intended logic:
         //   1. Load all `.rhai` rule files from `self.rule_dir` via RuleRegistry
         //   2. Fetch unclassified transactions from ledger store
@@ -398,9 +398,105 @@ impl LedgerOperation for ClassifyTransactionsOp {
         //      c. If confidence < threshold → flag for human review
         //   4. Persist updated classifications back to the store
         //   5. Return processed/flagged counts and any rule errors
-        Err(LedgerOpError::NotImplemented(
-            "ClassifyTransactionsOp: Rhai engine integration not yet wired".to_string(),
-        ))
+        use calamine::{open_workbook_auto, Data, Reader};
+
+        let workbook_path = ctx.workbook_path.as_ref().ok_or_else(|| {
+            LedgerOpError::InvalidInput(
+                "ClassifyTransactionsOp requires workbook_path in context".to_string(),
+            )
+        })?;
+
+        let rules_dir = if self.rule_dir.as_os_str().is_empty() {
+            ctx.rules_dir.as_path()
+        } else {
+            self.rule_dir.as_path()
+        };
+
+        let registry = crate::rule_registry::RuleRegistry::load_from_dir(rules_dir)
+            .map_err(|e| LedgerOpError::Classification(e.to_string()))?;
+        let mut engine = crate::classify::ClassificationEngine::default();
+
+        let mut wb = open_workbook_auto(workbook_path)
+            .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+        let range = wb
+            .worksheet_range("TRANSACTIONS")
+            .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+
+        let writer = crate::workbook::WorkbookWriter::new(workbook_path);
+        let mut classified = 0usize;
+        let mut still_unclassified = 0usize;
+
+        for row in range.rows().skip(1) {
+            let get_str = |i: usize| -> String {
+                match row.get(i) {
+                    Some(Data::String(s)) => s.clone(),
+                    _ => String::new(),
+                }
+            };
+            let tx_id = get_str(0);
+            if tx_id.is_empty() {
+                continue;
+            }
+            if get_str(5) != "Unclassified" {
+                continue;
+            }
+            let date = get_str(1);
+            let vendor = get_str(2);
+            let account = get_str(3);
+            let amount = get_str(4);
+
+            if let Some(filter) = &self.account_filter {
+                if account != *filter {
+                    continue;
+                }
+            }
+
+            let sample = crate::classify::SampleTransaction {
+                tx_id: tx_id.clone(),
+                account_id: account,
+                date,
+                amount,
+                description: vendor,
+            };
+
+            let outcome = registry
+                .classify_waterfall(&mut engine, &sample)
+                .map_err(|e| LedgerOpError::Classification(e.to_string()))?;
+
+            if outcome.category == "Unclassified" {
+                still_unclassified += 1;
+                continue;
+            }
+
+            if !ctx.dry_run {
+                let needs_review = outcome.confidence < self.review_threshold;
+                writer
+                    .append_mutation(
+                        &chrono::Utc::now().to_rfc3339(),
+                        &tx_id,
+                        "classify-transactions-op",
+                        "agent",
+                        &format!("classify:{}", outcome.category),
+                        "Unclassified",
+                        &format!(
+                            "{}|conf={:.3}|review={}",
+                            outcome.category, outcome.confidence, needs_review
+                        ),
+                    )
+                    .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+            }
+            classified += 1;
+        }
+
+        let mut result = OperationResult::success("classify-transactions", classified);
+        result.items_flagged = still_unclassified;
+        if still_unclassified > 0 {
+            result.issues.push(format!(
+                "{} transactions remain unclassified after rule pass",
+                still_unclassified
+            ));
+        }
+        Ok(result)
     }
 }
 
@@ -556,17 +652,115 @@ impl LedgerOperation for GenerateAuditTrailOp {
         "Generate a CPA-auditable audit trail document for a tax year"
     }
 
-    fn execute(&self, _ctx: &OperationContext) -> Result<OperationResult, LedgerOpError> {
+    fn execute(&self, ctx: &OperationContext) -> Result<OperationResult, LedgerOpError> {
         // Intended logic:
         //   1. Query all mutation events for `self.year` from audit log
         //   2. Serialize to a structured JSON/XLSX audit document
         //   3. Include: ingest timestamps, classification changes, reconciliation
         //      outcomes, human review sign-offs
         //   4. Write to `self.output_path`
-        Err(LedgerOpError::NotImplemented(format!(
-            "GenerateAuditTrailOp: audit trail export not yet wired (year={})",
-            self.year
-        )))
+        use calamine::{open_workbook_auto, Data, Reader};
+        use rust_xlsxwriter::Workbook;
+
+        let workbook_path = ctx.workbook_path.as_ref().ok_or_else(|| {
+            LedgerOpError::InvalidInput(
+                "GenerateAuditTrailOp requires workbook_path in context".to_string(),
+            )
+        })?;
+
+        let year_str = self.year.to_string();
+
+        let mut src_wb = open_workbook_auto(workbook_path)
+            .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+
+        let mut tx_rows: Vec<Vec<String>> = Vec::new();
+        if let Ok(range) = src_wb.worksheet_range("TRANSACTIONS") {
+            for row in range.rows().skip(1) {
+                let get_str = |i: usize| -> String {
+                    match row.get(i) {
+                        Some(Data::String(s)) => s.clone(),
+                        Some(Data::Float(f)) => f.to_string(),
+                        Some(Data::Bool(b)) => b.to_string(),
+                        _ => String::new(),
+                    }
+                };
+                if get_str(1).starts_with(&year_str) {
+                    tx_rows.push((0..9).map(get_str).collect());
+                }
+            }
+        }
+
+        let mut mut_rows: Vec<Vec<String>> = Vec::new();
+        if let Ok(range) = src_wb.worksheet_range("MUTATION_HISTORY") {
+            for row in range.rows().skip(1) {
+                let get_str = |i: usize| -> String {
+                    match row.get(i) {
+                        Some(Data::String(s)) => s.clone(),
+                        _ => String::new(),
+                    }
+                };
+                if get_str(0).starts_with(&year_str) {
+                    mut_rows.push((0..7).map(get_str).collect());
+                }
+            }
+        }
+
+        if ctx.dry_run {
+            return Ok(OperationResult::success(
+                "generate-audit-trail",
+                tx_rows.len() + mut_rows.len(),
+            ));
+        }
+
+        let mut out_wb = Workbook::new();
+
+        let tx_headers = [
+            "tx_id", "date", "vendor", "account", "amount",
+            "category", "confidence", "needs_review", "flag",
+        ];
+        let tx_ws = out_wb
+            .add_worksheet()
+            .set_name(format!("Transactions-{}", self.year))
+            .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+        for (col, h) in tx_headers.iter().enumerate() {
+            tx_ws
+                .write_string(0, col as u16, *h)
+                .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+        }
+        for (r, cols) in tx_rows.iter().enumerate() {
+            for (c, val) in cols.iter().enumerate() {
+                tx_ws
+                    .write_string((r + 1) as u32, c as u16, val)
+                    .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+            }
+        }
+
+        let mut_headers = [
+            "timestamp", "tx_id", "agent_id", "ring", "action", "before", "after",
+        ];
+        let mut_ws = out_wb
+            .add_worksheet()
+            .set_name(format!("Mutations-{}", self.year))
+            .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+        for (col, h) in mut_headers.iter().enumerate() {
+            mut_ws
+                .write_string(0, col as u16, *h)
+                .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+        }
+        for (r, cols) in mut_rows.iter().enumerate() {
+            for (c, val) in cols.iter().enumerate() {
+                mut_ws
+                    .write_string((r + 1) as u32, c as u16, val)
+                    .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+            }
+        }
+
+        out_wb
+            .save(&self.output_path)
+            .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+
+        let total = tx_rows.len() + mut_rows.len();
+        Ok(OperationResult::success("generate-audit-trail", total))
     }
 }
 
