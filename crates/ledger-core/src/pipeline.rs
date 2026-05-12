@@ -528,6 +528,25 @@ impl PipelineBuilder {
 }
 
 // ============================================================================
+// KANI / TEST CONSTRUCTORS
+// ============================================================================
+
+#[cfg(any(test, kani))]
+impl PipelineState<Reconciled> {
+    pub fn new_for_kani(confidence: f32) -> Self {
+        Self {
+            document_id: String::new(),
+            source_ref: String::new(),
+            confidence,
+            issues: Vec::new(),
+            meta: crate::validation::MetaCtx::default(),
+            doc_fields: DocumentFields::default(),
+            _state: PhantomData,
+        }
+    }
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
