@@ -15,6 +15,17 @@ pub struct Reconciled;
 pub struct Committed;
 pub struct NeedsReview;
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DocumentFields {
+    pub vendor_jurisdiction: Option<String>,
+    pub supply_type: Option<String>,
+    pub tax_code: Option<String>,
+    pub amount: Option<rust_decimal::Decimal>,
+    pub is_business_activity: Option<bool>,
+    pub is_ordinary: Option<bool>,
+    pub is_necessary: Option<bool>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PipelineState<S = Ingested> {
     pub document_id: String,
@@ -22,6 +33,7 @@ pub struct PipelineState<S = Ingested> {
     pub confidence: f32,
     pub issues: Vec<crate::validation::Issue>,
     pub meta: crate::validation::MetaCtx,
+    pub doc_fields: DocumentFields,
     _state: PhantomData<S>,
 }
 
@@ -33,12 +45,18 @@ impl<S> PipelineState<S> {
             confidence: 1.0,
             issues: Vec::new(),
             meta: crate::validation::MetaCtx::default(),
+            doc_fields: DocumentFields::default(),
             _state: PhantomData,
         }
     }
 
     pub fn with_confidence(mut self, c: f32) -> Self {
         self.confidence = c;
+        self
+    }
+
+    pub fn with_doc_fields(mut self, fields: DocumentFields) -> Self {
+        self.doc_fields = fields;
         self
     }
 }
@@ -77,6 +95,7 @@ impl PipelineState<Ingested> {
             confidence,
             issues,
             meta: self.meta.advance("validate", confidence, &[]),
+            doc_fields: self.doc_fields,
             _state: PhantomData,
         }
     }
@@ -121,6 +140,7 @@ impl PipelineState<Validated> {
                 confidence: 0.0,
                 issues: next_issues,
                 meta: next_meta,
+                doc_fields: self.doc_fields,
                 _state: std::marker::PhantomData,
             })
         } else {
@@ -130,6 +150,7 @@ impl PipelineState<Validated> {
                 confidence: self.confidence * confidence.max(0.01),
                 issues: next_issues,
                 meta: next_meta,
+                doc_fields: self.doc_fields,
                 _state: std::marker::PhantomData,
             })
         }
@@ -137,7 +158,15 @@ impl PipelineState<Validated> {
 
     /// Extract transaction facts for legal verification.
     pub fn to_transaction_facts(&self) -> crate::legal::TransactionFacts {
-        crate::legal::TransactionFacts::new()
+        let mut facts = crate::legal::TransactionFacts::new();
+        facts.vendor_jurisdiction = self.doc_fields.vendor_jurisdiction.clone();
+        facts.supply_type = self.doc_fields.supply_type.clone();
+        facts.tax_code = self.doc_fields.tax_code.clone();
+        facts.amount = self.doc_fields.amount.map(|d| d.to_string());
+        facts.is_business_activity = self.doc_fields.is_business_activity;
+        facts.is_ordinary = self.doc_fields.is_ordinary;
+        facts.is_necessary = self.doc_fields.is_necessary;
+        facts
     }
 
     pub fn classify(self, _category: String) -> PipelineState<Classified> {
@@ -147,6 +176,7 @@ impl PipelineState<Validated> {
             confidence: self.confidence,
             issues: self.issues,
             meta: self.meta.advance("classify", self.confidence, &[]),
+            doc_fields: self.doc_fields,
             _state: PhantomData,
         }
     }
@@ -160,6 +190,7 @@ impl PipelineState<Classified> {
             confidence: self.confidence,
             issues: self.issues,
             meta: self.meta,
+            doc_fields: self.doc_fields,
             _state: PhantomData,
         }
     }
@@ -171,6 +202,7 @@ impl PipelineState<Classified> {
             confidence: self.confidence,
             issues: self.issues,
             meta: self.meta,
+            doc_fields: self.doc_fields,
             _state: PhantomData,
         }
     }
@@ -633,9 +665,28 @@ mod tests {
         use crate::legal::{au_gst, LegalSolver};
         let solver = LegalSolver::new();
         let rules = vec![au_gst::rule_38_190()];
-        let state = PipelineState::<Ingested>::new("doc1", "WF--BH--2026-01").validate(Vec::new());
-        let result = state.verify_legal(&solver, &rules);
-        assert!(result.is_ok() || result.is_err());
+
+        // US SaaS with BASEXCLUDED → legal gate passes → Ok(Classified)
+        let state = PipelineState::<Ingested>::new("doc1", "WF--BH--2026-01")
+            .with_doc_fields(DocumentFields {
+                vendor_jurisdiction: Some("US".to_string()),
+                supply_type: Some("SaaS".to_string()),
+                tax_code: Some("BASEXCLUDED".to_string()),
+                ..DocumentFields::default()
+            })
+            .validate(Vec::new());
+        assert!(state.verify_legal(&solver, &rules).is_ok());
+
+        // US SaaS with INPUT → legal gate fails → Err(NeedsReview)
+        let state = PipelineState::<Ingested>::new("doc2", "WF--BH--2026-01")
+            .with_doc_fields(DocumentFields {
+                vendor_jurisdiction: Some("US".to_string()),
+                supply_type: Some("SaaS".to_string()),
+                tax_code: Some("INPUT".to_string()),
+                ..DocumentFields::default()
+            })
+            .validate(Vec::new());
+        assert!(state.verify_legal(&solver, &rules).is_err());
     }
 
     #[test]

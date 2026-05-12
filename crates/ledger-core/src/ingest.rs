@@ -106,3 +106,12 @@ pub fn deterministic_tx_id(row: &TransactionInput) -> String {
     );
     blake3::hash(canonical.as_bytes()).to_hex().to_string()
 }
+
+impl From<&TransactionInput> for crate::pipeline::DocumentFields {
+    fn from(row: &TransactionInput) -> Self {
+        Self {
+            amount: row.amount.trim().parse().ok(),
+            ..Self::default()
+        }
+    }
+}
