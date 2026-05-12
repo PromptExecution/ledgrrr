@@ -2161,11 +2161,16 @@ impl TurboLedgerTools for TurboLedgerService {
         ))
     }
 
-    // TODO: Rollback guidance for all-or-nothing mode failures:
-    // When batch_mode=AllOrNothing and failures occur, operators should:
-    // 1. Re-query affected tx_ids via query_transactions
-    // 2. Manually reverse classifications using classify_transaction with original category
-    // This is intentional trade-off vs full transactional rollback implementation
+    /// Classify a batch of transactions in one call.
+    ///
+    /// # Failure recovery (`AllOrNothing` mode)
+    /// When `batch_mode=AllOrNothing` the loop stops at the first failure and returns
+    /// a partial result (some items `Succeeded`, the rest absent). To recover:
+    /// 1. Call `query_transactions` with the affected `tx_ids` to see current state.
+    /// 2. For any item that was incorrectly classified before the abort, call
+    ///    `classify_transaction` with the original category to reverse it.
+    /// Full transactional rollback is not implemented — this is an intentional
+    /// trade-off to avoid distributed-transaction complexity in the in-memory store.
     fn batch_classify(
         &self,
         request: BatchClassifyRequest,
@@ -2259,8 +2264,6 @@ impl TurboLedgerTools for TurboLedgerService {
 
         Ok(BatchClassifyResponse { summary, items })
     }
-
-    // TODO: Rollback guidance for all-or-nothing mode failures
 
     // Flag resolution: Open -> Resolved transitions via ClassificationEngine::resolve_flag
     fn bulk_resolve_flags(
