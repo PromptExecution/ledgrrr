@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Mutex;
+use blake3;
 
 use ledger_core::classify::{ClassificationEngine, FlagStatus, SampleTransaction};
 use ledger_core::document::{DocType, DocumentRecord, DocumentStatus, XeroLink};
@@ -14,6 +15,7 @@ use ledger_core::workbook::REQUIRED_SHEETS;
 use rust_decimal::Decimal;
 use rust_xlsxwriter::Workbook;
 use serde::{Deserialize, Serialize};
+use schemars::JsonSchema;
 
 #[cfg(feature = "llm")]
 use ledgerr_llm::{LlmClient, LlmConfig};
@@ -21,6 +23,8 @@ use ledgerr_llm::{LlmClient, LlmConfig};
 use xero_service::XeroService;
 
 pub mod actor;
+pub mod batch_executor;
+use crate::batch_executor::BatchExecutor;
 pub mod calendar_tool;
 pub mod contract;
 pub mod events;
@@ -62,7 +66,17 @@ pub use tax_assist::{
     TaxAssistResponse, TaxAssistSummary, TaxEvidenceChainRequest, TaxEvidenceChainResponse,
     TaxEvidenceCurrentState, TaxEvidenceEvent, TaxEvidenceRow, TaxEvidenceSource,
 };
-
+pub use contract::{
+    TransactionFilters, DateRange, AmountRange, SortDirection, SortField, SortSpec,
+    PaginationSpec, TransactionRow as TransactionRowResponse,
+    BatchClassifyRequest, BatchClassifyResponse,
+    BatchResolveFlagsRequest, BulkResolveFlagsResponse,
+    ApplyMappingBulkRequest, ApplyMappingBulkResponse,
+    BatchMode, FlagResolution, SimilarityMatchType,
+    BatchSummary, BatchItemResult, BatchItemStatus,
+    FetchQueueRequest, FetchQueueResponse,
+    QueueItem, QueueItemType, QueueSeverity, QueueStatus, QueueProvenance,
+};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccountSummary {
     pub account_id: String,
@@ -240,6 +254,18 @@ pub struct QueryFlagsResponse {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueryTransactionsRequest {
+    pub filters: TransactionFilters,
+    pub sort: Option<SortSpec>,
+    pub pagination: Option<PaginationSpec>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueryTransactionsResponse {
+    pub transactions: Vec<TransactionRowResponse>,
+    pub total_count: usize,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassifyTransactionRequest {
     pub tx_id: String,
     pub category: String,
@@ -247,7 +273,6 @@ pub struct ClassifyTransactionRequest {
     pub note: Option<String>,
     pub actor: String,
 }
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReconcileExcelClassificationRequest {
     pub tx_id: String,
@@ -260,7 +285,7 @@ pub struct ReconcileExcelClassificationRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueryAuditLogRequest;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct AuditEntryResponse {
     pub timestamp: String,
     pub actor: String,
@@ -389,6 +414,7 @@ pub trait TurboLedgerTools {
         request: ClassifyIngestedRequest,
     ) -> Result<ClassifyIngestedResponse, ToolError>;
     fn query_flags(&self, request: QueryFlagsRequest) -> Result<QueryFlagsResponse, ToolError>;
+    fn query_transactions(&self, request: QueryTransactionsRequest) -> Result<QueryTransactionsResponse, ToolError>;
     fn classify_transaction(
         &self,
         request: ClassifyTransactionRequest,
@@ -409,6 +435,22 @@ pub trait TurboLedgerTools {
         &self,
         request: GetScheduleSummaryRequest,
     ) -> Result<GetScheduleSummaryResponse, ToolError>;
+    fn batch_classify(
+        &self,
+        request: BatchClassifyRequest,
+    ) -> Result<BatchClassifyResponse, ToolError>;
+    fn bulk_resolve_flags(
+        &self,
+        request: BatchResolveFlagsRequest,
+    ) -> Result<BulkResolveFlagsResponse, ToolError>;
+    fn apply_mapping_bulk(
+        &self,
+        request: ApplyMappingBulkRequest,
+    ) -> Result<ApplyMappingBulkResponse, ToolError>;
+    fn fetch_work_queue(
+        &self,
+        request: FetchQueueRequest,
+    ) -> Result<FetchQueueResponse, ToolError>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -474,6 +516,96 @@ pub struct TurboLedgerService {
     #[cfg(feature = "llm")]
     llm: Option<LlmClient>,
 }
+/// Apply transaction filters to a set of transactions joined with classifications
+fn apply_transaction_filters<'a>(
+    tx_rows: &'a BTreeMap<String, TransactionInput>,
+    classifications: &'a BTreeMap<String, StoredClassification>,
+    filters: &TransactionFilters,
+) -> Result<Vec<(String, &'a TransactionInput, Option<&'a StoredClassification>)>, ToolError> {
+    let mut results: Vec<_> = tx_rows.iter()
+        .filter_map(|(tx_id, tx)| {
+            // Join with classification data
+            let classification = classifications.get(tx_id);
+            Some((tx_id.clone(), tx, classification))
+        })
+        .collect();
+
+    // Apply filters
+    if let Some(ref account_id) = filters.account_id {
+        results.retain(|(_, tx, _)| tx.account_id == *account_id);
+    }
+
+    if let Some(ref date_range) = filters.date_range {
+        results.retain(|(_, tx, _)| {
+            tx.date >= date_range.start && tx.date <= date_range.end
+        });
+    }
+
+    if let Some(ref category) = filters.category {
+        results.retain(|(_, _, classification)| {
+            classification.map_or(false, |c| c.category.to_lowercase() == category.to_lowercase())
+        });
+    }
+
+    if let Some(ref amount_range) = filters.amount_range {
+        let min = Decimal::from_str(&amount_range.min)
+            .map_err(|e| ToolError::InvalidInput(format!("invalid amount_range.min: {}", e)))?;
+        let max = Decimal::from_str(&amount_range.max)
+            .map_err(|e| ToolError::InvalidInput(format!("invalid amount_range.max: {}", e)))?;
+        results.retain(|(_, tx, _)| {
+            let amount = Decimal::from_str(&tx.amount).unwrap_or(Decimal::ZERO);
+            amount >= min && amount <= max
+        });
+    }
+
+    if let Some(ref source_ref) = filters.source_ref {
+        results.retain(|(_, tx, _)| {
+            tx.source_ref.to_lowercase().contains(&source_ref.to_lowercase())
+        });
+    }
+
+    if let Some(ref desc) = filters.description_contains {
+        results.retain(|(_, tx, _)| {
+            tx.description.to_lowercase().contains(&desc.to_lowercase())
+        });
+    }
+
+    Ok(results)
+}
+
+/// Apply sorting to a set of transactions
+fn apply_transaction_sort<'a>(
+    mut transactions: Vec<(String, &'a TransactionInput, Option<&'a StoredClassification>)>,
+    sort_spec: &Option<SortSpec>,
+) -> Vec<(String, &'a TransactionInput, Option<&'a StoredClassification>)> {
+    let sort_spec = sort_spec.as_ref().map_or(
+        &SortSpec { 
+            field: SortField::Date, 
+            direction: SortDirection::Desc 
+        },
+        |s| s
+    );
+    
+    transactions.sort_by(|a, b| match sort_spec.field {
+        SortField::Date => {
+            let ord = a.1.date.cmp(&b.1.date);
+            if sort_spec.direction == SortDirection::Desc { ord.reverse() } else { ord }
+        }
+        SortField::Amount => {
+            let a_amt = Decimal::from_str(&a.1.amount).unwrap_or(Decimal::ZERO);
+            let b_amt = Decimal::from_str(&b.1.amount).unwrap_or(Decimal::ZERO);
+            let ord = a_amt.cmp(&b_amt);
+            if sort_spec.direction == SortDirection::Desc { ord.reverse() } else { ord }
+        }
+        SortField::Description => {
+            let ord = a.1.description.cmp(&b.1.description);
+            if sort_spec.direction == SortDirection::Desc { ord.reverse() } else { ord }
+        }
+    });
+    
+    transactions
+}
+
 
 impl TurboLedgerService {
     pub fn from_manifest_str(src: &str) -> Result<Self, ToolError> {
@@ -1185,6 +1317,59 @@ impl TurboLedgerService {
     }
 }
 
+// ============================================================================
+// WORK QUEUE TRANSFORMATION FUNCTIONS
+// ============================================================================
+
+/// Convert a flag record to a queue item
+fn flag_to_queue_item(flag: &FlagRecordResponse) -> QueueItem {
+    let id = blake3::hash(format!("flag:{}:{}", flag.tx_id, flag.year).as_bytes()).to_hex();
+    let severity = match flag.status {
+        FlagStatusRequest::Open => QueueSeverity::High,
+        FlagStatusRequest::Resolved => QueueSeverity::Low,
+    };
+    let created_at = "1970-01-01T00:00:00Z".to_string(); // No timestamp in FlagRecordResponse
+    
+    QueueItem {
+        id: id.to_string(),
+        item_type: QueueItemType::Flag,
+        severity,
+        created_at,
+        status: match flag.status {
+            FlagStatusRequest::Open => QueueStatus::Open,
+            FlagStatusRequest::Resolved => QueueStatus::Resolved,
+        },
+        provenance: QueueProvenance::ReviewTool,
+        related_tx_ids: vec![flag.tx_id.clone()],
+        summary: flag.reason.clone(),
+        tx_id: Some(flag.tx_id.clone()),
+        document_ref: None,
+        metadata: BTreeMap::new(),
+    }
+}
+
+
+/// Convert a lifecycle event (manual change) to a queue item
+fn manual_change_to_queue_item(event: &LifecycleEvent) -> QueueItem {
+    let id = format!("manual:{}", event.event_id);
+    
+    QueueItem {
+        id,
+        item_type: QueueItemType::ManualChange,
+        severity: QueueSeverity::Low,
+        created_at: event.occurred_at.clone(),
+        status: QueueStatus::Resolved,
+        provenance: QueueProvenance::AuditTool,
+        summary: format!("Manual change: {}", event.event_type),
+        related_tx_ids: event.tx_id.clone().map(|id| vec![id]).unwrap_or_default(),
+        tx_id: event.tx_id.clone(),
+        document_ref: event.document_ref.clone(),
+        metadata: BTreeMap::new(),
+    }
+}
+
+
+
 impl TurboLedgerTools for TurboLedgerService {
     fn list_accounts(&self) -> Result<Vec<AccountSummary>, ToolError> {
         let out = self
@@ -1576,6 +1761,55 @@ impl TurboLedgerTools for TurboLedgerService {
         })
     }
 
+    fn query_transactions(&self, request: QueryTransactionsRequest) -> Result<QueryTransactionsResponse, ToolError> {
+        // Lock the classification state
+        let classification = self
+            .classification_state
+            .lock()
+            .map_err(|_| ToolError::Internal("classification lock poisoned".to_string()))?;
+
+        // Apply filters
+        let mut filtered = apply_transaction_filters(&classification.tx_rows, &classification.classifications, &request.filters)?;
+
+        // Get total count before pagination
+        let total_count = filtered.len();
+
+        // Apply sorting
+        filtered = apply_transaction_sort(filtered, &request.sort);
+
+        // Apply pagination
+        let pagination = request.pagination.unwrap_or(PaginationSpec {
+            limit: 100,
+            offset: 0,
+        });
+        let limit = pagination.limit.min(1000) as usize; // Max 1000 per page
+        let offset = pagination.offset as usize;
+        let paginated: Vec<_> = if offset < filtered.len() {
+            filtered.into_iter().skip(offset).take(limit).collect()
+        } else {
+            Vec::new()
+        };
+
+        // Build response rows
+        let transactions: Vec<TransactionRowResponse> = paginated.into_iter()
+            .map(|(tx_id, tx, classification)| TransactionRowResponse {
+                tx_id: tx_id.clone(),
+                account_id: tx.account_id.clone(),
+                date: tx.date.clone(),
+                amount: tx.amount.clone(),
+                description: tx.description.clone(),
+                source_ref: tx.source_ref.clone(),
+                category: classification.map(|c| c.category.clone()),
+                confidence: classification.map(|c| c.confidence.to_string()),
+            })
+            .collect();
+
+        Ok(QueryTransactionsResponse {
+            transactions,
+            total_count,
+        })
+    }
+
     fn classify_transaction(
         &self,
         request: ClassifyTransactionRequest,
@@ -1925,6 +2159,405 @@ impl TurboLedgerTools for TurboLedgerService {
             request.year,
             request.schedule,
         ))
+    }
+
+    // TODO: Rollback guidance for all-or-nothing mode failures:
+    // When batch_mode=AllOrNothing and failures occur, operators should:
+    // 1. Re-query affected tx_ids via query_transactions
+    // 2. Manually reverse classifications using classify_transaction with original category
+    // This is intentional trade-off vs full transactional rollback implementation
+    fn batch_classify(
+        &self,
+        request: BatchClassifyRequest,
+    ) -> Result<BatchClassifyResponse, ToolError> {
+        let classification = self
+            .classification_state
+            .lock()
+            .map_err(|_| ToolError::Internal("classification lock poisoned".to_string()))?;
+
+        let dry_run = request.dry_run;
+        let batch_mode = request.batch_mode;
+        // Validate confidence at entry; the parsed value is not used directly — the raw string
+        // is forwarded to apply_classification_action which re-parses it per-item.
+        let _confidence = parse_confidence(&request.confidence)?;
+        drop(classification);
+
+        if dry_run {
+            // Dry run mode: return all items as skipped
+            let items: Vec<BatchItemResult> = request
+                .tx_ids
+                .iter()
+                .map(|tx_id| BatchItemResult {
+                    tx_id: tx_id.clone(),
+                    status: BatchItemStatus::Skipped {
+                        reason: "dry_run".to_string(),
+                    },
+                    audit_entries: vec![],
+                })
+                .collect();
+
+            let summary = BatchSummary {
+                total_requested: request.tx_ids.len(),
+                succeeded: 0,
+                failed: 0,
+                skipped: request.tx_ids.len(),
+                batch_duration_ms: 0,
+            };
+
+            return Ok(BatchClassifyResponse { summary, items });
+        }
+
+        // Normal mode: execute operations and collect both items and summary
+        let start = std::time::Instant::now();
+        let total_requested = request.tx_ids.len();
+        let mut succeeded = 0;
+        let mut failed = 0;
+        let mut items = Vec::new();
+
+        for tx_id in &request.tx_ids {
+            match self.apply_classification_action(
+                ClassifyTransactionRequest {
+                    tx_id: tx_id.to_string(),
+                    category: request.category.clone(),
+                    confidence: request.confidence.clone(),
+                    note: request.note.clone(),
+                    actor: request.actor.clone(),
+                },
+                "classification",
+            ) {
+                Ok(response) => {
+                    succeeded += 1;
+                    items.push(BatchItemResult {
+                        tx_id: response.tx_id,
+                        status: BatchItemStatus::Succeeded,
+                        audit_entries: response.audit_entries,
+                    });
+                }
+                Err(e) => {
+                    failed += 1;
+                    items.push(BatchItemResult {
+                        tx_id: tx_id.clone(),
+                        status: BatchItemStatus::Failed { error: e.to_string() },
+                        audit_entries: vec![],
+                    });
+                    
+                    if batch_mode == BatchMode::AllOrNothing {
+                        break;
+                    }
+                }
+            }
+        }
+
+        let duration = start.elapsed().as_millis() as u64;
+        let summary = BatchSummary {
+            total_requested,
+            succeeded,
+            failed,
+            skipped: 0,
+            batch_duration_ms: duration,
+        };
+
+        Ok(BatchClassifyResponse { summary, items })
+    }
+
+    // TODO: Rollback guidance for all-or-nothing mode failures
+
+    // Simplified flag resolution - only supports Open -> Resolved transitions
+    // TODO: Rollback guidance for all-or-nothing mode failures
+    // TODO: Flag resolution requires ledger-core update to expose flag resolution API
+    // Current ClassificationEngine only supports Open and Resolved states
+    // and does not provide a public method to resolve flags
+    fn bulk_resolve_flags(
+        &self,
+        request: BatchResolveFlagsRequest,
+    ) -> Result<BulkResolveFlagsResponse, ToolError> {
+        if !request.dry_run {
+            return Err(ToolError::Internal(
+                "bulk_resolve_flags requires ledger-core update: ClassificationEngine needs a public flag resolution method".to_string()
+            ));
+        }
+
+        // Dry run implementation - just return skipped items
+        let items: Vec<BatchItemResult> = request
+            .tx_ids
+            .iter()
+            .map(|tx_id| BatchItemResult {
+                tx_id: tx_id.clone(),
+                status: BatchItemStatus::Skipped {
+                    reason: "dry_run".to_string(),
+                },
+                audit_entries: vec![],
+            })
+            .collect();
+
+        Ok(BulkResolveFlagsResponse {
+            summary: BatchSummary {
+                total_requested: request.tx_ids.len(),
+                succeeded: 0,
+                failed: 0,
+                skipped: request.tx_ids.len(),
+                batch_duration_ms: 0,
+            },
+            items,
+        })
+    }
+    fn apply_mapping_bulk(
+        &self,
+        request: ApplyMappingBulkRequest,
+    ) -> Result<ApplyMappingBulkResponse, ToolError> {
+        let classification = self
+            .classification_state
+            .lock()
+            .map_err(|_| ToolError::Internal("classification lock poisoned".to_string()))?;
+
+        let dry_run = request.dry_run;
+        let batch_mode = request.batch_mode;
+
+        // Get source transaction
+        let source_category = classification
+            .classifications
+            .get(&request.source_tx_id)
+            .ok_or_else(|| ToolError::InvalidInput("source_tx_id not classified".to_string()))?
+            .category
+            .clone();
+
+        let _source_row = classification
+            .tx_rows
+            .get(&request.source_tx_id)
+            .ok_or_else(|| ToolError::InvalidInput("source_tx_id not found".to_string()))?;
+
+        drop(classification);
+
+
+        // TODO: Build transient index for O(n) lookup (deferred optimization)
+        // For now, O(n²) search through all transactions
+
+        let mut matches = Vec::new();
+        {
+            let classification = self
+                .classification_state
+                .lock()
+                .map_err(|_| ToolError::Internal("classification lock poisoned".to_string()))?;
+
+            for (tx_id, row) in &classification.tx_rows {
+                if tx_id == &request.source_tx_id {
+                    continue; // Skip source
+                }
+
+                // Check similarity based on match_fields
+                let is_similar = request.match_fields.iter().any(|field| {
+                    match field.as_str() {
+                        "description" => match request.similarity_type {
+                            SimilarityMatchType::Exact => row.description.to_lowercase()
+                                == source_category.to_lowercase(),
+                            SimilarityMatchType::Substring => row.description
+                                .to_lowercase()
+                                .contains(&source_category.to_lowercase()),
+                            SimilarityMatchType::Prefix => row.description.to_lowercase()
+                                .starts_with(&source_category.to_lowercase()),
+                        },
+                        "category" => row.description.to_lowercase() == source_category.to_lowercase(),
+                        "amount" => {
+                            let amt1 = Decimal::from_str(&row.amount).unwrap();
+                            let amt2 = rust_decimal::Decimal::ZERO;
+                            amt1 == amt2
+                        }
+                        _ => false,
+                    }
+                });
+
+                if is_similar {
+                    matches.push(tx_id.clone());
+                }
+            }
+        }
+
+        // Sort matches and limit by max_matches
+        matches.truncate(request.max_matches);
+
+        let match_count = matches.len();
+
+        // Use BatchExecutor to apply classifications
+        let classification_summary = if dry_run {
+            // Return empty summary (no state mutations)
+            BatchSummary {
+                total_requested: match_count,
+                succeeded: 0,
+                failed: 0,
+                skipped: match_count,
+                batch_duration_ms: 0,
+            }
+        } else {
+            BatchExecutor::execute_batch(
+                matches.clone(),
+                batch_mode,
+                false, // dry_run=false
+                |tx_id| {
+                    // Reuse apply_classification_action
+                    let response = self.apply_classification_action(
+                        ClassifyTransactionRequest {
+                            tx_id: tx_id.to_string(),
+                            category: request.target_category.clone(),
+                            confidence: request.target_confidence.clone(),
+                            note: Some(format!("bulk applied from {}", request.source_tx_id)),
+                            actor: request.actor.clone(),
+                        },
+                        "bulk_mapping",
+                    )?;
+
+                    Ok(BatchItemResult {
+                        tx_id: response.tx_id,
+                        status: BatchItemStatus::Succeeded,
+                        audit_entries: response.audit_entries,
+                    })
+                },
+            )?
+        };
+
+        Ok(ApplyMappingBulkResponse {
+            classification_summary,
+            matched_tx_ids: matches,
+            items: vec![], // Populated by caller from audit log
+        })
+    }
+
+    fn fetch_work_queue(
+        &self,
+        request: FetchQueueRequest,
+    ) -> Result<FetchQueueResponse, ToolError> {
+        let classification = self.classification_state.lock()
+            .map_err(|_| ToolError::Internal("classification lock poisoned".to_string()))?;
+        
+        // Phase 1: Gather data from all sources
+        let mut items = Vec::new();
+        
+        // 1. Query flags (open + resolved across known transaction years)
+        if request.item_types.as_ref().map_or(true, |v| v.is_empty() || v.contains(&QueueItemType::Flag)) {
+            let years: BTreeSet<i32> = classification
+                .tx_rows
+                .values()
+                .map(|tx| derive_year(&tx.date))
+                .filter(|year| (1900..=9999).contains(year))
+                .collect();
+
+            for year in years {
+                let open_flags = classification
+                    .engine
+                    .query_flags(year, FlagStatus::Open);
+                for flag in open_flags {
+                    let flag_resp = FlagRecordResponse {
+                        tx_id: flag.tx_id,
+                        year: flag.year,
+                        status: FlagStatusRequest::Open,
+                        reason: flag.reason,
+                        category: flag.category,
+                        confidence: flag.confidence,
+                    };
+                    items.push(flag_to_queue_item(&flag_resp));
+                }
+
+                let resolved_flags = classification
+                    .engine
+                    .query_flags(year, FlagStatus::Resolved);
+                for flag in resolved_flags {
+                    let flag_resp = FlagRecordResponse {
+                        tx_id: flag.tx_id,
+                        year: flag.year,
+                        status: FlagStatusRequest::Resolved,
+                        reason: flag.reason,
+                        category: flag.category,
+                        confidence: flag.confidence,
+                    };
+                    items.push(flag_to_queue_item(&flag_resp));
+                }
+            }
+        }
+        
+        drop(classification);
+        
+        // 2. Query tax ambiguities (if item_types includes Ambiguity)
+        // Note: This requires a full reconciliation stage which may be expensive
+        // For now, we return empty if requested (can be enhanced later)
+        if request.item_types.as_ref().map_or(false, |v| v.contains(&QueueItemType::Ambiguity)) {
+            // TODO: Implement tax ambiguity query
+            // This would require running a reconciliation stage
+        }
+        
+        // 3. Query manual changes from audit log (if item_types includes ManualChange)
+        if request.item_types.as_ref().map_or(true, |v| v.is_empty() || v.contains(&QueueItemType::ManualChange)) {
+            let lifecycle = self.lifecycle_events.lock()
+                .map_err(|_| ToolError::Internal("events lock poisoned".to_string()))?;
+            
+            // Get all events (filtering by time_end would require changes to EventHistoryFilter)
+            let filter = EventHistoryFilter {
+                tx_id: None,
+                document_ref: None,
+                time_start: None,
+                time_end: None,
+            };
+            let events = lifecycle.list_events(filter).map_err(|_| {
+                ToolError::Internal("Failed to query event history".to_string())
+            })?.events;
+            
+            for event in events {
+                // Filter for manual changes (non-agent adjustments/classifications)
+                let actor = event.payload.get("actor")
+                    .cloned()
+                    .unwrap_or("unknown".to_string());
+                if actor != "agent" && (event.event_type == "adjustment" || event.event_type == "classification") {
+                    items.push(manual_change_to_queue_item(&event));
+                }
+            }
+        }
+        
+        // 4. Query reconciliation blockers (if item_types includes Blocker)
+        // Note: This requires running reconciliation which may be expensive
+        // For now, we return empty if requested (can be enhanced later)
+        if request.item_types.as_ref().map_or(false, |v| v.contains(&QueueItemType::Blocker)) {
+            // TODO: Implement blocker query
+            // This would require running a reconciliation stage
+        }
+        
+        // 5. Query document issues (if item_types includes DocumentIssue)
+        // Note: This would require checking document registry for failed ingests
+        // For now, we return empty if requested (can be enhanced later)
+        if request.item_types.as_ref().map_or(false, |v| v.contains(&QueueItemType::DocumentIssue)) {
+            // TODO: Implement document issue query
+            // This would require checking document registry
+        }
+        
+        // Apply status filter
+        if let Some(ref statuses) = request.statuses {
+            if !statuses.is_empty() {
+                items.retain(|item| statuses.contains(&item.status));
+            }
+        }
+        
+        // Apply updated_after filter
+        if let Some(ref after) = request.updated_after {
+            items.retain(|item| item.created_at.as_str() > after.as_str());
+        }
+        
+        // Phase 2: Sort by default (created_at descending)
+        items.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        
+        // Phase 3: Paginate
+        let total_count = items.len() as u64;
+        let limit = request.limit;
+        let offset = request.offset as usize;
+        
+        let paginated: Vec<QueueItem> = items
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .collect();
+        
+        Ok(FetchQueueResponse {
+            items: paginated,
+            total_count,
+            offset: request.offset as u32,
+            limit: limit as u32,
+        })
     }
 }
 

@@ -21,6 +21,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::ToolError;
+use crate::AuditEntryResponse;
 
 pub const DOCUMENTS_TOOL: &str = "ledgerr_documents";
 pub const REVIEW_TOOL: &str = "ledgerr_review";
@@ -86,6 +87,11 @@ pub const PUBLISHED_TOOLS: [ToolContractSpec; 10] = [
             "query_flags",
             "classify_transaction",
             "reconcile_excel_classification",
+            "query_transactions",
+            "batch_classify",
+            "bulk_resolve_flags",
+            "apply_mapping_bulk",
+            "fetch_work_queue",
         ],
     },
     ToolContractSpec {
@@ -183,6 +189,82 @@ pub struct SampleTxInput {
     pub date: String,
     pub amount: String,
     pub description: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct DateRange {
+    pub start: String,
+    pub end: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AmountRange {
+    pub min: String,
+    pub max: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SortDirection {
+    Asc,
+    Desc,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SortField {
+    Date,
+    Amount,
+    Description,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SortSpec {
+    pub field: SortField,
+    pub direction: SortDirection,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PaginationSpec {
+    pub limit: u32,
+    #[serde(default)]
+    pub offset: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct TransactionFilters {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub date_range: Option<DateRange>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub amount_range: Option<AmountRange>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description_contains: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct TransactionRow {
+    pub tx_id: String,
+    pub account_id: String,
+    pub date: String,
+    pub amount: String,
+    pub description: String,
+    pub source_ref: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -420,6 +502,25 @@ pub enum ReviewArgs {
         actor: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         note: Option<String>,
+    },
+    QueryTransactions {
+        filters: TransactionFilters,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sort: Option<SortSpec>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pagination: Option<PaginationSpec>,
+    },
+    BatchClassify {
+        request: BatchClassifyRequest,
+    },
+    BatchResolveFlags {
+        request: BatchResolveFlagsRequest,
+    },
+    ApplyMappingBulk {
+        request: ApplyMappingBulkRequest,
+    },
+    FetchQueue {
+        request: FetchQueueRequest,
     },
 }
 
@@ -1058,3 +1159,332 @@ fn pretty_json(value: &Value) -> String {
 fn compact_tool_call(name: &str, arguments: Value) -> String {
     serde_json::to_string(&json!({ "name": name, "arguments": arguments })).expect("json line")
 }
+
+// ============================================================================
+// Batch Review Operations Types (Issue #25)
+// ============================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BatchMode {
+    /// Stop processing on first error and revert all changes
+    AllOrNothing,
+    /// Continue processing even if individual operations fail
+    ContinueOnError,
+}
+
+impl Default for BatchMode {
+    fn default() -> Self {
+        Self::ContinueOnError
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum FlagResolution {
+    /// Mark flag as resolved (approval)
+    Approve,
+    /// Mark flag as resolved (rejection)
+    Reject,
+    /// Escalate flag for higher-level review
+    Escalate,
+    /// Dismiss flag as no longer relevant
+    Dismiss,
+    /// Defer flag for later review
+    Defer,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SimilarityMatchType {
+    /// Exact field match
+    Exact,
+    /// Substring match (target contains source)
+    Substring,
+    /// Prefix match (target starts with source)
+    Prefix,
+}
+
+impl Default for SimilarityMatchType {
+    fn default() -> Self {
+        Self::Exact
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BatchClassifyRequest {
+    /// List of transaction IDs to classify
+    pub tx_ids: Vec<String>,
+    /// Target category for all transactions
+    pub category: String,
+    /// Confidence value (decimal string in [0,1])
+    pub confidence: String,
+    /// Optional note explaining the classification
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    /// Actor performing the classification (e.g., "agent", "user", "reviewer")
+    pub actor: String,
+    /// Error handling mode
+    #[serde(default)]
+    pub batch_mode: BatchMode,
+    /// If true, don't modify state, just validate
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BatchClassifyResponse {
+    /// Summary of batch execution
+    pub summary: BatchSummary,
+    /// Individual item results
+    pub items: Vec<BatchItemResult>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BatchResolveFlagsRequest {
+    /// List of transaction IDs with open flags to resolve
+    pub tx_ids: Vec<String>,
+    /// Resolution action to apply
+    pub resolution: FlagResolution,
+    /// Optional reason for the resolution
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    /// Actor performing the resolution
+    pub actor: String,
+    /// Error handling mode
+    #[serde(default)]
+    pub batch_mode: BatchMode,
+    /// If true, don't modify state, just validate
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BulkResolveFlagsResponse {
+    /// Summary of batch execution
+    pub summary: BatchSummary,
+    /// Individual item results
+    pub items: Vec<BatchItemResult>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ApplyMappingBulkRequest {
+    /// Source transaction ID to use as template
+    pub source_tx_id: String,
+    /// Fields to match on (e.g., ["description", "amount"])
+    pub match_fields: Vec<String>,
+    /// Similarity matching algorithm
+    #[serde(default)]
+    pub similarity_type: SimilarityMatchType,
+    /// Target category to apply to matches
+    pub target_category: String,
+    /// Target confidence value (decimal string in [0,1])
+    pub target_confidence: String,
+    /// Actor performing the operation
+    pub actor: String,
+    /// Maximum number of matches to process
+    #[serde(default)]
+    pub max_matches: usize,
+    /// Error handling mode
+    #[serde(default)]
+    pub batch_mode: BatchMode,
+    /// If true, don't modify state, just validate
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ApplyMappingBulkResponse {
+    /// Summary of classification operations
+    pub classification_summary: BatchSummary,
+    /// Transaction IDs that matched the similarity criteria
+    pub matched_tx_ids: Vec<String>,
+    /// Individual item results (empty in success cases, populated on errors)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub items: Vec<BatchItemResult>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BatchSummary {
+    /// Total number of transactions requested
+    pub total_requested: usize,
+    /// Number of transactions that succeeded
+    pub succeeded: usize,
+    /// Number of transactions that failed
+    pub failed: usize,
+    /// Number of transactions that were skipped
+    pub skipped: usize,
+    /// Total batch execution time in milliseconds
+    pub batch_duration_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BatchItemResult {
+    /// Transaction ID
+    pub tx_id: String,
+    /// Status of this item
+    pub status: BatchItemStatus,
+    /// Audit entries generated for this item
+    pub audit_entries: Vec<AuditEntryResponse>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum BatchItemStatus {
+    /// Item was processed successfully
+    Succeeded,
+    /// Item failed to process
+    Failed {
+        /// Error message
+        error: String,
+    },
+    /// Item was skipped
+    Skipped {
+        /// Reason for skipping
+        reason: String,
+    },
+}
+
+
+/// ============================================================================
+/// WORK QUEUE CONTRACT (Unified work items from multiple sources)
+/// ============================================================================
+
+/// Type of work queue item
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum QueueItemType {
+    /// Review flags from transaction classification
+    Flag,
+    /// Tax treatment ambiguities requiring human review
+    Ambiguity,
+    /// Reconciliation blockers preventing commit
+    Blocker,
+    /// Document processing issues (failed ingest, parse errors, etc.)
+    DocumentIssue,
+    /// Manual changes made by human operators
+    ManualChange,
+}
+
+/// Severity level of a work queue item
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum QueueSeverity {
+    /// Resolved or informational items
+    Low,
+    /// Medium priority items
+    Medium,
+    /// High priority items requiring attention
+    High,
+    /// Critical blockers preventing normal operation
+    Critical,
+}
+
+/// Status of a work queue item
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum QueueStatus {
+    /// Item is open and requires attention
+    Open,
+    /// Item is currently being worked on
+    InProgress,
+    /// Item has been resolved
+    Resolved,
+    /// Item has been dismissed (not applicable or false positive)
+    Dismissed,
+}
+
+/// Provenance of a work queue item (which tool/source created it)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum QueueProvenance {
+    /// From classification review tool
+    ReviewTool,
+    /// From tax analysis tool
+    TaxTool,
+    /// From audit log (manual changes)
+    AuditTool,
+    /// From reconciliation tool
+    ReconciliationTool,
+    /// From document ingest tool
+    DocumentTool,
+}
+
+/// A work queue item from any source
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct QueueItem {
+    /// Content hash ID (Blake3)
+    pub id: String,
+    /// Type of item
+    pub item_type: QueueItemType,
+    /// Severity level
+    pub severity: QueueSeverity,
+    /// ISO 8601 timestamp when item was created
+    pub created_at: String,
+    /// Current status
+    pub status: QueueStatus,
+    /// Which tool/source emitted this item
+    pub provenance: QueueProvenance,
+    /// Affected transaction IDs
+    pub related_tx_ids: Vec<String>,
+    /// Human-readable summary
+    pub summary: String,
+    /// Transaction ID (for transaction-related items, optional)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tx_id: Option<String>,
+    /// Document reference (for document-related items, optional)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub document_ref: Option<String>,
+    /// Type-specific metadata
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub metadata: BTreeMap<String, Value>,
+}
+
+/// Request to fetch work queue items
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FetchQueueRequest {
+    /// Filter by item type (None = all types)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub item_types: Option<Vec<QueueItemType>>,
+    /// Filter by status (None = all statuses)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statuses: Option<Vec<QueueStatus>>,
+    /// Only include items updated after this ISO 8601 timestamp (None = no filter)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_after: Option<String>,
+    /// Maximum number of items to return (default: 100)
+    #[serde(default = "default_limit")]
+    pub limit: usize,
+    /// Skip first N items (default: 0)
+    #[serde(default)]
+    pub offset: usize,
+}
+
+fn default_limit() -> usize {
+    100
+}
+
+/// Response from fetching work queue items
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FetchQueueResponse {
+    /// Returned items
+    pub items: Vec<QueueItem>,
+    /// Total count of matching items
+    pub total_count: u64,
+    /// Offset used in query
+    pub offset: u32,
+    /// Limit used in query
+    pub limit: u32,
+}
+

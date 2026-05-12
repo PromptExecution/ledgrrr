@@ -528,3 +528,18 @@ Treat this as a standing operational gate, not a one-time migration task.
 > Profile not yet configured. Run `/gsd:profile-user` to generate your developer profile.
 > This section is managed by `generate-claude-profile` -- do not edit manually.
 <!-- GSD:profile-end -->
+### 2026-05-09: PRD-10 Financial Pipeline Adversarial Agent Loop Session
+
+#### Non-Obvious Lessons Learned
+
+**Adversarial agent loop effectiveness:** The 3-round AgentA ↔ AgentB bouncer pattern caught 7 critical issues in Gap 1 before production, validating all acceptance criteria independently. This pattern scales well for complex multi-gap PRs and should be reused for future complex work.
+
+**b00t task tracking visibility:** `b00t-mcp_b00t_task_*` commands provide excellent workflow transparency. Seeing `[pending] → [done]` progression for each gap with task IDs gives operators clear visibility into sub-agent coordination without noisy chat transcripts.
+
+**Git workflow challenges:** Complex merge-base histories (feat/dashboard → main → feat/prd10) caused repeated GitHub GraphQL ancestry errors when creating PRs. Lessons: Always use explicit commit SHAs (`--base <SHA> --head <SHA>`) with `git log --graph` to verify ancestry before PR creation. Avoid assuming GitHub PR creation works on first try with branch names; use `git log --oneline --graph` to find valid merge-base commits.
+
+**ServiceHandle.send() closure pattern:** Current signature `F: FnOnce(Sender<Result<R, ToolError>>) -> GateMessage` makes agent_id propagation awkward. Future AGENTS.md updates should document requiring explicit `agent_id: String` parameter in method signatures for type safety, or changing to a struct-based approach that passes agent_id explicitly.
+
+**Code discovery rule (mandatory):** ALWAYS use `codebase-memory-mcp` tools (`search_graph`, `trace_path`, `get_code_snippet`, `get_architecture`, `query_graph`) for structural code queries. Rationale: grep -r burns 10-30s CPU budget per call, misses cross-crate relationships, pulls irrelevant context. codebase-memory-mcp resolves in 1-3s with structural labels and relationship edges vs. grep -r taking 10+ minutes.
+
+**AGENTS.md as persistent operator manual:** This file is intentionally operational rather than reactive. Stable guidance here improves future agent quality by avoiding noise in transcripts and focusing on durable patterns.

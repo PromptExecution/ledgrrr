@@ -45,8 +45,8 @@ ledger-core = { path = "crates/ledger-core" }
 ledgerr-focus = { path = "crates/ledgerr-focus" }
 ledgerr-mcp-core = { path = "crates/ledgerr-mcp-core" }
 msft-agent-gov-ledgrrr = { path = "crates/msft-agent-gov-ledgrrr" }
-agentmesh = { path = "../agent-governance-toolkit/agent-governance-rust/agentmesh" }
-agentmesh-mcp = { path = "../agent-governance-toolkit/agent-governance-rust/agentmesh-mcp" }
+agentmesh = "3.5.0"
+agentmesh-mcp = "3.5.0"
 
 [workspace.lints.rust]
 unsafe_code = "deny"
