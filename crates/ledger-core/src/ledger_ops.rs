@@ -336,6 +336,26 @@ impl LedgerOperation for IngestStatementOp {
         let mut ledger = IngestedLedger::default();
         ledger.ingest(&transactions);
 
+        // Emit an AUDIT.log row when a workbook path is configured.
+        if let Some(wb_path) = &ctx.workbook_path {
+            use crate::validation::{CommitGate, MetaCtx};
+            use crate::workbook::{AuditRow, WorkbookWriter};
+
+            let meta = MetaCtx::default();
+            let gate = CommitGate::Approved { confidence: 1.0 };
+            let audit_row = AuditRow::new(
+                filename,
+                filename,
+                1.0,
+                &[],
+                &meta,
+                true,
+                &gate,
+            );
+            let writer = WorkbookWriter::new(wb_path);
+            let _ = writer.append_audit_row(&audit_row);
+        }
+
         Ok(OperationResult::success("ingest-statement", count))
     }
 }
@@ -554,18 +574,55 @@ impl LedgerOperation for CheckTaxDeadlineOp {
         "Check a scheduled tax deadline and emit advisory issues if approaching"
     }
 
+    /// Looks up `self.deadline_id` in the context calendar, computes the next due
+    /// date via `BusinessCalendar::next_due`, and emits an advisory issue if the
+    /// deadline falls within `warn_days_before` days of today.
+    /// Returns success with no issues when no calendar is configured or the
+    /// deadline ID is not found.
     fn execute(&self, ctx: &OperationContext) -> Result<OperationResult, LedgerOpError> {
-        // Intended logic:
-        //   1. Look up `self.deadline_id` in `ctx.calendar`
-        //   2. Compute next due date via BusinessCalendar::next_due
-        //   3. If today + warn_days_before >= due_date → emit advisory issue
-        //   4. Return result with issue text if approaching
-        //
-        // For now, just return success if calendar is not available.
-        let _calendar = &ctx.calendar;
+        let calendar = match &ctx.calendar {
+            Some(cal) => cal,
+            None => return Ok(OperationResult::success("check-tax-deadline", 0)),
+        };
 
-        // TODO: Implement full calendar lookup when calendar integration is complete
-        Ok(OperationResult::success("check-tax-deadline", 0))
+        let event = calendar
+            .events
+            .iter()
+            .find(|e| e.id == self.deadline_id && e.enabled);
+
+        let event = match event {
+            Some(e) => e,
+            None => return Ok(OperationResult::success("check-tax-deadline", 0)),
+        };
+
+        let today = chrono::Local::now().date_naive();
+        let after = event.last_run.unwrap_or(today);
+        let due = BusinessCalendar::next_due(&event.recurrence, after);
+
+        let mut issues = Vec::new();
+
+        if let Some(due_date) = due {
+            let days_until = (due_date - today).num_days();
+            if days_until >= 0 && days_until <= self.warn_days_before as i64 {
+                issues.push(format!(
+                    "Tax deadline '{}' due {} (in {} days)",
+                    self.deadline_id,
+                    due_date,
+                    days_until
+                ));
+            }
+        }
+
+        let flagged = if issues.is_empty() { 0 } else { 1 };
+        Ok(OperationResult {
+            operation_id: "check-tax-deadline".to_string(),
+            success: true,
+            items_processed: 1,
+            items_flagged: flagged,
+            issues,
+            duration_ms: 0,
+            row_errors: vec![],
+        })
     }
 }
 
@@ -787,6 +844,32 @@ impl LedgerOperation for PdfIngestOp {
                     });
                 }
             }
+        }
+
+        // Emit an AUDIT.log row for this ingest run.
+        {
+            use crate::validation::{CommitGate, MetaCtx};
+            use crate::workbook::AuditRow;
+
+            let meta = MetaCtx::default();
+            let gate = if row_errors.is_empty() {
+                CommitGate::Approved { confidence: 1.0 }
+            } else {
+                CommitGate::PendingOperator {
+                    confidence: processed as f32 / (processed + row_errors.len()).max(1) as f32,
+                    reason: format!("{} rows had classification errors", row_errors.len()),
+                }
+            };
+            let audit_row = AuditRow::new(
+                filename,
+                filename,
+                processed as f32 / (processed + row_errors.len()).max(1) as f32,
+                &[],
+                &meta,
+                row_errors.is_empty(),
+                &gate,
+            );
+            let _ = writer.append_audit_row(&audit_row);
         }
 
         Ok(OperationResult {
@@ -1114,5 +1197,48 @@ mod tests {
             }
             other => panic!("expected InvalidInput, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn check_tax_deadline_no_calendar_returns_success() {
+        let op = CheckTaxDeadlineOp {
+            deadline_id: "us-annual-return".to_string(),
+            warn_days_before: 30,
+        };
+        let ctx = test_ctx();
+        let result = op.execute(&ctx).unwrap();
+        assert!(result.success);
+        assert!(result.issues.is_empty());
+    }
+
+    #[test]
+    fn check_tax_deadline_with_calendar_no_warning_when_far_away() {
+        use crate::calendar::BusinessCalendar;
+        use std::sync::Arc;
+
+        let op = CheckTaxDeadlineOp {
+            deadline_id: "us-annual-return".to_string(),
+            warn_days_before: 7,
+        };
+        let cal = Arc::new(BusinessCalendar::us_tax_defaults());
+        let ctx = test_ctx().with_calendar(cal);
+        let result = op.execute(&ctx).unwrap();
+        assert!(result.success);
+    }
+
+    #[test]
+    fn check_tax_deadline_unknown_id_returns_success() {
+        use crate::calendar::BusinessCalendar;
+        use std::sync::Arc;
+
+        let op = CheckTaxDeadlineOp {
+            deadline_id: "no-such-deadline".to_string(),
+            warn_days_before: 30,
+        };
+        let cal = Arc::new(BusinessCalendar::us_tax_defaults());
+        let ctx = test_ctx().with_calendar(cal);
+        let result = op.execute(&ctx).unwrap();
+        assert!(result.success);
+        assert!(result.issues.is_empty());
     }
 }

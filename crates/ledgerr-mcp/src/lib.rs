@@ -2262,41 +2262,75 @@ impl TurboLedgerTools for TurboLedgerService {
 
     // TODO: Rollback guidance for all-or-nothing mode failures
 
-    // Simplified flag resolution - only supports Open -> Resolved transitions
-    // TODO: Rollback guidance for all-or-nothing mode failures
-    // TODO: Flag resolution requires ledger-core update to expose flag resolution API
-    // Current ClassificationEngine only supports Open and Resolved states
-    // and does not provide a public method to resolve flags
+    // Flag resolution: Open -> Resolved transitions via ClassificationEngine::resolve_flag
     fn bulk_resolve_flags(
         &self,
         request: BatchResolveFlagsRequest,
     ) -> Result<BulkResolveFlagsResponse, ToolError> {
-        if !request.dry_run {
-            return Err(ToolError::Internal(
-                "bulk_resolve_flags requires ledger-core update: ClassificationEngine needs a public flag resolution method".to_string()
-            ));
+        let dry_run = request.dry_run;
+        let total = request.tx_ids.len();
+        let start = std::time::Instant::now();
+
+        if dry_run {
+            let items: Vec<BatchItemResult> = request
+                .tx_ids
+                .iter()
+                .map(|tx_id| BatchItemResult {
+                    tx_id: tx_id.clone(),
+                    status: BatchItemStatus::Skipped {
+                        reason: "dry_run".to_string(),
+                    },
+                    audit_entries: vec![],
+                })
+                .collect();
+            return Ok(BulkResolveFlagsResponse {
+                summary: BatchSummary {
+                    total_requested: total,
+                    succeeded: 0,
+                    failed: 0,
+                    skipped: total,
+                    batch_duration_ms: 0,
+                },
+                items,
+            });
         }
 
-        // Dry run implementation - just return skipped items
-        let items: Vec<BatchItemResult> = request
-            .tx_ids
-            .iter()
-            .map(|tx_id| BatchItemResult {
-                tx_id: tx_id.clone(),
-                status: BatchItemStatus::Skipped {
-                    reason: "dry_run".to_string(),
-                },
-                audit_entries: vec![],
-            })
-            .collect();
+        let mut classification = self
+            .classification_state
+            .lock()
+            .map_err(|_| ToolError::Internal("classification lock poisoned".to_string()))?;
+
+        let mut succeeded = 0;
+        let mut failed = 0;
+        let mut items = Vec::with_capacity(total);
+
+        for tx_id in &request.tx_ids {
+            if classification.engine.resolve_flag(tx_id) {
+                succeeded += 1;
+                items.push(BatchItemResult {
+                    tx_id: tx_id.clone(),
+                    status: BatchItemStatus::Succeeded,
+                    audit_entries: vec![],
+                });
+            } else {
+                failed += 1;
+                items.push(BatchItemResult {
+                    tx_id: tx_id.clone(),
+                    status: BatchItemStatus::Failed {
+                        error: "flag not found or already resolved".to_string(),
+                    },
+                    audit_entries: vec![],
+                });
+            }
+        }
 
         Ok(BulkResolveFlagsResponse {
             summary: BatchSummary {
-                total_requested: request.tx_ids.len(),
-                succeeded: 0,
-                failed: 0,
-                skipped: request.tx_ids.len(),
-                batch_duration_ms: 0,
+                total_requested: total,
+                succeeded,
+                failed,
+                skipped: 0,
+                batch_duration_ms: start.elapsed().as_millis() as u64,
             },
             items,
         })
