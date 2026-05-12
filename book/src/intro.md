@@ -54,3 +54,16 @@ The visualization chapters document the live mdBook diagram system. They are imp
 - [Workbook & Audit](./workbook-audit.md)
 - [Theory of Operation](./theory.md)
 - [Graph Data Model](./graph.md)
+
+<!-- mdbook-admonish smoke-test: remove once verified rendering works -->
+```admonish note title="Local-first by design"
+All processing runs on your machine — no private financial data leaves the host.
+```
+
+```admonish warning
+PDF ingestion rewrites the workbook in-place. Back up `tax-ledger.xlsx` before running a full re-ingest.
+```
+
+```admonish tip title="CPA handoff"
+Export the workbook after every classification pass so your accountant always has the latest reconciled state.
+```

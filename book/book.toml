@@ -12,6 +12,10 @@ before = ["mermaid"]
 optional = true
 after = ["rhai-mermaid"]
 
+[preprocessor.admonish]
+command = "mdbook-admonish"
+assets_version = "3.1.0" # do not edit: managed by `mdbook-admonish install`
+
 [output.html]
 edit-url-template = "https://github.com/PromptExecution/l3dg3rr/edit/main/book/src/{path}#L{line}"
 git-repository-url = "https://github.com/PromptExecution/l3dg3rr"

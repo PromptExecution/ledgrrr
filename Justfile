@@ -433,9 +433,12 @@ stats:
 
 # Build mdbook documentation locally
 # Requires: cargo install mdbook mdbook-mermaid && cargo install --path crates/mdbook-rhai-mermaid
+# mdbook-admonish: cargo install --git https://github.com/padamson/mdbook-admonish.git --branch feat/mdbook-0.5-compat mdbook-admonish
+# TODO: switch to a released version once tommilligan/mdbook-admonish#235 merges
 docgen:
     @if [ ! -x ~/.cargo/bin/mdbook ]; then echo "error: mdbook not found — run: cargo install mdbook mdbook-mermaid"; exit 1; fi
     @if [ ! -x ~/.cargo/bin/mdbook-mermaid ]; then echo "error: mdbook-mermaid not found — run: cargo install mdbook-mermaid"; exit 1; fi
+    @if [ ! -x ~/.cargo/bin/mdbook-admonish ]; then echo "error: mdbook-admonish not found — see comment above docgen recipe in Justfile"; exit 1; fi
     @if [ ! -x ~/.cargo/bin/mdbook-rhai-mermaid ]; then cargo install --path crates/mdbook-rhai-mermaid --quiet; fi
     PATH="$HOME/.cargo/bin:$PATH" ~/.cargo/bin/mdbook build book
     @echo "Docs built in book/book/ — serve with: npx serve book/book"
