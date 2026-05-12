@@ -110,7 +110,7 @@ pub fn deterministic_tx_id(row: &TransactionInput) -> String {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentFieldsParseError {
-    pub field: &'static str,
+    pub field: String,
     pub value: String,
 }
 
@@ -134,7 +134,7 @@ impl TryFrom<&TransactionInput> for crate::pipeline::DocumentFields {
         let amount = amount_text
             .parse()
             .map_err(|_| DocumentFieldsParseError {
-                field: "amount",
+                field: "amount".to_string(),
                 value: amount_text.to_string(),
             })?;
         Ok(Self {
@@ -179,7 +179,7 @@ mod tests {
         assert_eq!(
             err,
             DocumentFieldsParseError {
-                field: "amount",
+                field: "amount".to_string(),
                 value: "not-a-decimal".to_string(),
             }
         );

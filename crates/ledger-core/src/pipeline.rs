@@ -8,11 +8,17 @@ use std::marker::PhantomData;
 // TYPE-STATE: Compile-time valid transitions
 // ============================================================================
 
+#[derive(Debug)]
 pub struct Ingested;
+#[derive(Debug)]
 pub struct Validated;
+#[derive(Debug)]
 pub struct Classified;
+#[derive(Debug)]
 pub struct Reconciled;
+#[derive(Debug)]
 pub struct Committed;
+#[derive(Debug)]
 pub struct NeedsReview;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -678,7 +684,10 @@ mod tests {
             .validate(Vec::new());
         let ok_state = match state.verify_legal(&solver, &rules) {
             Ok(state) => state,
-            Err(_) => panic!("BASEXCLUDED should satisfy au_gst::rule_38_190"),
+            Err(state) => panic!(
+                "BASEXCLUDED should satisfy au_gst::rule_38_190, got Err state: {:?}",
+                state
+            ),
         };
         assert_eq!(ok_state.confidence, 1.0);
         assert!(
@@ -698,7 +707,10 @@ mod tests {
             })
             .validate(Vec::new());
         let err_state = match state.verify_legal(&solver, &rules) {
-            Ok(_) => panic!("INPUT should violate au_gst::rule_38_190"),
+            Ok(state) => panic!(
+                "INPUT should violate au_gst::rule_38_190, got Ok state: {:?}",
+                state
+            ),
             Err(state) => state,
         };
         assert!(
