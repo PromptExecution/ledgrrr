@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
+use std::{error::Error, fmt};
 
 use crate::journal::{append_entries, JournalTransaction};
 use crate::workbook::{materialize_tx_projection, TxProjectionRow};
@@ -113,5 +114,81 @@ impl From<&TransactionInput> for crate::pipeline::DocumentFields {
             amount: row.amount.trim().parse().ok(),
             ..Self::default()
         }
+      
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DocumentFieldsParseError {
+    pub field: String,
+    pub value: String,
+}
+
+impl fmt::Display for DocumentFieldsParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "failed to parse {} from transaction input: '{}'",
+            self.field, self.value
+        )
+    }
+}
+
+impl Error for DocumentFieldsParseError {}
+
+impl TryFrom<&TransactionInput> for crate::pipeline::DocumentFields {
+    type Error = DocumentFieldsParseError;
+
+    fn try_from(row: &TransactionInput) -> Result<Self, Self::Error> {
+        let amount_text = row.amount.trim();
+        let amount = amount_text
+            .parse()
+            .map_err(|_| DocumentFieldsParseError {
+                field: "amount".to_string(),
+                value: amount_text.to_string(),
+            })?;
+        Ok(Self {
+            amount: Some(amount),
+            ..Self::default()
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transaction_input_to_document_fields_parses_amount() {
+        let row = TransactionInput {
+            account_id: "acc".to_string(),
+            date: "2026-01-01".to_string(),
+            amount: "12.34".to_string(),
+            description: "test".to_string(),
+            source_ref: "src".to_string(),
+        };
+
+        let fields = crate::pipeline::DocumentFields::try_from(&row).expect("valid decimal");
+        assert_eq!(
+            fields.amount,
+            Some(rust_decimal::Decimal::from_str_exact("12.34").expect("valid decimal"))
+        );
+    }
+
+    #[test]
+    fn transaction_input_to_document_fields_rejects_invalid_amount() {
+        let row = TransactionInput {
+            account_id: "acc".to_string(),
+            date: "2026-01-01".to_string(),
+            amount: "not-a-decimal".to_string(),
+            description: "test".to_string(),
+            source_ref: "src".to_string(),
+        };
+
+        let err = crate::pipeline::DocumentFields::try_from(&row).expect_err("invalid decimal");
+        assert_eq!(
+            err,
+            DocumentFieldsParseError {
+                field: "amount".to_string(),
+                value: "not-a-decimal".to_string(),
+            }
+        );
     }
 }

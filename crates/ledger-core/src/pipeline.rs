@@ -8,11 +8,17 @@ use std::marker::PhantomData;
 // TYPE-STATE: Compile-time valid transitions
 // ============================================================================
 
+#[derive(Debug)]
 pub struct Ingested;
+#[derive(Debug)]
 pub struct Validated;
+#[derive(Debug)]
 pub struct Classified;
+#[derive(Debug)]
 pub struct Reconciled;
+#[derive(Debug)]
 pub struct Committed;
+#[derive(Debug)]
 pub struct NeedsReview;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -33,6 +39,7 @@ pub struct PipelineState<S = Ingested> {
     pub confidence: f32,
     pub issues: Vec<crate::validation::Issue>,
     pub meta: crate::validation::MetaCtx,
+    #[serde(default)]
     pub doc_fields: DocumentFields,
     _state: PhantomData<S>,
 }
@@ -694,7 +701,20 @@ mod tests {
                 ..DocumentFields::default()
             })
             .validate(Vec::new());
-        assert!(state.verify_legal(&solver, &rules).is_ok());
+        let ok_state = match state.verify_legal(&solver, &rules) {
+            Ok(state) => state,
+            Err(state) => panic!(
+                "BASEXCLUDED should satisfy au_gst::rule_38_190, got Err state: {:?}",
+                state
+            ),
+        };
+        assert_eq!(ok_state.confidence, 1.0);
+        assert!(
+            !ok_state
+                .issues
+                .iter()
+                .any(|i| i.code == "legal_unknown" || i.code == "legal_violation")
+        );
 
         // US SaaS with INPUT → legal gate fails → Err(NeedsReview)
         let state = PipelineState::<Ingested>::new("doc2", "WF--BH--2026-01")
@@ -705,7 +725,21 @@ mod tests {
                 ..DocumentFields::default()
             })
             .validate(Vec::new());
-        assert!(state.verify_legal(&solver, &rules).is_err());
+        let err_state = match state.verify_legal(&solver, &rules) {
+            Ok(state) => panic!(
+                "INPUT should violate au_gst::rule_38_190, got Ok state: {:?}",
+                state
+            ),
+            Err(state) => state,
+        };
+        assert!(
+            err_state
+                .issues
+                .iter()
+                .any(|i| i.code == "legal_violation"
+                    && i.disposition == crate::validation::Disposition::Unrecoverable)
+        );
+        assert!(!err_state.issues.iter().any(|i| i.code == "legal_unknown"));
     }
 
     #[test]
