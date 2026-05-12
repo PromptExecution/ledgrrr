@@ -2161,11 +2161,16 @@ impl TurboLedgerTools for TurboLedgerService {
         ))
     }
 
-    // TODO: Rollback guidance for all-or-nothing mode failures:
-    // When batch_mode=AllOrNothing and failures occur, operators should:
-    // 1. Re-query affected tx_ids via query_transactions
-    // 2. Manually reverse classifications using classify_transaction with original category
-    // This is intentional trade-off vs full transactional rollback implementation
+    /// Classify a batch of transactions in one call.
+    ///
+    /// # Failure recovery (`AllOrNothing` mode)
+    /// When `batch_mode=AllOrNothing` the loop stops at the first failure and returns
+    /// a partial result (some items `Succeeded`, the rest absent). To recover:
+    /// 1. Call `query_transactions` with the affected `tx_ids` to see current state.
+    /// 2. For any item that was incorrectly classified before the abort, call
+    ///    `classify_transaction` with the original category to reverse it.
+    /// Full transactional rollback is not implemented — this is an intentional
+    /// trade-off to avoid distributed-transaction complexity in the in-memory store.
     fn batch_classify(
         &self,
         request: BatchClassifyRequest,
@@ -2260,43 +2265,75 @@ impl TurboLedgerTools for TurboLedgerService {
         Ok(BatchClassifyResponse { summary, items })
     }
 
-    // TODO: Rollback guidance for all-or-nothing mode failures
-
-    // Simplified flag resolution - only supports Open -> Resolved transitions
-    // TODO: Rollback guidance for all-or-nothing mode failures
-    // TODO: Flag resolution requires ledger-core update to expose flag resolution API
-    // Current ClassificationEngine only supports Open and Resolved states
-    // and does not provide a public method to resolve flags
+    // Flag resolution: Open -> Resolved transitions via ClassificationEngine::resolve_flag
     fn bulk_resolve_flags(
         &self,
         request: BatchResolveFlagsRequest,
     ) -> Result<BulkResolveFlagsResponse, ToolError> {
-        if !request.dry_run {
-            return Err(ToolError::Internal(
-                "bulk_resolve_flags requires ledger-core update: ClassificationEngine needs a public flag resolution method".to_string()
-            ));
+        let dry_run = request.dry_run;
+        let total = request.tx_ids.len();
+        let start = std::time::Instant::now();
+
+        if dry_run {
+            let items: Vec<BatchItemResult> = request
+                .tx_ids
+                .iter()
+                .map(|tx_id| BatchItemResult {
+                    tx_id: tx_id.clone(),
+                    status: BatchItemStatus::Skipped {
+                        reason: "dry_run".to_string(),
+                    },
+                    audit_entries: vec![],
+                })
+                .collect();
+            return Ok(BulkResolveFlagsResponse {
+                summary: BatchSummary {
+                    total_requested: total,
+                    succeeded: 0,
+                    failed: 0,
+                    skipped: total,
+                    batch_duration_ms: 0,
+                },
+                items,
+            });
         }
 
-        // Dry run implementation - just return skipped items
-        let items: Vec<BatchItemResult> = request
-            .tx_ids
-            .iter()
-            .map(|tx_id| BatchItemResult {
-                tx_id: tx_id.clone(),
-                status: BatchItemStatus::Skipped {
-                    reason: "dry_run".to_string(),
-                },
-                audit_entries: vec![],
-            })
-            .collect();
+        let mut classification = self
+            .classification_state
+            .lock()
+            .map_err(|_| ToolError::Internal("classification lock poisoned".to_string()))?;
+
+        let mut succeeded = 0;
+        let mut failed = 0;
+        let mut items = Vec::with_capacity(total);
+
+        for tx_id in &request.tx_ids {
+            if classification.engine.resolve_flag(tx_id) {
+                succeeded += 1;
+                items.push(BatchItemResult {
+                    tx_id: tx_id.clone(),
+                    status: BatchItemStatus::Succeeded,
+                    audit_entries: vec![],
+                });
+            } else {
+                failed += 1;
+                items.push(BatchItemResult {
+                    tx_id: tx_id.clone(),
+                    status: BatchItemStatus::Failed {
+                        error: "flag not found or already resolved".to_string(),
+                    },
+                    audit_entries: vec![],
+                });
+            }
+        }
 
         Ok(BulkResolveFlagsResponse {
             summary: BatchSummary {
-                total_requested: request.tx_ids.len(),
-                succeeded: 0,
-                failed: 0,
-                skipped: request.tx_ids.len(),
-                batch_duration_ms: 0,
+                total_requested: total,
+                succeeded,
+                failed,
+                skipped: 0,
+                batch_duration_ms: start.elapsed().as_millis() as u64,
             },
             items,
         })
@@ -2475,12 +2512,41 @@ impl TurboLedgerTools for TurboLedgerService {
         
         drop(classification);
         
-        // 2. Query tax ambiguities (if item_types includes Ambiguity)
-        // Note: This requires a full reconciliation stage which may be expensive
-        // For now, we return empty if requested (can be enhanced later)
+        // 2. Query tax ambiguities: classified transactions with confidence < 60%.
+        // These are genuinely uncertain classifications that need operator review,
+        // distinct from review flags which may be high-confidence but policy-triggered.
         if request.item_types.as_ref().map_or(false, |v| v.contains(&QueueItemType::Ambiguity)) {
-            // TODO: Implement tax ambiguity query
-            // This would require running a reconciliation stage
+            let classification = self
+                .classification_state
+                .lock()
+                .map_err(|_| ToolError::Internal("classification lock poisoned".to_string()))?;
+
+            const AMBIGUITY_THRESHOLD: f64 = 0.60;
+
+            for (tx_id, stored) in &classification.classifications {
+                use rust_decimal::prelude::ToPrimitive;
+                let conf = stored.confidence.to_f64().unwrap_or(1.0);
+                if conf < AMBIGUITY_THRESHOLD {
+                    let id = blake3::hash(format!("ambiguity:{tx_id}").as_bytes()).to_hex();
+                    let pct = (conf * 100.0).round() as u32;
+                    items.push(QueueItem {
+                        id: id.to_string(),
+                        item_type: QueueItemType::Ambiguity,
+                        severity: QueueSeverity::Medium,
+                        created_at: "1970-01-01T00:00:00Z".to_string(),
+                        status: QueueStatus::Open,
+                        provenance: QueueProvenance::ReviewTool,
+                        related_tx_ids: vec![tx_id.clone()],
+                        summary: format!(
+                            "Ambiguous classification: {} ({}% confidence)",
+                            stored.category, pct
+                        ),
+                        tx_id: Some(tx_id.clone()),
+                        document_ref: None,
+                        metadata: BTreeMap::new(),
+                    });
+                }
+            }
         }
         
         // 3. Query manual changes from audit log (if item_types includes ManualChange)
@@ -2510,20 +2576,73 @@ impl TurboLedgerTools for TurboLedgerService {
             }
         }
         
-        // 4. Query reconciliation blockers (if item_types includes Blocker)
-        // Note: This requires running reconciliation which may be expensive
-        // For now, we return empty if requested (can be enhanced later)
+        // 4. Query reconciliation blockers: documents stuck in Processing state.
+        // A document that entered Processing but never reached Indexed is a blocker —
+        // it prevents downstream reconciliation from completing.
         if request.item_types.as_ref().map_or(false, |v| v.contains(&QueueItemType::Blocker)) {
-            // TODO: Implement blocker query
-            // This would require running a reconciliation stage
+            let registry = self
+                .document_registry
+                .lock()
+                .map_err(|_| ToolError::Internal("document_registry lock poisoned".to_string()))?;
+
+            for (doc_id, record) in registry.iter() {
+                if matches!(record.status, DocumentStatus::Processing) {
+                    let id = blake3::hash(format!("blocker:{doc_id}").as_bytes()).to_hex();
+                    items.push(QueueItem {
+                        id: id.to_string(),
+                        item_type: QueueItemType::Blocker,
+                        severity: QueueSeverity::Critical,
+                        created_at: record
+                            .indexed_at
+                            .clone()
+                            .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string()),
+                        status: QueueStatus::Open,
+                        provenance: QueueProvenance::DocumentTool,
+                        related_tx_ids: vec![],
+                        summary: format!(
+                            "Document stuck in processing: {}",
+                            record.file_name
+                        ),
+                        tx_id: None,
+                        document_ref: Some(record.file_name.clone()),
+                        metadata: BTreeMap::new(),
+                    });
+                }
+            }
         }
-        
-        // 5. Query document issues (if item_types includes DocumentIssue)
-        // Note: This would require checking document registry for failed ingests
-        // For now, we return empty if requested (can be enhanced later)
+
+        // 5. Query document issues: documents with an Error status in the registry.
+        // These are failed ingests or processing failures that the operator must resolve.
         if request.item_types.as_ref().map_or(false, |v| v.contains(&QueueItemType::DocumentIssue)) {
-            // TODO: Implement document issue query
-            // This would require checking document registry
+            let registry = self
+                .document_registry
+                .lock()
+                .map_err(|_| ToolError::Internal("document_registry lock poisoned".to_string()))?;
+
+            for (doc_id, record) in registry.iter() {
+                if let DocumentStatus::Error(ref msg) = record.status {
+                    let id = blake3::hash(format!("doc_issue:{doc_id}").as_bytes()).to_hex();
+                    items.push(QueueItem {
+                        id: id.to_string(),
+                        item_type: QueueItemType::DocumentIssue,
+                        severity: QueueSeverity::High,
+                        created_at: record
+                            .indexed_at
+                            .clone()
+                            .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string()),
+                        status: QueueStatus::Open,
+                        provenance: QueueProvenance::DocumentTool,
+                        related_tx_ids: vec![],
+                        summary: format!(
+                            "Document ingest error: {} — {}",
+                            record.file_name, msg
+                        ),
+                        tx_id: None,
+                        document_ref: Some(record.file_name.clone()),
+                        metadata: BTreeMap::new(),
+                    });
+                }
+            }
         }
         
         // Apply status filter

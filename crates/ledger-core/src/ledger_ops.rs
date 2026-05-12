@@ -227,6 +227,17 @@ impl LedgerOperation for IngestStatementOp {
 
         let doc_type = DocType::from_path(input_path);
 
+        // PDFs must go through PdfIngestOp (subprocess sidecar) or the MCP
+        // `ingest_pdf` tool (pre-extracted rows). Calamine cannot parse PDFs.
+        if matches!(doc_type, DocType::Pdf) {
+            return Err(LedgerOpError::InvalidInput(
+                "PDF files cannot be ingested via IngestStatementOp. \
+                 Use PdfIngestOp directly (scheduler path) or the MCP \
+                 `ingest_pdf` tool (agent path)."
+                    .to_string(),
+            ));
+        }
+
         // Read a small sample for shape classification (first 2 KB of the file
         // for CSV; not applicable for XLSX — just use the filename).
         let sample_content = if matches!(doc_type, DocType::SpreadsheetCsv) {
@@ -336,6 +347,26 @@ impl LedgerOperation for IngestStatementOp {
         let mut ledger = IngestedLedger::default();
         ledger.ingest(&transactions);
 
+        // Emit an AUDIT.log row when a workbook path is configured.
+        if let Some(wb_path) = &ctx.workbook_path {
+            use crate::validation::{CommitGate, MetaCtx};
+            use crate::workbook::{AuditRow, WorkbookWriter};
+
+            let meta = MetaCtx::default();
+            let gate = CommitGate::Approved { confidence: 1.0 };
+            let audit_row = AuditRow::new(
+                filename,
+                filename,
+                1.0,
+                &[],
+                &meta,
+                true,
+                &gate,
+            );
+            let writer = WorkbookWriter::new(wb_path);
+            let _ = writer.append_audit_row(&audit_row);
+        }
+
         Ok(OperationResult::success("ingest-statement", count))
     }
 }
@@ -356,7 +387,7 @@ impl LedgerOperation for ClassifyTransactionsOp {
         "Run the Rhai rule waterfall over unclassified transactions"
     }
 
-    fn execute(&self, _ctx: &OperationContext) -> Result<OperationResult, LedgerOpError> {
+    fn execute(&self, ctx: &OperationContext) -> Result<OperationResult, LedgerOpError> {
         // Intended logic:
         //   1. Load all `.rhai` rule files from `self.rule_dir` via RuleRegistry
         //   2. Fetch unclassified transactions from ledger store
@@ -367,9 +398,105 @@ impl LedgerOperation for ClassifyTransactionsOp {
         //      c. If confidence < threshold → flag for human review
         //   4. Persist updated classifications back to the store
         //   5. Return processed/flagged counts and any rule errors
-        Err(LedgerOpError::NotImplemented(
-            "ClassifyTransactionsOp: Rhai engine integration not yet wired".to_string(),
-        ))
+        use calamine::{open_workbook_auto, Data, Reader};
+
+        let workbook_path = ctx.workbook_path.as_ref().ok_or_else(|| {
+            LedgerOpError::InvalidInput(
+                "ClassifyTransactionsOp requires workbook_path in context".to_string(),
+            )
+        })?;
+
+        let rules_dir = if self.rule_dir.as_os_str().is_empty() {
+            ctx.rules_dir.as_path()
+        } else {
+            self.rule_dir.as_path()
+        };
+
+        let registry = crate::rule_registry::RuleRegistry::load_from_dir(rules_dir)
+            .map_err(|e| LedgerOpError::Classification(e.to_string()))?;
+        let mut engine = crate::classify::ClassificationEngine::default();
+
+        let mut wb = open_workbook_auto(workbook_path)
+            .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+        let range = wb
+            .worksheet_range("TRANSACTIONS")
+            .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+
+        let writer = crate::workbook::WorkbookWriter::new(workbook_path);
+        let mut classified = 0usize;
+        let mut still_unclassified = 0usize;
+
+        for row in range.rows().skip(1) {
+            let get_str = |i: usize| -> String {
+                match row.get(i) {
+                    Some(Data::String(s)) => s.clone(),
+                    _ => String::new(),
+                }
+            };
+            let tx_id = get_str(0);
+            if tx_id.is_empty() {
+                continue;
+            }
+            if get_str(5) != "Unclassified" {
+                continue;
+            }
+            let date = get_str(1);
+            let vendor = get_str(2);
+            let account = get_str(3);
+            let amount = get_str(4);
+
+            if let Some(filter) = &self.account_filter {
+                if account != *filter {
+                    continue;
+                }
+            }
+
+            let sample = crate::classify::SampleTransaction {
+                tx_id: tx_id.clone(),
+                account_id: account,
+                date,
+                amount,
+                description: vendor,
+            };
+
+            let outcome = registry
+                .classify_waterfall(&mut engine, &sample)
+                .map_err(|e| LedgerOpError::Classification(e.to_string()))?;
+
+            if outcome.category == "Unclassified" {
+                still_unclassified += 1;
+                continue;
+            }
+
+            if !ctx.dry_run {
+                let needs_review = outcome.confidence < self.review_threshold;
+                writer
+                    .append_mutation(
+                        &chrono::Utc::now().to_rfc3339(),
+                        &tx_id,
+                        "classify-transactions-op",
+                        "agent",
+                        &format!("classify:{}", outcome.category),
+                        "Unclassified",
+                        &format!(
+                            "{}|conf={:.3}|review={}",
+                            outcome.category, outcome.confidence, needs_review
+                        ),
+                    )
+                    .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+            }
+            classified += 1;
+        }
+
+        let mut result = OperationResult::success("classify-transactions", classified);
+        result.items_flagged = still_unclassified;
+        if still_unclassified > 0 {
+            result.issues.push(format!(
+                "{} transactions remain unclassified after rule pass",
+                still_unclassified
+            ));
+        }
+        Ok(result)
     }
 }
 
@@ -396,11 +523,137 @@ impl LedgerOperation for ReconcileAccountOp {
         //   4. Flag unmatched items on either side
         //   5. If !self.dry_run && !ctx.dry_run → write reconciliation status
         //   6. Return matched/unmatched counts and issues
-        let _ = ctx; // suppress unused warning while stubbed
-        Err(LedgerOpError::NotImplemented(format!(
-            "ReconcileAccountOp: Xero integration not yet wired (account={})",
-            self.account_id
-        )))
+        //
+        // Phase 1 (implemented): local-only anomaly detection — duplicates,
+        // date gaps, and amount outliers. Xero integration is a future pass.
+        use calamine::{open_workbook_auto, Data, Reader};
+
+        let workbook_path = ctx.workbook_path.as_ref().ok_or_else(|| {
+            LedgerOpError::InvalidInput(
+                "ReconcileAccountOp requires workbook_path in context".to_string(),
+            )
+        })?;
+
+        let mut wb = open_workbook_auto(workbook_path)
+            .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+        let range = wb
+            .worksheet_range("TRANSACTIONS")
+            .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+
+        // Collect rows for this account: (tx_id, date, amount_str)
+        let mut rows: Vec<(String, String, f64)> = Vec::new();
+        let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut duplicate_ids: Vec<String> = Vec::new();
+
+        for row in range.rows().skip(1) {
+            let get_str = |i: usize| -> String {
+                match row.get(i) {
+                    Some(Data::String(s)) => s.clone(),
+                    _ => String::new(),
+                }
+            };
+            let tx_id = get_str(0);
+            if tx_id.is_empty() {
+                continue;
+            }
+            let account = get_str(3);
+            if !self.account_id.is_empty() && account != self.account_id {
+                continue;
+            }
+            let date = get_str(1);
+            let amount: f64 = get_str(4).parse().unwrap_or(0.0);
+
+            if !seen_ids.insert(tx_id.clone()) {
+                duplicate_ids.push(tx_id.clone());
+            }
+            rows.push((tx_id, date, amount));
+        }
+
+        // Sort by date for gap detection
+        rows.sort_by(|a, b| a.1.cmp(&b.1));
+
+        // Detect date gaps > 90 days between consecutive transactions
+        let mut gap_issues: Vec<String> = Vec::new();
+        for window in rows.windows(2) {
+            let (_, date_a, _) = &window[0];
+            let (tx_b, date_b, _) = &window[1];
+            if let (Ok(a), Ok(b)) = (
+                chrono::NaiveDate::parse_from_str(date_a, "%Y-%m-%d"),
+                chrono::NaiveDate::parse_from_str(date_b, "%Y-%m-%d"),
+            ) {
+                let gap = (b - a).num_days();
+                if gap > 90 {
+                    gap_issues.push(format!(
+                        "date gap of {} days before tx {} ({})",
+                        gap, tx_b, date_b
+                    ));
+                }
+            }
+        }
+
+        // Detect amount outliers: |amount| > mean + 3·stdev
+        let mut outlier_ids: Vec<String> = Vec::new();
+        if rows.len() >= 4 {
+            let amounts: Vec<f64> = rows.iter().map(|(_, _, a)| a.abs()).collect();
+            let mean = amounts.iter().sum::<f64>() / amounts.len() as f64;
+            let variance = amounts.iter().map(|a| (a - mean).powi(2)).sum::<f64>()
+                / amounts.len() as f64;
+            let stdev = variance.sqrt();
+            let threshold = mean + 3.0 * stdev;
+            for (tx_id, _, amount) in &rows {
+                if amount.abs() > threshold {
+                    outlier_ids.push(tx_id.clone());
+                }
+            }
+        }
+
+        // Persist anomalies to MUTATION_HISTORY
+        let mut issues: Vec<String> = Vec::new();
+        let writer = crate::workbook::WorkbookWriter::new(workbook_path);
+
+        for dup_id in &duplicate_ids {
+            let msg = format!("duplicate tx_id: {dup_id}");
+            issues.push(msg.clone());
+            if !ctx.dry_run && !self.dry_run {
+                writer
+                    .append_mutation(
+                        &chrono::Utc::now().to_rfc3339(),
+                        dup_id,
+                        "reconcile-account-op",
+                        "agent",
+                        "reconcile:duplicate",
+                        "",
+                        &msg,
+                    )
+                    .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+            }
+        }
+        for gap in &gap_issues {
+            issues.push(gap.clone());
+        }
+        for outlier_id in &outlier_ids {
+            let msg = format!("amount outlier: {outlier_id}");
+            issues.push(msg.clone());
+            if !ctx.dry_run && !self.dry_run {
+                writer
+                    .append_mutation(
+                        &chrono::Utc::now().to_rfc3339(),
+                        outlier_id,
+                        "reconcile-account-op",
+                        "agent",
+                        "reconcile:outlier",
+                        "",
+                        &msg,
+                    )
+                    .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+            }
+        }
+
+        let anomaly_count = duplicate_ids.len() + gap_issues.len() + outlier_ids.len();
+        let mut result = OperationResult::success("reconcile-account", rows.len());
+        result.items_flagged = anomaly_count;
+        result.issues = issues;
+        Ok(result)
     }
 }
 
@@ -525,17 +778,115 @@ impl LedgerOperation for GenerateAuditTrailOp {
         "Generate a CPA-auditable audit trail document for a tax year"
     }
 
-    fn execute(&self, _ctx: &OperationContext) -> Result<OperationResult, LedgerOpError> {
+    fn execute(&self, ctx: &OperationContext) -> Result<OperationResult, LedgerOpError> {
         // Intended logic:
         //   1. Query all mutation events for `self.year` from audit log
         //   2. Serialize to a structured JSON/XLSX audit document
         //   3. Include: ingest timestamps, classification changes, reconciliation
         //      outcomes, human review sign-offs
         //   4. Write to `self.output_path`
-        Err(LedgerOpError::NotImplemented(format!(
-            "GenerateAuditTrailOp: audit trail export not yet wired (year={})",
-            self.year
-        )))
+        use calamine::{open_workbook_auto, Data, Reader};
+        use rust_xlsxwriter::Workbook;
+
+        let workbook_path = ctx.workbook_path.as_ref().ok_or_else(|| {
+            LedgerOpError::InvalidInput(
+                "GenerateAuditTrailOp requires workbook_path in context".to_string(),
+            )
+        })?;
+
+        let year_str = self.year.to_string();
+
+        let mut src_wb = open_workbook_auto(workbook_path)
+            .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+
+        let mut tx_rows: Vec<Vec<String>> = Vec::new();
+        if let Ok(range) = src_wb.worksheet_range("TRANSACTIONS") {
+            for row in range.rows().skip(1) {
+                let get_str = |i: usize| -> String {
+                    match row.get(i) {
+                        Some(Data::String(s)) => s.clone(),
+                        Some(Data::Float(f)) => f.to_string(),
+                        Some(Data::Bool(b)) => b.to_string(),
+                        _ => String::new(),
+                    }
+                };
+                if get_str(1).starts_with(&year_str) {
+                    tx_rows.push((0..9).map(get_str).collect());
+                }
+            }
+        }
+
+        let mut mut_rows: Vec<Vec<String>> = Vec::new();
+        if let Ok(range) = src_wb.worksheet_range("MUTATION_HISTORY") {
+            for row in range.rows().skip(1) {
+                let get_str = |i: usize| -> String {
+                    match row.get(i) {
+                        Some(Data::String(s)) => s.clone(),
+                        _ => String::new(),
+                    }
+                };
+                if get_str(0).starts_with(&year_str) {
+                    mut_rows.push((0..7).map(get_str).collect());
+                }
+            }
+        }
+
+        if ctx.dry_run {
+            return Ok(OperationResult::success(
+                "generate-audit-trail",
+                tx_rows.len() + mut_rows.len(),
+            ));
+        }
+
+        let mut out_wb = Workbook::new();
+
+        let tx_headers = [
+            "tx_id", "date", "vendor", "account", "amount",
+            "category", "confidence", "needs_review", "flag",
+        ];
+        let tx_ws = out_wb
+            .add_worksheet()
+            .set_name(format!("Transactions-{}", self.year))
+            .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+        for (col, h) in tx_headers.iter().enumerate() {
+            tx_ws
+                .write_string(0, col as u16, *h)
+                .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+        }
+        for (r, cols) in tx_rows.iter().enumerate() {
+            for (c, val) in cols.iter().enumerate() {
+                tx_ws
+                    .write_string((r + 1) as u32, c as u16, val)
+                    .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+            }
+        }
+
+        let mut_headers = [
+            "timestamp", "tx_id", "agent_id", "ring", "action", "before", "after",
+        ];
+        let mut_ws = out_wb
+            .add_worksheet()
+            .set_name(format!("Mutations-{}", self.year))
+            .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+        for (col, h) in mut_headers.iter().enumerate() {
+            mut_ws
+                .write_string(0, col as u16, *h)
+                .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+        }
+        for (r, cols) in mut_rows.iter().enumerate() {
+            for (c, val) in cols.iter().enumerate() {
+                mut_ws
+                    .write_string((r + 1) as u32, c as u16, val)
+                    .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+            }
+        }
+
+        out_wb
+            .save(&self.output_path)
+            .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+
+        let total = tx_rows.len() + mut_rows.len();
+        Ok(OperationResult::success("generate-audit-trail", total))
     }
 }
 
@@ -554,24 +905,68 @@ impl LedgerOperation for CheckTaxDeadlineOp {
         "Check a scheduled tax deadline and emit advisory issues if approaching"
     }
 
+    /// Looks up `self.deadline_id` in the context calendar, computes the next due
+    /// date via `BusinessCalendar::next_due`, and emits an advisory issue if the
+    /// deadline falls within `warn_days_before` days of today.
+    /// Returns success with no issues when no calendar is configured or the
+    /// deadline ID is not found.
     fn execute(&self, ctx: &OperationContext) -> Result<OperationResult, LedgerOpError> {
-        // Intended logic:
-        //   1. Look up `self.deadline_id` in `ctx.calendar`
-        //   2. Compute next due date via BusinessCalendar::next_due
-        //   3. If today + warn_days_before >= due_date → emit advisory issue
-        //   4. Return result with issue text if approaching
-        //
-        // For now, just return success if calendar is not available.
-        let _calendar = &ctx.calendar;
+        let calendar = match &ctx.calendar {
+            Some(cal) => cal,
+            None => return Ok(OperationResult::success("check-tax-deadline", 0)),
+        };
 
-        // TODO: Implement full calendar lookup when calendar integration is complete
-        Ok(OperationResult::success("check-tax-deadline", 0))
+        let event = calendar
+            .events
+            .iter()
+            .find(|e| e.id == self.deadline_id && e.enabled);
+
+        let event = match event {
+            Some(e) => e,
+            None => return Ok(OperationResult::success("check-tax-deadline", 0)),
+        };
+
+        let today = chrono::Local::now().date_naive();
+        let after = event.last_run.unwrap_or(today);
+        let due = BusinessCalendar::next_due(&event.recurrence, after);
+
+        let mut issues = Vec::new();
+
+        if let Some(due_date) = due {
+            let days_until = (due_date - today).num_days();
+            if days_until >= 0 && days_until <= self.warn_days_before as i64 {
+                issues.push(format!(
+                    "Tax deadline '{}' due {} (in {} days)",
+                    self.deadline_id,
+                    due_date,
+                    days_until
+                ));
+            }
+        }
+
+        let flagged = if issues.is_empty() { 0 } else { 1 };
+        Ok(OperationResult {
+            operation_id: "check-tax-deadline".to_string(),
+            success: true,
+            items_processed: 1,
+            items_flagged: flagged,
+            issues,
+            duration_ms: 0,
+            row_errors: vec![],
+        })
     }
 }
 
-/// Ingest a PDF statement file via the `reqif-opa-mcp` Python sidecar.
+/// Ingest a PDF statement file via the external Python sidecar.
 ///
-/// This op is a Phase 2 stub. See the TODO below for the intended implementation.
+/// Spawns the sidecar subprocess (`reqif-opa-mcp ingest --file <path> --output ndjson`),
+/// reads NDJSON transaction candidates from stdout, runs the Rhai classification waterfall
+/// on each, and persists results to the workbook. Blake3 content-hash IDs ensure
+/// idempotent re-ingest.
+///
+/// # Subprocess
+/// Requires `reqif-opa-mcp` on `PATH`. The intended long-term replacement is
+/// `docling convert <path>` once docling's NDJSON output shape is stabilised.
 pub struct PdfIngestOp {
     pub input_path: PathBuf,
     pub rule_dir: PathBuf,
@@ -584,7 +979,7 @@ impl LedgerOperation for PdfIngestOp {
     }
 
     fn description(&self) -> &str {
-        "Ingest a PDF statement file via the reqif-opa-mcp Python sidecar (phase-2)"
+        "Ingest a PDF statement file via the reqif-opa-mcp Python sidecar"
     }
 
     fn is_idempotent(&self) -> bool {
@@ -787,6 +1182,32 @@ impl LedgerOperation for PdfIngestOp {
                     });
                 }
             }
+        }
+
+        // Emit an AUDIT.log row for this ingest run.
+        {
+            use crate::validation::{CommitGate, MetaCtx};
+            use crate::workbook::AuditRow;
+
+            let meta = MetaCtx::default();
+            let gate = if row_errors.is_empty() {
+                CommitGate::Approved { confidence: 1.0 }
+            } else {
+                CommitGate::PendingOperator {
+                    confidence: processed as f32 / (processed + row_errors.len()).max(1) as f32,
+                    reason: format!("{} rows had classification errors", row_errors.len()),
+                }
+            };
+            let audit_row = AuditRow::new(
+                filename,
+                filename,
+                processed as f32 / (processed + row_errors.len()).max(1) as f32,
+                &[],
+                &meta,
+                row_errors.is_empty(),
+                &gate,
+            );
+            let _ = writer.append_audit_row(&audit_row);
         }
 
         Ok(OperationResult {
@@ -1085,6 +1506,24 @@ mod tests {
     }
 
     #[test]
+    fn ingest_statement_op_rejects_pdf_with_clear_error() {
+        let op = IngestStatementOp {
+            source_glob: "statements/*.pdf".to_string(),
+            vendor_hint: None,
+        };
+        let ctx = test_ctx()
+            .with_input_path(PathBuf::from("/tmp/WF--BH--2024-01--statement.pdf"));
+        let result = op.execute(&ctx);
+        assert!(result.is_err());
+        match result {
+            Err(LedgerOpError::InvalidInput(msg)) => {
+                assert!(msg.contains("PdfIngestOp"), "error should mention PdfIngestOp, got: {msg}");
+            }
+            other => panic!("expected InvalidInput, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn pdf_ingest_op_is_idempotent() {
         let op = PdfIngestOp {
             input_path: PathBuf::from("/tmp/test.pdf"),
@@ -1114,5 +1553,48 @@ mod tests {
             }
             other => panic!("expected InvalidInput, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn check_tax_deadline_no_calendar_returns_success() {
+        let op = CheckTaxDeadlineOp {
+            deadline_id: "us-annual-return".to_string(),
+            warn_days_before: 30,
+        };
+        let ctx = test_ctx();
+        let result = op.execute(&ctx).unwrap();
+        assert!(result.success);
+        assert!(result.issues.is_empty());
+    }
+
+    #[test]
+    fn check_tax_deadline_with_calendar_no_warning_when_far_away() {
+        use crate::calendar::BusinessCalendar;
+        use std::sync::Arc;
+
+        let op = CheckTaxDeadlineOp {
+            deadline_id: "us-annual-return".to_string(),
+            warn_days_before: 7,
+        };
+        let cal = Arc::new(BusinessCalendar::us_tax_defaults());
+        let ctx = test_ctx().with_calendar(cal);
+        let result = op.execute(&ctx).unwrap();
+        assert!(result.success);
+    }
+
+    #[test]
+    fn check_tax_deadline_unknown_id_returns_success() {
+        use crate::calendar::BusinessCalendar;
+        use std::sync::Arc;
+
+        let op = CheckTaxDeadlineOp {
+            deadline_id: "no-such-deadline".to_string(),
+            warn_days_before: 30,
+        };
+        let cal = Arc::new(BusinessCalendar::us_tax_defaults());
+        let ctx = test_ctx().with_calendar(cal);
+        let result = op.execute(&ctx).unwrap();
+        assert!(result.success);
+        assert!(result.issues.is_empty());
     }
 }

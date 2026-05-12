@@ -35,5 +35,4 @@
 - [Isometric Projection](./iso.md)
 - [Isometric Pipeline Objects](./iso-pipeline-objects.md)
 - [Renderer](./render.md)
-- [Slint Visualization](./slint_viz.md)
 - [Match Visualization Plan](./match-visualization-plan.md)

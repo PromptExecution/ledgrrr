@@ -21,7 +21,6 @@ pub mod pipeline;
 pub mod proposal;
 pub mod render;
 pub mod rule_registry;
-pub mod slint_viz;
 pub mod tags;
 pub mod validation;
 pub mod verify;
@@ -33,7 +32,6 @@ pub mod workflow;
 pub use graph::{create_pipeline_edges, create_pipeline_nodes, EdgeData, NodeData};
 pub use layout::{iso_project, ForceLayout};
 pub use render::GraphRenderer;
-pub use slint_viz::SlintGraphView;
 
 #[cfg(test)]
 mod integration_tests;
