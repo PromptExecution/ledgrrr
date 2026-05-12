@@ -30,6 +30,7 @@ arc-kit-au = { path = "../arc-kit-au", optional = true }
 tokio = { workspace = true }
 tracing = "0.1"
 notify = "8.2"
+ledger-attest = { path = "../ledger-attest" }
 
 # filesystem metadata — xattr on Linux; sidecar fallback is pure std
 [target.'cfg(target_os = "linux")'.dependencies]

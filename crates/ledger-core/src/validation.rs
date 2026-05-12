@@ -4,6 +4,8 @@
 
 use std::fmt;
 use serde::{Deserialize, Serialize};
+use ledger_attest::attested;
+use crate::attest::{Attested, AttestationSpec};
 
 /// Disposition classifies how an issue should be handled by the pipeline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -232,6 +234,7 @@ pub enum ApprovalGate {
 
 /// Gate decision for committing a reconciled transaction.
 /// Replaces unconditional tray-approval with confidence-aware routing.
+#[attested("commit_gate_total")]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum CommitGate {
     /// All checks passed above threshold -- may commit automatically.
@@ -326,6 +329,18 @@ pub mod verbs {
             .with_input("LedgerEntry")
             .with_output("Reversal")
             .with_access(AccessCriteria::RequiresApproval(ApprovalGate::Tray))
+    }
+}
+
+
+impl Attested for CommitGate {
+    fn attestation_spec() -> AttestationSpec {
+        AttestationSpec {
+            invariant: "commit_gate_total",
+            z3_predicate: Some("Approved | PendingOperator | Blocked covers all Reconciled states"),
+            kasuari_description: None,
+            kani_module: Some("kani_proofs::commit_gate"),
+        }
     }
 }
 
