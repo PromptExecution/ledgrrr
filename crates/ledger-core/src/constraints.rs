@@ -2,6 +2,8 @@
 //! Uses the Cassowary algorithm to evaluate constraints against transaction populations.
 
 use serde::{Deserialize, Serialize};
+use ledger_attest::attested;
+use crate::attest::{Attested, AttestationSpec};
 
 /// Constraint strength levels (matching Kasuari).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -17,6 +19,7 @@ pub enum ConstraintStrength {
 }
 
 /// Result of constraint evaluation.
+#[attested("constraint_evaluation_bounded")]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConstraintEvaluation {
     /// Whether REQUIRED constraints passed.
@@ -98,6 +101,7 @@ impl ConstraintEvaluation {
 }
 
 /// Structured result from invoice verification.
+#[attested("invoice_arithmetic_valid")]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InvoiceVerification {
     pub evaluation: ConstraintEvaluation,
@@ -106,7 +110,20 @@ pub struct InvoiceVerification {
     pub audit_note: String,
 }
 
+
+impl Attested for ConstraintEvaluation {
+    fn attestation_spec() -> AttestationSpec {
+        AttestationSpec {
+            invariant: "constraint_evaluation_bounded",
+            z3_predicate: None,
+            kasuari_description: Some("strong_ratio, medium_ratio, weak_ratio in [0.0, 1.0]"),
+            kani_module: Some("kani_proofs::vendor_constraints"),
+        }
+    }
+}
+
 /// A historical constraint set for a vendor or category.
+#[attested("vendor_constraint_bounds_ordered")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VendorConstraintSet {
     pub vendor_id: String,
@@ -145,6 +162,17 @@ impl VendorConstraintSet {
             strong_ratio,
             medium_ratio,
             weak_ratio,
+        }
+    }
+}
+
+impl Attested for VendorConstraintSet {
+    fn attestation_spec() -> AttestationSpec {
+        AttestationSpec {
+            invariant: "vendor_constraint_bounds_ordered",
+            z3_predicate: None,
+            kasuari_description: Some("evaluate() strong_ratio in [0.0, 1.0] for all finite f64 inputs"),
+            kani_module: Some("kani_proofs::vendor_constraints"),
         }
     }
 }
@@ -210,6 +238,18 @@ pub struct LayoutSolver {
 impl LayoutSolver {
     pub fn new() -> Self {
         Self { _private: () }
+    }
+}
+
+
+impl Attested for InvoiceVerification {
+    fn attestation_spec() -> AttestationSpec {
+        AttestationSpec {
+            invariant: "invoice_arithmetic_valid",
+            z3_predicate: Some("total = subtotal + gst"),
+            kasuari_description: None,
+            kani_module: Some("kani_proofs::invoice_arithmetic"),
+        }
     }
 }
 

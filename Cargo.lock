@@ -5663,6 +5663,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a79a3332a6609480d7d0c9eab957bca6b455b91bb84e66d19f5ff66294b85b8"
 
 [[package]]
+name = "ledger-attest"
+version = "1.8.1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "ledger-core"
 version = "1.8.1"
 dependencies = [
@@ -5679,6 +5688,7 @@ dependencies = [
  "frunk",
  "glam 0.27.0",
  "kasuari",
+ "ledger-attest",
  "msft-agent-gov-ledgrrr",
  "notify",
  "petgraph 0.6.5",
