@@ -33,6 +33,7 @@ pub struct PipelineState<S = Ingested> {
     pub confidence: f32,
     pub issues: Vec<crate::validation::Issue>,
     pub meta: crate::validation::MetaCtx,
+    #[serde(default)]
     pub doc_fields: DocumentFields,
     _state: PhantomData<S>,
 }
@@ -675,7 +676,17 @@ mod tests {
                 ..DocumentFields::default()
             })
             .validate(Vec::new());
-        assert!(state.verify_legal(&solver, &rules).is_ok());
+        let ok_state = match state.verify_legal(&solver, &rules) {
+            Ok(state) => state,
+            Err(_) => panic!("BASEXCLUDED should satisfy au_gst::rule_38_190"),
+        };
+        assert_eq!(ok_state.confidence, 1.0);
+        assert!(
+            !ok_state
+                .issues
+                .iter()
+                .any(|i| i.code == "legal_unknown" || i.code == "legal_violation")
+        );
 
         // US SaaS with INPUT → legal gate fails → Err(NeedsReview)
         let state = PipelineState::<Ingested>::new("doc2", "WF--BH--2026-01")
@@ -686,7 +697,18 @@ mod tests {
                 ..DocumentFields::default()
             })
             .validate(Vec::new());
-        assert!(state.verify_legal(&solver, &rules).is_err());
+        let err_state = match state.verify_legal(&solver, &rules) {
+            Ok(_) => panic!("INPUT should violate au_gst::rule_38_190"),
+            Err(state) => state,
+        };
+        assert!(
+            err_state
+                .issues
+                .iter()
+                .any(|i| i.code == "legal_violation"
+                    && i.disposition == crate::validation::Disposition::Unrecoverable)
+        );
+        assert!(!err_state.issues.iter().any(|i| i.code == "legal_unknown"));
     }
 
     #[test]
