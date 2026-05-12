@@ -227,6 +227,17 @@ impl LedgerOperation for IngestStatementOp {
 
         let doc_type = DocType::from_path(input_path);
 
+        // PDFs must go through PdfIngestOp (subprocess sidecar) or the MCP
+        // `ingest_pdf` tool (pre-extracted rows). Calamine cannot parse PDFs.
+        if matches!(doc_type, DocType::Pdf) {
+            return Err(LedgerOpError::InvalidInput(
+                "PDF files cannot be ingested via IngestStatementOp. \
+                 Use PdfIngestOp directly (scheduler path) or the MCP \
+                 `ingest_pdf` tool (agent path)."
+                    .to_string(),
+            ));
+        }
+
         // Read a small sample for shape classification (first 2 KB of the file
         // for CSV; not applicable for XLSX — just use the filename).
         let sample_content = if matches!(doc_type, DocType::SpreadsheetCsv) {
@@ -626,9 +637,16 @@ impl LedgerOperation for CheckTaxDeadlineOp {
     }
 }
 
-/// Ingest a PDF statement file via the `reqif-opa-mcp` Python sidecar.
+/// Ingest a PDF statement file via the external Python sidecar.
 ///
-/// This op is a Phase 2 stub. See the TODO below for the intended implementation.
+/// Spawns the sidecar subprocess (`reqif-opa-mcp ingest --file <path> --output ndjson`),
+/// reads NDJSON transaction candidates from stdout, runs the Rhai classification waterfall
+/// on each, and persists results to the workbook. Blake3 content-hash IDs ensure
+/// idempotent re-ingest.
+///
+/// # Subprocess
+/// Requires `reqif-opa-mcp` on `PATH`. The intended long-term replacement is
+/// `docling convert <path>` once docling's NDJSON output shape is stabilised.
 pub struct PdfIngestOp {
     pub input_path: PathBuf,
     pub rule_dir: PathBuf,
@@ -641,7 +659,7 @@ impl LedgerOperation for PdfIngestOp {
     }
 
     fn description(&self) -> &str {
-        "Ingest a PDF statement file via the reqif-opa-mcp Python sidecar (phase-2)"
+        "Ingest a PDF statement file via the reqif-opa-mcp Python sidecar"
     }
 
     fn is_idempotent(&self) -> bool {
@@ -1165,6 +1183,24 @@ mod tests {
             vendor_hint: None,
         };
         assert!(op.is_idempotent());
+    }
+
+    #[test]
+    fn ingest_statement_op_rejects_pdf_with_clear_error() {
+        let op = IngestStatementOp {
+            source_glob: "statements/*.pdf".to_string(),
+            vendor_hint: None,
+        };
+        let ctx = test_ctx()
+            .with_input_path(PathBuf::from("/tmp/WF--BH--2024-01--statement.pdf"));
+        let result = op.execute(&ctx);
+        assert!(result.is_err());
+        match result {
+            Err(LedgerOpError::InvalidInput(msg)) => {
+                assert!(msg.contains("PdfIngestOp"), "error should mention PdfIngestOp, got: {msg}");
+            }
+            other => panic!("expected InvalidInput, got {other:?}"),
+        }
     }
 
     #[test]

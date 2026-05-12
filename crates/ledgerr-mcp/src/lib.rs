@@ -2509,12 +2509,41 @@ impl TurboLedgerTools for TurboLedgerService {
         
         drop(classification);
         
-        // 2. Query tax ambiguities (if item_types includes Ambiguity)
-        // Note: This requires a full reconciliation stage which may be expensive
-        // For now, we return empty if requested (can be enhanced later)
+        // 2. Query tax ambiguities: classified transactions with confidence < 60%.
+        // These are genuinely uncertain classifications that need operator review,
+        // distinct from review flags which may be high-confidence but policy-triggered.
         if request.item_types.as_ref().map_or(false, |v| v.contains(&QueueItemType::Ambiguity)) {
-            // TODO: Implement tax ambiguity query
-            // This would require running a reconciliation stage
+            let classification = self
+                .classification_state
+                .lock()
+                .map_err(|_| ToolError::Internal("classification lock poisoned".to_string()))?;
+
+            const AMBIGUITY_THRESHOLD: f64 = 0.60;
+
+            for (tx_id, stored) in &classification.classifications {
+                use rust_decimal::prelude::ToPrimitive;
+                let conf = stored.confidence.to_f64().unwrap_or(1.0);
+                if conf < AMBIGUITY_THRESHOLD {
+                    let id = blake3::hash(format!("ambiguity:{tx_id}").as_bytes()).to_hex();
+                    let pct = (conf * 100.0).round() as u32;
+                    items.push(QueueItem {
+                        id: id.to_string(),
+                        item_type: QueueItemType::Ambiguity,
+                        severity: QueueSeverity::Medium,
+                        created_at: "1970-01-01T00:00:00Z".to_string(),
+                        status: QueueStatus::Open,
+                        provenance: QueueProvenance::ReviewTool,
+                        related_tx_ids: vec![tx_id.clone()],
+                        summary: format!(
+                            "Ambiguous classification: {} ({}% confidence)",
+                            stored.category, pct
+                        ),
+                        tx_id: Some(tx_id.clone()),
+                        document_ref: None,
+                        metadata: BTreeMap::new(),
+                    });
+                }
+            }
         }
         
         // 3. Query manual changes from audit log (if item_types includes ManualChange)
@@ -2544,20 +2573,73 @@ impl TurboLedgerTools for TurboLedgerService {
             }
         }
         
-        // 4. Query reconciliation blockers (if item_types includes Blocker)
-        // Note: This requires running reconciliation which may be expensive
-        // For now, we return empty if requested (can be enhanced later)
+        // 4. Query reconciliation blockers: documents stuck in Processing state.
+        // A document that entered Processing but never reached Indexed is a blocker —
+        // it prevents downstream reconciliation from completing.
         if request.item_types.as_ref().map_or(false, |v| v.contains(&QueueItemType::Blocker)) {
-            // TODO: Implement blocker query
-            // This would require running a reconciliation stage
+            let registry = self
+                .document_registry
+                .lock()
+                .map_err(|_| ToolError::Internal("document_registry lock poisoned".to_string()))?;
+
+            for (doc_id, record) in registry.iter() {
+                if matches!(record.status, DocumentStatus::Processing) {
+                    let id = blake3::hash(format!("blocker:{doc_id}").as_bytes()).to_hex();
+                    items.push(QueueItem {
+                        id: id.to_string(),
+                        item_type: QueueItemType::Blocker,
+                        severity: QueueSeverity::Critical,
+                        created_at: record
+                            .indexed_at
+                            .clone()
+                            .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string()),
+                        status: QueueStatus::Open,
+                        provenance: QueueProvenance::DocumentTool,
+                        related_tx_ids: vec![],
+                        summary: format!(
+                            "Document stuck in processing: {}",
+                            record.file_name
+                        ),
+                        tx_id: None,
+                        document_ref: Some(record.file_name.clone()),
+                        metadata: BTreeMap::new(),
+                    });
+                }
+            }
         }
-        
-        // 5. Query document issues (if item_types includes DocumentIssue)
-        // Note: This would require checking document registry for failed ingests
-        // For now, we return empty if requested (can be enhanced later)
+
+        // 5. Query document issues: documents with an Error status in the registry.
+        // These are failed ingests or processing failures that the operator must resolve.
         if request.item_types.as_ref().map_or(false, |v| v.contains(&QueueItemType::DocumentIssue)) {
-            // TODO: Implement document issue query
-            // This would require checking document registry
+            let registry = self
+                .document_registry
+                .lock()
+                .map_err(|_| ToolError::Internal("document_registry lock poisoned".to_string()))?;
+
+            for (doc_id, record) in registry.iter() {
+                if let DocumentStatus::Error(ref msg) = record.status {
+                    let id = blake3::hash(format!("doc_issue:{doc_id}").as_bytes()).to_hex();
+                    items.push(QueueItem {
+                        id: id.to_string(),
+                        item_type: QueueItemType::DocumentIssue,
+                        severity: QueueSeverity::High,
+                        created_at: record
+                            .indexed_at
+                            .clone()
+                            .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string()),
+                        status: QueueStatus::Open,
+                        provenance: QueueProvenance::DocumentTool,
+                        related_tx_ids: vec![],
+                        summary: format!(
+                            "Document ingest error: {} — {}",
+                            record.file_name, msg
+                        ),
+                        tx_id: None,
+                        document_ref: Some(record.file_name.clone()),
+                        metadata: BTreeMap::new(),
+                    });
+                }
+            }
         }
         
         // Apply status filter
