@@ -2,6 +2,7 @@
 //! These types provide a carry-forward validation context that accumulates
 //! confidence and issues through each pipeline stage.
 
+use std::fmt;
 use serde::{Deserialize, Serialize};
 
 /// Disposition classifies how an issue should be handled by the pipeline.
@@ -106,6 +107,17 @@ pub enum MetaFlag {
     RepairApplied { rule_id: String },
     LowUpstreamConf { score: f32, stage: String },
     ConstraintWeak { constraint: String },
+}
+impl fmt::Display for MetaFlag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MetaFlag::NewVendor { vendor } => write!(f, "new_vendor:{vendor}"),
+            MetaFlag::AnomalyDetected { code, impact } => write!(f, "anomaly:{code}:{impact:.2}"),
+            MetaFlag::RepairApplied { rule_id } => write!(f, "repair:{rule_id}"),
+            MetaFlag::LowUpstreamConf { score, stage } => write!(f, "low_conf:{stage}:{score:.2}"),
+            MetaFlag::ConstraintWeak { constraint } => write!(f, "constraint_weak:{constraint}"),
+        }
+    }
 }
 
 /// Score from a single pipeline stage.

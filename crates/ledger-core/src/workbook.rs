@@ -5,6 +5,7 @@ use calamine::{Reader, open_workbook, Xlsx, Data};
 use serde::{Deserialize, Serialize};
 
 use crate::classify::{TaxCategory, Flag};
+use crate::validation::{CommitGate, Disposition, Issue, MetaCtx};
 use strum::VariantArray;
 
 pub const REQUIRED_SHEETS: &[&str] = &[
@@ -30,6 +31,8 @@ pub fn initialize_workbook(path: &Path) -> Result<(), rust_xlsxwriter::XlsxError
         
         if *sheet_name == TRANSACTIONS_SHEET {
             setup_transactions_sheet(worksheet)?;
+        } else if *sheet_name == "AUDIT.log" {
+            setup_audit_sheet(worksheet)?;
         }
     }
     workbook.save(path)
@@ -57,6 +60,21 @@ fn setup_transactions_sheet(worksheet: &mut Worksheet) -> Result<(), rust_xlsxwr
     let flag_validation = DataValidation::new().allow_list_strings(&flags)?;
     worksheet.add_data_validation(1, 8, 1000, 8, &flag_validation)?;
 
+    Ok(())
+}
+
+fn setup_audit_sheet(worksheet: &mut Worksheet) -> Result<(), rust_xlsxwriter::XlsxError> {
+    worksheet.write_string(0, 0, "entry_id")?;
+    worksheet.write_string(0, 1, "constraint_score")?;
+    worksheet.write_string(0, 2, "legal_result")?;
+    worksheet.write_string(0, 3, "disposition")?;
+    worksheet.write_string(0, 4, "accumulated_confidence")?;
+    worksheet.write_string(0, 5, "stage_trace_json")?;
+    worksheet.write_string(0, 6, "flags")?;
+    worksheet.write_string(0, 7, "invoice_arithmetic_ok")?;
+    worksheet.write_string(0, 8, "commit_gate")?;
+    // Keep stage_trace_json narrow so it doesn't overwhelm the CPA view
+    worksheet.set_column_width(5, 8)?;
     Ok(())
 }
 
@@ -127,6 +145,8 @@ impl WorkbookWriter {
             let worksheet = new_workbook.add_worksheet().set_name(*sheet_name)?;
             if *sheet_name == TRANSACTIONS_SHEET {
                 setup_transactions_sheet(worksheet)?;
+            } else if *sheet_name == "AUDIT.log" {
+                setup_audit_sheet(worksheet)?;
             }
             if let Ok(range) = workbook.worksheet_range(*sheet_name) {
                 Self::copy_sheet_data(worksheet, &range)?;
@@ -215,6 +235,32 @@ impl WorkbookWriter {
         Ok(())
     }
 
+    pub fn append_audit_row(
+        &self,
+        row: &AuditRow,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let row_idx = self.get_row_count("AUDIT.log")?;
+
+        let mut new_workbook = Workbook::new();
+        self.copy_all_sheets(&mut new_workbook)?;
+
+        let worksheet = Self::find_worksheet_by_name(&mut new_workbook, "AUDIT.log")
+            .ok_or("AUDIT.log sheet not found")?;
+
+        worksheet.write_string(row_idx, 0, &row.entry_id)?;
+        worksheet.write_number(row_idx, 1, row.constraint_score as f64)?;
+        worksheet.write_string(row_idx, 2, &row.legal_result)?;
+        worksheet.write_string(row_idx, 3, &row.disposition)?;
+        worksheet.write_number(row_idx, 4, row.accumulated_confidence as f64)?;
+        worksheet.write_string(row_idx, 5, &row.stage_trace_json)?;
+        worksheet.write_string(row_idx, 6, &row.flags)?;
+        worksheet.write_boolean(row_idx, 7, row.invoice_arithmetic_ok)?;
+        worksheet.write_string(row_idx, 8, &row.commit_gate)?;
+
+        new_workbook.save(&self.path)?;
+        Ok(())
+    }
+
     pub fn append_mutation(
         &self,
         timestamp: &str,
@@ -262,6 +308,83 @@ impl WorkbookWriter {
 
         new_workbook.save(&self.path)?;
         Ok(())
+    }
+}
+
+/// One audit row per committed transaction for the AUDIT.log sheet.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditRow {
+    pub entry_id: String,
+    pub constraint_score: f32,
+    pub legal_result: String,
+    pub disposition: String,
+    pub accumulated_confidence: f32,
+    pub stage_trace_json: String,
+    pub flags: String,
+    pub invoice_arithmetic_ok: bool,
+    pub commit_gate: String,
+}
+
+impl AuditRow {
+    pub fn new(
+        document_id: &str,
+        source_ref: &str,
+        constraint_score: f32,
+        issues: &[Issue],
+        meta: &MetaCtx,
+        invoice_arithmetic_ok: bool,
+        gate: &CommitGate,
+    ) -> Self {
+        let entry_id = {
+            let input = format!("{document_id}|{source_ref}");
+            blake3::hash(input.as_bytes()).to_hex().to_string()
+        };
+
+        let legal_result = issues
+            .iter()
+            .find(|i| i.code == "legal_violation")
+            .map(|i| i.code.clone())
+            .unwrap_or_else(|| "ok".to_string());
+
+        let disposition = issues
+            .iter()
+            .map(|i| i.disposition)
+            .max_by_key(|d| match d {
+                Disposition::Unrecoverable => 2,
+                Disposition::Recoverable => 1,
+                Disposition::Advisory => 0,
+            })
+            .map(|d| format!("{d:?}").to_ascii_lowercase())
+            .unwrap_or_else(|| "ok".to_string());
+
+        let stage_trace_json = serde_json::to_string(&meta.stage_trace)
+            .unwrap_or_else(|_| "[]".to_string());
+
+        let flags = meta
+            .flags
+            .iter()
+            .map(|f| f.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+
+        let commit_gate = match gate {
+            CommitGate::Approved { .. } => "Approved",
+            CommitGate::PendingOperator { .. } => "PendingOperator",
+            CommitGate::Blocked { .. } => "Blocked",
+        }
+        .to_string();
+
+        Self {
+            entry_id,
+            constraint_score,
+            legal_result,
+            disposition,
+            accumulated_confidence: meta.accumulated_confidence,
+            stage_trace_json,
+            flags,
+            invoice_arithmetic_ok,
+            commit_gate,
+        }
     }
 }
 
@@ -628,5 +751,47 @@ mod tests {
             Data::Int(_) => panic!("Amount should be stored as string, not int"),
             _ => panic!("Unexpected cell type"),
         }
+    }
+    #[test]
+    fn test_audit_row_legal_violation_result() {
+        use crate::validation::{CommitGate, Disposition, Issue, IssueSource, MetaCtx};
+        let issues = vec![Issue {
+            code: "legal_violation".to_string(),
+            message: "foreign SaaS should have BASEXCLUDED tax code".to_string(),
+            field: None,
+            disposition: Disposition::Unrecoverable,
+            source: IssueSource::TypeCheck,
+        }];
+        let meta = MetaCtx::default();
+        let gate = CommitGate::Blocked { issues: issues.clone() };
+        let row = AuditRow::new("doc1", "WF--BH--2026-01", 0.0, &issues, &meta, true, &gate);
+        assert_eq!(row.legal_result, "legal_violation");
+        assert_eq!(row.commit_gate, "Blocked");
+        assert_eq!(row.disposition, "unrecoverable");
+    }
+
+    #[test]
+    fn test_audit_row_approved_gate() {
+        use crate::validation::{CommitGate, MetaCtx};
+        let gate = CommitGate::Approved { confidence: 0.95 };
+        let meta = MetaCtx::default();
+        let row = AuditRow::new("doc2", "WF--BH--2026-01", 0.95, &[], &meta, true, &gate);
+        assert_eq!(row.commit_gate, "Approved");
+        assert_eq!(row.legal_result, "ok");
+        assert_eq!(row.disposition, "ok");
+    }
+
+    #[test]
+    fn test_audit_row_stage_trace_json_is_valid() {
+        use crate::validation::{CommitGate, MetaCtx};
+        let mut meta = MetaCtx::default();
+        meta = meta.advance("validate", 0.9, &[]);
+        meta = meta.advance("verify_legal", 1.0, &[]);
+        let gate = CommitGate::Approved { confidence: 0.9 };
+        let row = AuditRow::new("doc3", "src", 1.0, &[], &meta, false, &gate);
+        let parsed: serde_json::Value = serde_json::from_str(&row.stage_trace_json)
+            .expect("stage_trace_json must be valid JSON");
+        assert!(parsed.is_array());
+        assert_eq!(parsed.as_array().unwrap().len(), 2);
     }
 }
