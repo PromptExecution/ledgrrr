@@ -9,6 +9,10 @@ permissions:
   contents: write
   security-events: write
 
+env:
+  MDBOOK_VERSION: "0.5.0"
+  MDBOOK_MERMAID_VERSION: "0.17.0"
+
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
@@ -116,8 +120,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   docs-check:
-    needs: test-and-build
-    if: github.event_name == 'pull_request'
+    name: Validate GitHub Pages docs build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -132,20 +135,13 @@ jobs:
       - name: Install just
         run: cargo install just --locked
 
-      - name: Setup mdBook
-        uses: jontze/action-mdbook@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          use-mermaid: true
-
-      - name: Install mdbook binaries
-        run: cargo install mdbook mdbook-mermaid --locked
-
-      - name: Install mdbook-admonish
-        run: cargo install mdbook-admonish --locked
+      - name: Install mdBook toolchain
+        run: |
+          cargo install mdbook --version "$MDBOOK_VERSION" --locked
+          cargo install mdbook-mermaid --version "$MDBOOK_MERMAID_VERSION" --locked
 
       - name: Install mdbook-rhai-mermaid
         run: cargo install --path crates/mdbook-rhai-mermaid
 
-      - name: Validate docs
-        run: just docgen-check
+      - name: Validate GitHub Pages docs payload
+        run: just docgen-pages-check

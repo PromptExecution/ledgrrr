@@ -1,8 +1,9 @@
 # Introduction
 
-```admonish info
-**l3dg3rr** is designed for US expats who need to reconcile complex financial histories across multiple jurisdictions (US, AU, UK) without compromising privacy.
-```
+<div class="admonition info">
+<div class="admonition-title">Info</div>
+<p><strong>l3dg3rr</strong> is designed for US expats who need to reconcile complex financial histories across multiple jurisdictions (US, AU, UK) without compromising privacy.</p>
+</div>
 
 `l3dg3rr` is a local-first financial document intelligence system
  for retroactive U.S. expat tax preparation. It ingests raw statements, classifies transactions with editable rules, verifies hard constraints, and exports an accountant-usable Excel workbook with audit history.

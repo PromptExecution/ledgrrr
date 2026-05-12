@@ -4,17 +4,13 @@ language = "en"
 src = "src"
 title = "l3dg3rr Ledger Documentation"
 
-[preprocessor.admonish]
-command = "mdbook-admonish"
-assets_version = "3.1.0" # do not edit: managed by `mdbook-admonish install`
-
 [preprocessor.rhai-mermaid]
 command = "mdbook-rhai-mermaid"
 before = ["mermaid"]
 
 [preprocessor.mermaid]
 optional = true
-after = ["rhai-mermaid", "admonish"]
+after = ["rhai-mermaid"]
 
 [output.html]
 edit-url-template = "https://github.com/PromptExecution/l3dg3rr/edit/main/book/src/{path}#L{line}"

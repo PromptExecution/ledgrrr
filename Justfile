@@ -475,8 +475,18 @@ docgen-check:
     @echo "Running live-editor unit tests..."
     @node --test book/theme/rhai-live-core.test.js
     @echo "Checking iso-pipeline-objects.html has at least 5 mermaid blocks..."
-    @count=$$(grep -c 'class="mermaid"' book/book/iso-pipeline-objects.html); echo "Found $$count mermaid blocks in iso-pipeline-objects.html"; if [ "$$count" -lt 5 ]; then echo "error: expected at least 5 mermaid blocks, found $$count"; exit 1; fi; echo "✓ iso-pipeline-objects.html has $$count mermaid blocks (>= 5)"
+    @count=$(grep -c 'class="mermaid"' book/book/iso-pipeline-objects.html || true); echo "Found $count mermaid blocks in iso-pipeline-objects.html"; if [ "$count" -lt 5 ]; then echo "error: expected at least 5 mermaid blocks, found $count"; exit 1; fi; echo "✓ iso-pipeline-objects.html has $count mermaid blocks, expected at least 5"
     @echo "All documentation diagrams validated!"
+
+# Verify the exact mdBook output directory published to GitHub Pages.
+docgen-pages-check:
+    just docgen-check
+    @test -f book/book/index.html || { echo "error: GitHub Pages publish payload missing book/book/index.html"; exit 1; }
+    @compgen -G 'book/book/theme/rhai-live-core*.js' >/dev/null || { echo "error: GitHub Pages publish payload missing live editor core asset"; exit 1; }
+    @compgen -G 'book/book/theme/rhai-live-*.js' >/dev/null || { echo "error: GitHub Pages publish payload missing live editor asset"; exit 1; }
+    @compgen -G 'book/book/mdbook-admonish*.css' >/dev/null || { echo "error: GitHub Pages publish payload missing admonish CSS"; exit 1; }
+    @grep -q 'l3dg3rr Ledger Documentation' book/book/index.html || { echo "error: GitHub Pages index does not look like the hosted docs"; exit 1; }
+    @echo "✓ GitHub Pages docs payload validated at book/book/"
 
 # Negative test: verify broken cross-references are present in output (mdBook
 # does not fail on broken links at build time — this confirms the behavior)
