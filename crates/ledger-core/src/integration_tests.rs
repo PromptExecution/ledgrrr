@@ -327,33 +327,28 @@ mod integration {
     /// without any keyword overlap.
     ///
     /// # What needs to be built first
-    /// `RuleRegistry::load_from_dir()` is implemented, but
-    /// `SemanticRuleSelector::build_embedding_index()` remains unimplemented.
-    /// The semantic path requires embedding infrastructure (fastembed-rs, candle,
-    /// or ONNX sidecar).
+    /// `load_from_dir`, `build_embedding_index`, and `select_rules_semantic` are
+    /// all implemented and wired (lexical/Jaccard similarity). This test is kept
+    /// ignored because it validates **cross-lingual** semantic matching — mapping
+    /// the German "Auslandüberweisung" to English "foreign_income" without shared
+    /// tokens — which requires real vector embeddings (fastembed-rs, candle, or
+    /// an ONNX sidecar). Lexical similarity cannot satisfy this assertion.
     #[test]
-    #[ignore = "requires SemanticRuleSelector::build_embedding_index() — blocked on embedding infrastructure"]
+    #[ignore = "cross-lingual semantic matching requires vector embedding infrastructure (fastembed-rs / candle / ONNX)"]
     fn test_semantic_rule_selector_selects_by_embedding() {
-        // DESIRED BEHAVIOR:
-        // 1. RuleRegistry::load_from_dir(&rules_dir) must:
-        //    - Scan rules/ for *.rhai files
-        //    - Optionally load *.reqif.json sidecars
-        //    - Return a populated RuleRegistry (no unimplemented!() panic)
+        // DESIRED BEHAVIOR (requires real embedding model):
+        // 1. registry.build_embedding_index() must encode each rule file's content
+        //    via a local embedding model into a shared vector space.
         //
-        // 2. registry.build_embedding_index() must:
-        //    - Encode each rule file's content (or its ReqIfCandidate.text) via
-        //      a local embedding model into a shared vector space
-        //    - Build a k-d tree or flat cosine-similarity index over the vectors
+        // 2. registry.select_rules_semantic(&tx, 3) must encode tx.description
+        //    ("Auslandüberweisung von DE Arbeitgeber") and return the top-3 rule
+        //    paths by cosine similarity. "Auslandüberweisung" (German: "foreign
+        //    transfer") should match classify_foreign_income.rhai even though the
+        //    German word shares no tokens with the English rule — proving semantic
+        //    (not lexical) bridging.
         //
-        // 3. registry.select_rules_semantic(&tx, 3) must:
-        //    - Encode tx.description ("Auslandüberweisung von DE Arbeitgeber")
-        //    - Return the top-3 rule paths by cosine similarity
-        //    - "Auslandüberweisung" (German: "foreign transfer") should match
-        //      classify_foreign_income.rhai even though the German word is not a
-        //      keyword in the rule file — this validates semantic (not lexical) matching
-        //
-        // The test asserts that at least one returned path contains "foreign_income"
-        // in its filename, proving the semantic index correctly bridges languages.
+        // The test asserts that at least one returned path contains "foreign_income",
+        // which Jaccard/lexical selection cannot guarantee.
         use crate::classify::SampleTransaction;
         use crate::rule_registry::{RuleRegistry, SemanticRuleSelector};
 
@@ -367,10 +362,11 @@ mod integration {
         let mut registry =
             RuleRegistry::load_from_dir(&rule_dir).expect("should load rules from rules/ dir");
 
-        // This will panic with unimplemented!() until build_embedding_index is implemented:
+        // build_embedding_index is implemented (lexical similarity); re-calling it
+        // here is a no-op rebuild — the index was already built by load_from_dir.
         registry
             .build_embedding_index()
-            .expect("should build embedding index over rule files");
+            .expect("should rebuild embedding index over rule files");
 
         let tx = SampleTransaction {
             tx_id: "test-semantic-001".to_string(),
