@@ -10,8 +10,8 @@ permissions:
   contents: write
 
 env:
-  MDBOOK_VERSION: "0.5.0"
-  MDBOOK_MERMAID_VERSION: "0.17.0"
+  TOOL_MDBOOK_VERSION: "0.5.0"
+  TOOL_MDBOOK_MERMAID_VERSION: "0.17.0"
 
 jobs:
   deploy:
@@ -31,8 +31,8 @@ jobs:
 
       - name: Install mdBook toolchain
         run: |
-          cargo install mdbook --version "$MDBOOK_VERSION" --locked
-          cargo install mdbook-mermaid --version "$MDBOOK_MERMAID_VERSION" --locked
+          cargo install mdbook --version "$TOOL_MDBOOK_VERSION" --locked
+          cargo install mdbook-mermaid --version "$TOOL_MDBOOK_MERMAID_VERSION" --locked
 
       - name: Install mdbook-admonish
         # TODO: pin to a released version once tommilligan/mdbook-admonish#235 merges
