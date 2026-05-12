@@ -523,11 +523,137 @@ impl LedgerOperation for ReconcileAccountOp {
         //   4. Flag unmatched items on either side
         //   5. If !self.dry_run && !ctx.dry_run → write reconciliation status
         //   6. Return matched/unmatched counts and issues
-        let _ = ctx; // suppress unused warning while stubbed
-        Err(LedgerOpError::NotImplemented(format!(
-            "ReconcileAccountOp: Xero integration not yet wired (account={})",
-            self.account_id
-        )))
+        //
+        // Phase 1 (implemented): local-only anomaly detection — duplicates,
+        // date gaps, and amount outliers. Xero integration is a future pass.
+        use calamine::{open_workbook_auto, Data, Reader};
+
+        let workbook_path = ctx.workbook_path.as_ref().ok_or_else(|| {
+            LedgerOpError::InvalidInput(
+                "ReconcileAccountOp requires workbook_path in context".to_string(),
+            )
+        })?;
+
+        let mut wb = open_workbook_auto(workbook_path)
+            .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+        let range = wb
+            .worksheet_range("TRANSACTIONS")
+            .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+
+        // Collect rows for this account: (tx_id, date, amount_str)
+        let mut rows: Vec<(String, String, f64)> = Vec::new();
+        let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut duplicate_ids: Vec<String> = Vec::new();
+
+        for row in range.rows().skip(1) {
+            let get_str = |i: usize| -> String {
+                match row.get(i) {
+                    Some(Data::String(s)) => s.clone(),
+                    _ => String::new(),
+                }
+            };
+            let tx_id = get_str(0);
+            if tx_id.is_empty() {
+                continue;
+            }
+            let account = get_str(3);
+            if !self.account_id.is_empty() && account != self.account_id {
+                continue;
+            }
+            let date = get_str(1);
+            let amount: f64 = get_str(4).parse().unwrap_or(0.0);
+
+            if !seen_ids.insert(tx_id.clone()) {
+                duplicate_ids.push(tx_id.clone());
+            }
+            rows.push((tx_id, date, amount));
+        }
+
+        // Sort by date for gap detection
+        rows.sort_by(|a, b| a.1.cmp(&b.1));
+
+        // Detect date gaps > 90 days between consecutive transactions
+        let mut gap_issues: Vec<String> = Vec::new();
+        for window in rows.windows(2) {
+            let (_, date_a, _) = &window[0];
+            let (tx_b, date_b, _) = &window[1];
+            if let (Ok(a), Ok(b)) = (
+                chrono::NaiveDate::parse_from_str(date_a, "%Y-%m-%d"),
+                chrono::NaiveDate::parse_from_str(date_b, "%Y-%m-%d"),
+            ) {
+                let gap = (b - a).num_days();
+                if gap > 90 {
+                    gap_issues.push(format!(
+                        "date gap of {} days before tx {} ({})",
+                        gap, tx_b, date_b
+                    ));
+                }
+            }
+        }
+
+        // Detect amount outliers: |amount| > mean + 3·stdev
+        let mut outlier_ids: Vec<String> = Vec::new();
+        if rows.len() >= 4 {
+            let amounts: Vec<f64> = rows.iter().map(|(_, _, a)| a.abs()).collect();
+            let mean = amounts.iter().sum::<f64>() / amounts.len() as f64;
+            let variance = amounts.iter().map(|a| (a - mean).powi(2)).sum::<f64>()
+                / amounts.len() as f64;
+            let stdev = variance.sqrt();
+            let threshold = mean + 3.0 * stdev;
+            for (tx_id, _, amount) in &rows {
+                if amount.abs() > threshold {
+                    outlier_ids.push(tx_id.clone());
+                }
+            }
+        }
+
+        // Persist anomalies to MUTATION_HISTORY
+        let mut issues: Vec<String> = Vec::new();
+        let writer = crate::workbook::WorkbookWriter::new(workbook_path);
+
+        for dup_id in &duplicate_ids {
+            let msg = format!("duplicate tx_id: {dup_id}");
+            issues.push(msg.clone());
+            if !ctx.dry_run && !self.dry_run {
+                writer
+                    .append_mutation(
+                        &chrono::Utc::now().to_rfc3339(),
+                        dup_id,
+                        "reconcile-account-op",
+                        "agent",
+                        "reconcile:duplicate",
+                        "",
+                        &msg,
+                    )
+                    .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+            }
+        }
+        for gap in &gap_issues {
+            issues.push(gap.clone());
+        }
+        for outlier_id in &outlier_ids {
+            let msg = format!("amount outlier: {outlier_id}");
+            issues.push(msg.clone());
+            if !ctx.dry_run && !self.dry_run {
+                writer
+                    .append_mutation(
+                        &chrono::Utc::now().to_rfc3339(),
+                        outlier_id,
+                        "reconcile-account-op",
+                        "agent",
+                        "reconcile:outlier",
+                        "",
+                        &msg,
+                    )
+                    .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
+            }
+        }
+
+        let anomaly_count = duplicate_ids.len() + gap_issues.len() + outlier_ids.len();
+        let mut result = OperationResult::success("reconcile-account", rows.len());
+        result.items_flagged = anomaly_count;
+        result.issues = issues;
+        Ok(result)
     }
 }
 

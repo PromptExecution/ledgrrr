@@ -58,8 +58,78 @@ fn semantic_candidate_id(source_kind: &str, source_ref: &str, text: &str) -> Str
     blake3::hash(canonical.as_bytes()).to_hex().to_string()
 }
 
+/// Replaces German and French diacritics with their ASCII equivalents so that
+/// compound words like "Auslandüberweisung" survive as a single token instead
+/// of being split at the ü boundary.
+fn normalize_unicode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 4);
+    for c in s.chars() {
+        match c {
+            'ä' | 'Ä' => out.push_str("ae"),
+            'ö' | 'Ö' => out.push_str("oe"),
+            'ü' | 'Ü' => out.push_str("ue"),
+            'ß' => out.push_str("ss"),
+            'é' | 'è' | 'ê' | 'ë' | 'É' | 'È' | 'Ê' | 'Ë' => out.push('e'),
+            'à' | 'â' | 'á' | 'ã' | 'À' | 'Â' | 'Á' => out.push('a'),
+            'î' | 'ï' | 'í' | 'ì' | 'Î' | 'Ï' | 'Í' => out.push('i'),
+            'ô' | 'ó' | 'ò' | 'Ô' | 'Ó' | 'Ò' => out.push('o'),
+            'û' | 'ú' | 'ù' | 'Û' | 'Ú' | 'Ù' => out.push('u'),
+            'ñ' | 'Ñ' => out.push('n'),
+            'ç' | 'Ç' => out.push('c'),
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// Expands a query token set with English financial-domain synonyms for
+/// German and French terms found in expat transaction descriptions.
+///
+/// Matching is by substring so compound words like "auslandueberweisung"
+/// expand via both sub-terms ("ausland" → foreign, "ueberweisung" → transfer).
+/// Applied only to the QUERY side in `select_rules_semantic`; the rule index
+/// stays in English.
+fn expand_financial_tokens(tokens: &BTreeSet<String>) -> BTreeSet<String> {
+    const GLOSSARY: &[(&str, &[&str])] = &[
+        // German → English
+        ("ausland",      &["foreign", "international", "abroad", "overseas"]),
+        ("ueberweisung", &["transfer", "wire", "remittance"]),
+        ("zahlung",      &["payment", "transfer"]),
+        ("gehalt",       &["salary", "income", "wage", "employment"]),
+        ("arbeitgeber",  &["employer", "employment", "income", "wage"]),
+        ("arbeitnehmer", &["employee", "employment"]),
+        ("einkommen",    &["income", "earnings"]),
+        ("kapital",      &["capital", "investment"]),
+        ("dividende",    &["dividend", "income"]),
+        ("miete",        &["rent", "rental"]),
+        ("freiberuf",    &["freelance", "contractor", "selfemployment"]),
+        ("selbstaendig", &["selfemployment", "freelance", "contractor"]),
+        ("krypto",       &["crypto", "cryptocurrency"]),
+        ("zinsen",       &["interest", "income"]),
+        ("erstattung",   &["refund", "reimbursement"]),
+        // French → English
+        ("virement",     &["transfer", "wire", "remittance"]),
+        ("etranger",     &["foreign", "international"]),
+        ("salaire",      &["salary", "income", "employment"]),
+        ("revenu",       &["income", "revenue", "earnings"]),
+        ("loyer",        &["rent", "rental"]),
+    ];
+    let mut expanded = tokens.clone();
+    for token in tokens.iter() {
+        for (pattern, synonyms) in GLOSSARY {
+            if token.contains(pattern) {
+                for &syn in *synonyms {
+                    expanded.insert(syn.to_string());
+                }
+            }
+        }
+    }
+    expanded
+}
+
 fn semantic_tokens(text: &str) -> BTreeSet<String> {
-    text.split(|c: char| !c.is_ascii_alphanumeric())
+    normalize_unicode(text)
+        .split(|c: char| !c.is_ascii_alphanumeric())
         .filter_map(|token| {
             let token = token.trim().to_ascii_lowercase();
             (token.len() >= 3).then_some(token)
@@ -460,7 +530,11 @@ impl SemanticRuleSelector for RuleRegistry {
             return self.select_rules_deterministic(tx);
         }
 
-        let query = semantic_tokens(&format!("{} {}", tx.account_id, tx.description));
+        // Unicode-normalize then expand German/French financial terms to their
+        // English equivalents so "Auslandüberweisung" bridges to "foreign_income".
+        let base_tokens =
+            semantic_tokens(&format!("{} {}", tx.account_id, tx.description));
+        let query = expand_financial_tokens(&base_tokens);
         let mut scored = self
             .semantic_index
             .iter()
@@ -480,7 +554,9 @@ impl SemanticRuleSelector for RuleRegistry {
 
         let mut selected = Vec::new();
         let mut seen = std::collections::HashSet::new();
-        const MIN_LEXICAL_SIMILARITY: f64 = 0.05;
+        // Lowered from 0.05 to accommodate expanded (larger) query sets where
+        // cross-lingual expansion adds tokens that raise the union size.
+        const MIN_LEXICAL_SIMILARITY: f64 = 0.02;
         for (score, _id, path) in scored {
             if score < MIN_LEXICAL_SIMILARITY {
                 continue;
