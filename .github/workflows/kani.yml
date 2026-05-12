@@ -1,0 +1,19 @@
+name: Kani Proofs
+
+on:
+  push:
+    branches: [main, "feat/**"]
+  pull_request:
+
+jobs:
+  kani:
+    name: Kani model checking
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Kani harnesses
+        uses: model-checking/kani-github-action@v1
+        with:
+          working-directory: kani-proofs
+          args: --tests
