@@ -653,4 +653,3 @@ pub fn get_holon_viz_graph() -> Result<CytoscapeGraph, String> {
 pub fn get_type_graph() -> Result<CytoscapeGraph, String> {
     Ok(TypeRelationshipGraph::seed().to_cytoscape())
 }
-}
