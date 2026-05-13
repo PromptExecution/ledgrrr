@@ -62,3 +62,25 @@ Priority legend: **P1** = current sprint / unblocked, **P2** = next sprint, **P3
 ---
 
 *Last updated: 2026-05-13 (PM session)*
+
+---
+
+## Post-MVP Roadmap
+
+### Viz Layer
+
+The following initiatives extend the VZ panel beyond its MVP state. They are sequenced by dependency: layout legibility first, then structural data emission, then rich type wiring.
+
+| Item | Priority | Effort | Depends On |
+|------|----------|--------|------------|
+| **`cytoscape-dagre` hierarchical layout** — swap `cose` for `dagre` (top-down) in `initVizPanel()`; one CDN script addition to `ui/index.html` and a layout param change. Makes type/trait inheritance graphs legible at a glance. | P1 | XS | `cytoscape@3` CDN already loaded |
+| **`TypeRelationshipGraph` emitter** — new type in `holon-viz` that models Rust type edges: `implements`, `contains`, `derives_from`, `references`. Feeds the VZ panel with structural codebase data queried from `codebase-memory-mcp`. | P1 | S | `codebase-memory-mcp` indexed |
+| **`TypeGraphCommand` Tauri command** — calls `codebase-memory-mcp` graph query, returns typed edges for datum/holon/trait relationships as `CytoscapeGraph` JSON. Enables live "show me everything that implements `HasVisualization`" queries in the VZ panel. | P2 | S | `TypeRelationshipGraph` emitter |
+| **`HasVisualization` wiring** — map `ZLayer` → Cytoscape node color, `SemanticType` → node shape for all 21 domain types in `ledger-core/src/iso_objects.rs`. Makes the pipeline state machine visible in the viz panel. | P2 | M | `TypeGraphCommand`, `iso_objects.rs` trait impls |
+| **TypeScript build step** — `cytoscape@3` ships TypeScript types. Add `esbuild` to `ui/` when the panel logic grows beyond ~400 LOC. Not needed now; tracked as tech debt. | P3 | S | Panel logic maturity threshold |
+
+### Architecture Notes
+
+**Isolated viz rendering confirmed.** Cytoscape runs inside WebView2 (full Chromium engine); no WASM compilation of JS libraries is required. The `HasVisualization` isometric layer — Rhai DSL, `ZLayer`, and isometric projection math — remains architecturally separate and untouched by the viz panel work. The only integration point is the Tauri command boundary: `TypeGraphCommand` returns `CytoscapeGraph` JSON, and `initVizPanel()` consumes it. This keeps the rendering concern fully isolated from the domain model.
+
+**Observer → kaizen loop.** Once `cytoscape-dagre` is wired, connect `VizObserver` (CDP screenshot → `tauri-vision-analyze.py`) to a `just test-holon-viz` assertion that verifies node layout is hierarchical — specifically that the top node has a lower Y coordinate than its children. This closes the automated visual regression loop and gives the kaizen workflow a stable signal for layout correctness without requiring manual inspection.
