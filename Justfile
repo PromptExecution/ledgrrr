@@ -119,6 +119,28 @@ test-holon-viz:
 test-holon-viz-fast:
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\Projects\l3dg3rr\scripts\test-holon-viz.ps1" -SkipBuild
 
+# Build WASM package for holon-viz filtering
+build-wasm:
+    cd crates/holon-viz-wasm && wasm-pack build --target web --out-dir pkg
+
+# ─── UI build (TypeScript / esbuild) ──────────────────────────────────────────
+
+# Install UI dependencies
+ui-install:
+    cd crates/ledgerr-host/ui && npm install
+
+# Build UI TypeScript bundle
+ui-build: ui-install
+    cd crates/ledgerr-host/ui && npm run build
+
+# Type-check UI
+ui-typecheck: ui-install
+    cd crates/ledgerr-host/ui && npm run typecheck
+
+# Watch UI for development
+ui-watch:
+    cd crates/ledgerr-host/ui && npm run watch
+
 # ─── Local model assets ───────────────────────────────────────────────────────
 
 # Install Microsoft Foundry Local on Windows, then print version and service status.

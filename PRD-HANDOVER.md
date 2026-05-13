@@ -124,13 +124,13 @@ Priority legend: **P1** = current sprint / unblocked, **P2** = next sprint, **P3
 | ~~P2~~ | ~~`MutationRecord` dead code~~ | Shipped 2026-05-14. Unified into canonical owned struct in `workbook.rs`; `append_mutation_record()` wired; `classify.rs` re-exports. 3 call sites converted. |
 | ~~P2~~ | ~~Seed ↔ `HasVisualization` gap detector~~ | Shipped 2026-05-14. `seed_typed_nodes_cover_all_has_visualization_impls` in `holon-viz/src/type_graph.rs`; 23 typed_node IDs checked. Also fixed seed gap: MetaCtx and Disposition were missing. |
 | ~~P2~~ | ~~Rhai DSL validation~~ | Shipped 2026-05-14. `all_viz_spec_rhai_dsl_has_valid_syntax` in `ledger-core/src/iso_objects.rs`; 22/22 pass. Fixed 12 invalid DSL strings (reserved keywords, struct literals, tuple syntax). |
-| P2 | `HasVisualization` trait wiring | Wire `HasVisualization` implementations from `ledger-core/src/iso_objects.rs` into Cytoscape node metadata (ZLayer → node color, SemanticType → node shape) |
-| P3 | `holon-viz-wasm` crate | `wasm-bindgen` on `VizGraph` for client-side filtering (e.g., filter-by-kind). Add when filter UX is a P1 item. Do not add speculatively. |
-| P3 | TypeScript build step for UI | `cytoscape@3` has built-in TS types; add `esbuild` build step to `ui/` when ready |
+| ~~P2~~ | ~~`HasVisualization` trait wiring~~ | Shipped 2026-05-14. `z_layer`/`semantic_type` on `TypeNode`/`CytoscapeNodeData`; 21 types annotated; `z_layer` CSS selectors in `main.js`. |
+| ~~P3~~ | ~~`holon-viz-wasm` crate~~ | Shipped 2026-05-14. `crates/holon-viz-wasm` — 8 `wasm-bindgen` filter/query functions; native `#[test]`s + `wasm_bindgen_test` suite; `just build-wasm` recipe. |
+| ~~P3~~ | ~~TypeScript build step for UI~~ | Shipped 2026-05-14. `crates/ledgerr-host/ui/` — esbuild + TypeScript + `@types/cytoscape`; `ui-build`/`ui-typecheck`/`ui-watch` recipes; hand-authored `src/types.ts`; legacy JS wrapped during incremental migration. |
 
 ---
 
-*Last updated: 2026-05-13 (PM-4 session)*
+*Last updated: 2026-05-14 (P3 viz infrastructure session)*
 
 ---
 
@@ -265,6 +265,28 @@ Both are tooling constraints, not delegation failures. Coordinator did inline Py
 - CDP test `just test-holon-viz-fast` — **7/7 PASS**: 47 nodes, 21 z_layer-typed, 57 edges, hierarchy confirmed
 
 ### Backlog Status
-All P2 items shipped. Only P3 items remain (holon-viz-wasm, TS build step).
+All P2 items shipped. P3 items remaining (holon-viz-wasm, TS build step).
 
-*Last updated: 2026-05-14 (KerML codegen session)*
+---
+
+## Session Log — 2026-05-14 (P3 viz infrastructure session)
+
+### Shipped
+
+| Item | Details |
+|------|---------|
+| **`holon-viz-wasm` crate** | `crates/holon-viz-wasm/` — new workspace member. 8 `wasm-bindgen` filter functions: `filter_nodes_by_text`, `filter_nodes_by_z_layer`, `filter_nodes_by_semantic_type`, `filter_edges_by_label`, `get_unique_edge_labels`, `get_unique_z_layers`, `get_unique_semantic_types`, `get_graph_stats`. All stateless (JSON in → JSON out). 6 native `#[test]`s + 5 `wasm_bindgen_test` browser tests. `just build-wasm` recipe. |
+| **TypeScript/esbuild build step** | `crates/ledgerr-host/ui/` — `package.json` (esbuild + typescript + @types/cytoscape), `tsconfig.json`, `build.mjs` (esm bundle, CDN externals), `src/types.ts` (hand-authored `CytoscapeGraph` interfaces), `src/main.ts` (legacy wrapper). `main.js` renamed to `main-legacy.js`; esbuild produces new `main.js` (91.6kb, functionally identical). Justfile: `ui-install`, `ui-build`, `ui-typecheck`, `ui-watch`. |
+
+### Build Status
+- `cargo check -p holon-viz-wasm` — clean
+- `cargo check -p holon-viz` — clean
+- `cargo check -p ledgerr-host --bin host-tauri` — clean
+- `npm run build` — 212ms, 91.6kb output
+- `npm run typecheck` — clean
+- `just check-drift` — all 3 artifacts pass
+
+### Backlog Status
+All P1–P3 viz items shipped. Post-MVP viz roadmap complete.
+
+*Last updated: 2026-05-14 (P3 viz infrastructure session)*

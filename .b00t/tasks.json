@@ -14,10 +14,11 @@
       "id": 2,
       "title": "Add autorun + UX test automation with countdown timer",
       "description": "ledgrrr window has white screen. Need autorun with countdown timer (10s idle). UX test automation script parametrizes the countdown. Auto-stay-active after 10s idle.",
-      "status": "pending",
+      "status": "in-progress",
       "priority": 1,
       "tags": [],
-      "created_at": "2026-05-03T17:36:40Z"
+      "created_at": "2026-05-03T17:36:40Z",
+      "updated_at": "2026-05-13T14:40:54Z"
     },
     {
       "id": 3,

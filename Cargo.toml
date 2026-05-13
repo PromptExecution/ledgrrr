@@ -20,6 +20,7 @@ members = [
   "kani-proofs",
   "crates/holon-viz",
   "crates/ledgerr-model-server",
+  "crates/holon-viz-wasm",
 ]
 resolver = "2"
 
