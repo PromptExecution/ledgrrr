@@ -4535,6 +4535,7 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.18",
  "tracing",
 ]
@@ -5749,6 +5750,7 @@ dependencies = [
  "candle-transformers",
  "chrono",
  "hf-hub 0.5.0",
+ "holon-viz",
  "ledger-core",
  "mistralrs",
  "reqwest 0.12.28",
