@@ -7,6 +7,9 @@
 
 
         <!-- Custom HTML head -->
+        <!-- Local-first docs theme: no external runtime font requests -->
+        <!-- This file can be populated with custom <head> elements for mdBook. -->
+        <!-- See https://rust-lang.github.io/mdBook/format/config.html#rust -->
 
         <meta name="description" content="">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -16,7 +19,7 @@
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
         <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/chrome-9dfbd86b.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -28,6 +31,8 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/rhai-live-bb027f47.css">
+        <link rel="stylesheet" href="mdbook-admonish-306a1c37.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -35,10 +40,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-2687c903.js";
+            window.path_to_searchindex_js = "searchindex-c072d1a1.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-dd41f5d9.js"></script>
+        <script src="toc-f88c394d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -181,38 +186,133 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
-<p><code>l3dg3rr</code> is a local-first personal financial document intelligence system focused on retroactive U.S. expat tax preparation from raw PDF statements.</p>
-<h2 id="architecture"><a class="header" href="#architecture">Architecture</a></h2>
-<p>The system implements a 6-layer visualization stack:</p>
+<div class="admonition info">
+<div class="admonition-title">Info</div>
+
+<p><strong>l3dg3rr</strong> is designed for US expats who need to reconcile complex financial histories across multiple jurisdictions (US, AU, UK) without compromising privacy.</p>
+
+</div>
+
+<p><code>l3dg3rr</code> is a local-first financial document intelligence system
+for retroactive U.S. expat tax preparation. It ingests raw statements, classifies transactions with editable rules, verifies hard constraints, and exports an accountant-usable Excel workbook with audit history.</p>
+<p>The system is built around an operator/agent workflow: agents do ingestion, classification, reconciliation, flagging, and evidence gathering; the human operator and CPA keep approval authority through Excel, notifications, and auditable review surfaces.</p>
+<h2 id="core-functional-shape"><a class="header" href="#core-functional-shape">Core Functional Shape</a></h2>
+<pre><code class="language-rhai">fn source_documents() -&gt; document_ingestion
+fn document_ingestion() -&gt; validation
+fn validation() -&gt; classification
+fn classification() -&gt; legal_verification
+fn legal_verification() -&gt; reconciliation
+fn reconciliation() -&gt; workbook_export
+fn workbook_export() -&gt; cpa_review
+fn cpa_review() -&gt; audit_history
+</code></pre>
+<pre class="mermaid">flowchart TD
+    source_documents["source_documents"]
+    document_ingestion["document_ingestion"]
+    validation["validation"]
+    classification["classification"]
+    legal_verification["legal_verification"]
+    reconciliation["reconciliation"]
+    workbook_export["workbook_export"]
+    cpa_review["cpa_review"]
+    audit_history["audit_history"]
+    source_documents --&gt; document_ingestion
+    document_ingestion --&gt; validation
+    validation --&gt; classification
+    classification --&gt; legal_verification
+    legal_verification --&gt; reconciliation
+    reconciliation --&gt; workbook_export
+    workbook_export --&gt; cpa_review
+    cpa_review --&gt; audit_history
+</pre>
+
+<h2 id="product-guarantees"><a class="header" href="#product-guarantees">Product Guarantees</a></h2>
+<ul>
+<li><strong>Local-first operation</strong>: private financial data does not require third-party SaaS processing.</li>
+<li><strong>Excel-first audit layer</strong>: the workbook is the CPA-facing review and signoff artifact.</li>
+<li><strong>Deterministic identity</strong>: transaction IDs are content hashes, not random UUIDs.</li>
+<li><strong>Decimal money semantics</strong>: currency values stay in <code>rust_decimal::Decimal</code> in financial paths.</li>
+<li><strong>Agent-visible but operator-governed tools</strong>: MCP exposes capability families while l3dg3rr owns policy, audit, approvals, and credentials.</li>
+</ul>
+<h2 id="how-to-read-this-book"><a class="header" href="#how-to-read-this-book">How To Read This Book</a></h2>
+<p>Use <a href="./capability-map.html">Capability Map</a> for the current implementation state. Then read the operator capability chapters for what the application does, followed by the application structure chapters for how it behaves internally.</p>
+<p>The visualization chapters document the live mdBook diagram system. They are important, but they are no longer the top-level architecture of the whole application.</p>
+<h2 id="primary-surfaces"><a class="header" href="#primary-surfaces">Primary Surfaces</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Layer</th><th>Module</th><th>Description</th></tr>
+<tr><th>Surface</th><th>Audience</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td>0</td><td><a href="./graph.html">graph</a></td><td>NodeData, EdgeData, pipeline node/edge vectors</td></tr>
-<tr><td>1</td><td><a href="./layout.html">layout</a></td><td>ForceLayout with Fruchterman-Reingold solver</td></tr>
-<tr><td>2</td><td><a href="./iso.html">layout</a></td><td>Isometric projection (iso_project)</td></tr>
-<tr><td>3</td><td><a href="./render.html">render</a></td><td>GraphRenderer for screen coordinates</td></tr>
-<tr><td>4</td><td><a href="./slint_viz.html">slint_viz</a></td><td>SlintGraphView with thread-safe layout</td></tr>
-<tr><td>5</td><td>host-window.rs</td><td>GraphView Slint component</td></tr>
+<tr><td>Excel workbook</td><td>CPA/operator</td><td>Review, correction, schedule summaries, audit signoff</td></tr>
+<tr><td>MCP tools</td><td>agents</td><td>Controlled capability execution through <code>ledgerr_*</code> tool families</td></tr>
+<tr><td>Sidecar state</td><td>host/service</td><td>Restart recovery, replay, idempotency cache, lifecycle state</td></tr>
+<tr><td>Desktop host</td><td>operator</td><td>approvals, notifications, credentials, process supervision</td></tr>
+<tr><td>mdBook docs</td><td>developers/operators</td><td>executable diagrams and technical behavior reference</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="theory"><a class="header" href="#theory">Theory</a></h2>
-<p>See <a href="./theory.html">Theory of Operation</a> for the Novel Theory of Tool pattern and executable documentation.</p>
-<h2 id="source-documentation"><a class="header" href="#source-documentation">Source Documentation</a></h2>
-<p>This book is auto-generated from Rustdoc comments in the source code.</p>
-<pre><code class="language-bash">cargo doc --workspace --no-deps
-mdbook build
-</code></pre>
+<h2 id="related-chapters"><a class="header" href="#related-chapters">Related Chapters</a></h2>
+<ul>
+<li><a href="./capability-map.html">Capability Map</a></li>
+<li><a href="./mcp-surface.html">MCP Surface</a></li>
+<li><a href="./workbook-audit.html">Workbook &amp; Audit</a></li>
+<li><a href="./theory.html">Theory of Operation</a></li>
+<li><a href="./graph.html">Graph Data Model</a></li>
+</ul>
+<!-- mdbook-admonish smoke-test: remove once verified rendering works -->
+<div id="admonition-local-first-by-design" class="admonition admonish-note" role="note" aria-labelledby="admonition-local-first-by-design-title">
+<div class="admonition-title">
+<div id="admonition-local-first-by-design-title">
+<p>Local-first by design</p>
+</div>
+
+<a class="admonition-anchor-link" href="#admonition-local-first-by-design"></a>
+</div>
+
+<div>
+<p>All processing runs on your machine — no private financial data leaves the host.</p>
+</div>
+
+</div>
+
+<div id="admonition-warning" class="admonition admonish-warning" role="note" aria-labelledby="admonition-warning-title">
+<div class="admonition-title">
+<div id="admonition-warning-title">
+<p>Warning</p>
+</div>
+
+<a class="admonition-anchor-link" href="#admonition-warning"></a>
+</div>
+
+<div>
+<p>PDF ingestion rewrites the workbook in-place. Back up <code>tax-ledger.xlsx</code> before running a full re-ingest.</p>
+</div>
+
+</div>
+
+<div id="admonition-cpa-handoff" class="admonition admonish-tip" role="note" aria-labelledby="admonition-cpa-handoff-title">
+<div class="admonition-title">
+<div id="admonition-cpa-handoff-title">
+<p>CPA handoff</p>
+</div>
+
+<a class="admonition-anchor-link" href="#admonition-cpa-handoff"></a>
+</div>
+
+<div>
+<p>Export the workbook after every classification pass so your accountant always has the latest reconciled state.</p>
+</div>
+
+</div>
+
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
 
-                            <a rel="next prefetch" href="theory.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="capability-map.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -223,7 +323,7 @@ mdbook build
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
 
-                    <a rel="next prefetch" href="theory.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="capability-map.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>
@@ -252,6 +352,9 @@ mdbook build
         <script src="book-a0b12cfe.js"></script>
 
         <!-- Custom JS scripts -->
+        <script src="theme/rhai-live-core-7e58f9cd.js"></script>
+        <script src="theme/rhai-live-ca0b7d40.js"></script>
+        <script src="theme/mdbook-nav-override-2a0f46ea.js"></script>
 
 
 

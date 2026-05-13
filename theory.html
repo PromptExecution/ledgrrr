@@ -7,6 +7,9 @@
 
 
         <!-- Custom HTML head -->
+        <!-- Local-first docs theme: no external runtime font requests -->
+        <!-- This file can be populated with custom <head> elements for mdBook. -->
+        <!-- See https://rust-lang.github.io/mdBook/format/config.html#rust -->
 
         <meta name="description" content="">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -16,7 +19,7 @@
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
         <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/chrome-9dfbd86b.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -28,6 +31,8 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/rhai-live-bb027f47.css">
+        <link rel="stylesheet" href="mdbook-admonish-306a1c37.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -35,10 +40,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-2687c903.js";
+            window.path_to_searchindex_js = "searchindex-c072d1a1.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-dd41f5d9.js"></script>
+        <script src="toc-f88c394d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -190,6 +195,7 @@
 <li><a href="./pipeline.html">Pipeline</a> - Type-state workflow</li>
 <li><a href="./validation.html">Validation</a> - Confidence accumulation</li>
 <li><a href="./visualize.html">Visualization</a> - Mermaid/HTML export</li>
+<li><a href="./match-visualization-plan.html">Match Visualization Plan</a> - multi-arm branch rendering contract</li>
 <li><a href="./legal.html">Legal Verification</a> - Tax rule verification</li>
 <li><a href="./constraints.html">Constraints</a> - Kasuari constraints</li>
 </ul>
@@ -202,12 +208,40 @@ fn validate() -&gt; classify
 fn classify() -&gt; reconcile
 fn reconcile() -&gt; commit
 </code></pre>
+<pre class="mermaid">flowchart TD
+    ingest["ingest"]
+    validate["validate"]
+    classify["classify"]
+    reconcile["reconcile"]
+    commit["commit"]
+    ingest --&gt; validate
+    validate --&gt; classify
+    classify --&gt; reconcile
+    reconcile --&gt; commit
+</pre>
+
 <p>Conditional flow:</p>
 <pre><code class="language-rhai">if confidence &gt; 0.8 -&gt; commit
 if confidence &gt; 0.5 -&gt; reconcile  
 if confidence &lt;= 0.5 -&gt; review
 if review == approved -&gt; classify
 </code></pre>
+<pre class="mermaid">flowchart TD
+    confidence_gt_0_8{"confidence &gt; 0.8"}
+    commit["commit"]
+    confidence_gt_0_5{"confidence &gt; 0.5"}
+    reconcile["reconcile"]
+    confidence____0_5{"confidence &lt;= 0.5"}
+    review["review"]
+    review____approved{"review == approved"}
+    classify["classify"]
+    confidence_gt_0_8 --&gt;|"true"|commit
+    confidence_gt_0_8 --&gt;|"false"|confidence_gt_0_5
+    confidence_gt_0_5 --&gt;|"true"|reconcile
+    confidence____0_5 --&gt;|"true"|review
+    review____approved --&gt;|"true"|classify
+</pre>
+
 <ol>
 <li><strong>Composable instruction streams</strong> - Tools accept not just data, but <em>instructions</em> that modify their behavior</li>
 <li><strong>Idempotent re-execution</strong> - Tools can be safely re-run with the same inputs, producing deterministic outputs</li>
@@ -255,76 +289,102 @@ for (idx, _) in nodes.iter().enumerate() {
 </table>
 </div>
 <h2 id="system-architecture-diagram"><a class="header" href="#system-architecture-diagram">System Architecture Diagram</a></h2>
-<pre class="mermaid">flowchart TB
-    subgraph OPERATOR["OPERATOR"]
-        H["Human Accountant"]
-    end
-
-    subgraph HOST["SLINT DESKTOP HOST"]
-        T["Tray Icon"]
-        W["Window UI"]
-        N["Toast Notifier"]
-        C["Credential Manager"]
-        G["SlintGraph View"]
-    end
-
-    subgraph CORE["LEDGER-CORE"]
-        P["Pipeline HSM"]
-        V["Validation"]
-        L["Legal Solver"]
-        K["Constraints"]
-    end
-
-    subgraph MCP["MCP ADAPTER"]
-        D["ledgerr_documents"]
-        R["ledgerr_review"]
-        Cc["ledgerr_reconciliation"]
-    end
-
-    H --&gt; HOST
-    T --&gt; G
-    W --&gt; G
-    N --&gt; G
-    C --&gt; G
-    HOST --&gt; CORE
-    CORE --&gt; MCP
-    P --&gt; V
-    P --&gt; L
-    P --&gt; K
+<pre><code class="language-rhai">fn human_accountant() -&gt; tray_icon
+fn human_accountant() -&gt; window_ui
+fn tray_icon() -&gt; slint_graph_view
+fn window_ui() -&gt; slint_graph_view
+fn toast_notifier() -&gt; slint_graph_view
+fn credential_manager() -&gt; slint_graph_view
+fn slint_graph_view() -&gt; pipeline_hsm
+fn pipeline_hsm() -&gt; validation
+fn pipeline_hsm() -&gt; legal_solver
+fn pipeline_hsm() -&gt; constraints
+fn pipeline_hsm() -&gt; ledgerr_documents
+fn pipeline_hsm() -&gt; ledgerr_review
+fn pipeline_hsm() -&gt; ledgerr_reconciliation
+</code></pre>
+<pre class="mermaid">flowchart TD
+    human_accountant["human_accountant"]
+    tray_icon["tray_icon"]
+    window_ui["window_ui"]
+    slint_graph_view["slint_graph_view"]
+    toast_notifier["toast_notifier"]
+    credential_manager["credential_manager"]
+    pipeline_hsm["pipeline_hsm"]
+    validation["validation"]
+    legal_solver["legal_solver"]
+    constraints["constraints"]
+    ledgerr_documents["ledgerr_documents"]
+    ledgerr_review["ledgerr_review"]
+    ledgerr_reconciliation["ledgerr_reconciliation"]
+    human_accountant --&gt; tray_icon
+    human_accountant --&gt; window_ui
+    tray_icon --&gt; slint_graph_view
+    window_ui --&gt; slint_graph_view
+    toast_notifier --&gt; slint_graph_view
+    credential_manager --&gt; slint_graph_view
+    slint_graph_view --&gt; pipeline_hsm
+    pipeline_hsm --&gt; validation
+    pipeline_hsm --&gt; legal_solver
+    pipeline_hsm --&gt; constraints
+    pipeline_hsm --&gt; ledgerr_documents
+    pipeline_hsm --&gt; ledgerr_review
+    pipeline_hsm --&gt; ledgerr_reconciliation
 </pre>
 
 <h2 id="pipeline-flow-diagram"><a class="header" href="#pipeline-flow-diagram">Pipeline Flow Diagram</a></h2>
-<pre class="mermaid">stateDiagram-v2
-    [*] --&gt; Ingested
-    Ingested --&gt; Validating: validate
-    Validating --&gt; Classifying: classify
-    Classifying --&gt; Reconciling: reconcile
-    Reconciling --&gt; Committed: commit
-    Committed --&gt; [*]
-
-    Validating --&gt; NeedsReview: low_confidence
-    NeedsReview --&gt; Classifying: approved
+<pre><code class="language-rhai">fn ingested() -&gt; validating
+fn validating() -&gt; classifying
+fn classifying() -&gt; reconciling
+fn reconciling() -&gt; committed
+if low_confidence == true -&gt; needs_review
+if approved == true -&gt; classifying
+</code></pre>
+<pre class="mermaid">flowchart TD
+    ingested["ingested"]
+    validating["validating"]
+    classifying["classifying"]
+    reconciling["reconciling"]
+    committed["committed"]
+    low_confidence____true{"low_confidence == true"}
+    needs_review["needs_review"]
+    approved____true{"approved == true"}
+    ingested --&gt; validating
+    validating --&gt; classifying
+    classifying --&gt; reconciling
+    reconciling --&gt; committed
+    low_confidence____true --&gt;|"true"|needs_review
+    approved____true --&gt;|"true"|classifying
 </pre>
 
 <h2 id="llm-verification-pattern"><a class="header" href="#llm-verification-pattern">LLM Verification Pattern</a></h2>
-<pre class="mermaid">sequenceDiagram
-    participant P as Proposer LLM
-    participant S as Decision Store
-    participant R as Reviewer LLM
-    
-    P-&gt;&gt;S: propose(category, confidence)
-    S-&gt;&gt;R: review(proposal)
-    R--&gt;&gt;S: verdict(agreed, evidence)
-    S--&gt;&gt;P: result(confidence, issues)
+<pre><code class="language-rhai">fn proposer_llm() -&gt; decision_store
+fn decision_store() -&gt; reviewer_llm
+if reviewer_agreed == true -&gt; accepted_result
+if reviewer_agreed == false -&gt; human_review
+fn human_review() -&gt; accepted_result
+</code></pre>
+<pre class="mermaid">flowchart TD
+    proposer_llm["proposer_llm"]
+    decision_store["decision_store"]
+    reviewer_llm["reviewer_llm"]
+    human_review["human_review"]
+    accepted_result["accepted_result"]
+    reviewer_agreed____true{"reviewer_agreed == true"}
+    reviewer_agreed____false{"reviewer_agreed == false"}
+    proposer_llm --&gt; decision_store
+    decision_store --&gt; reviewer_llm
+    human_review --&gt; accepted_result
+    reviewer_agreed____true --&gt;|"true"|accepted_result
+    reviewer_agreed____false --&gt;|"true"|human_review
+</pre>
 
-## Executable LLM Pipeline Integration
-
-### Proposer/Reviewer Pattern
-
-The verification system uses a two-model approach for classification quality:
-
-```rust
-use ledger_core::verify::Verifier;
+<h2 id="executable-llm-pipeline-integration"><a class="header" href="#executable-llm-pipeline-integration">Executable LLM Pipeline Integration</a></h2>
+<h3 id="proposerreviewer-pattern"><a class="header" href="#proposerreviewer-pattern">Proposer/Reviewer Pattern</a></h3>
+<p>The verification system uses a two-model approach for classification quality:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use ledger_core::verify::Verifier;
 use ledger_core::validation::{Disposition, MetaCtx};
 
 // Initialize verifier with two models
@@ -342,8 +402,7 @@ let confidence = if review.agreed {
 } else {
     proposal.confidence * 0.5   // Disagreement penalty
 };
-</pre>
-
+<span class="boring">}</span></code></pre>
 <h3 id="multi-stage-classification-flow-executable"><a class="header" href="#multi-stage-classification-flow-executable">Multi-Stage Classification Flow (Executable)</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -372,26 +431,21 @@ fn run_pipeline(document_path: &amp;str) -&gt; Result&lt;PipelineState&lt;Commit
 <span class="boring">}</span></code></pre>
 <h2 id="isometric-visualization-executable"><a class="header" href="#isometric-visualization-executable">Isometric Visualization (Executable)</a></h2>
 <h3 id="3d-force-layout-to-2d-screen"><a class="header" href="#3d-force-layout-to-2d-screen">3D Force Layout to 2D Screen</a></h3>
-<pre class="mermaid">flowchart LR
-    subgraph Input["3D Force Layout"]
-        F1["Node A"]
-        F2["Node B"]
-        F3["Node C"]
-    end
-    
-    subgraph Transform["Isometric Projection"]
-        I["x' = (x-z) * 0.866&lt;br/&gt;y' = (x+z) * 0.5 - y"]
-    end
-    
-    subgraph Output["2D Screen"]
-        S1["(400, 300)"]
-        S2["(450, 280)"]
-        S3["(420, 320)"]
-    end
-    
-    F1 --&gt; I --&gt; S1
-    F2 --&gt; I --&gt; S2
-    F3 --&gt; I --&gt; S3
+<pre><code class="language-rhai">fn node_a_3d() -&gt; isometric_projection
+fn node_b_3d() -&gt; isometric_projection
+fn node_c_3d() -&gt; isometric_projection
+fn isometric_projection() -&gt; screen_coordinates
+</code></pre>
+<pre class="mermaid">flowchart TD
+    node_a_3d["node_a_3d"]
+    isometric_projection["isometric_projection"]
+    node_b_3d["node_b_3d"]
+    node_c_3d["node_c_3d"]
+    screen_coordinates["screen_coordinates"]
+    node_a_3d --&gt; isometric_projection
+    node_b_3d --&gt; isometric_projection
+    node_c_3d --&gt; isometric_projection
+    isometric_projection --&gt; screen_coordinates
 </pre>
 
 <h3 id="state-visualization-mapping"><a class="header" href="#state-visualization-mapping">State Visualization Mapping</a></h3>
@@ -455,8 +509,8 @@ test-recipes:
     validates: isometric graph rendering
 
   - name: mdbook-build
-    command: mdbook build book
-    validates: documentation generation
+    command: just docgen-check
+    validates: documentation generation plus live Rhai editor assets
 
   - name: mcp-surface-contract
     command: cargo run -p xtask-mcpb -- generate-mcp-artifacts
@@ -505,36 +559,28 @@ mod doc_tests {
     }
 }
 <span class="boring">}</span></code></pre>
-<h2 id="multi-jurisdiction-tax-rules-executable"><a class="header" href="#multi-jurisdiction-tax-rules-executable">Multi-Jurisdiction Tax Rules (Executable)</a></h2>
+<h2 id="multi-jurisdiction-tax-rules"><a class="header" href="#multi-jurisdiction-tax-rules">Multi-Jurisdiction Tax Rules</a></h2>
 <h3 id="jurisdiction-activation"><a class="header" href="#jurisdiction-activation">Jurisdiction Activation</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use ledger_core::legal::{LegalSolver, Jurisdiction, TaxRule};
+</span>use ledger_core::legal::{us_schedule_c, LegalSolver, TransactionFacts, Z3Result};
 
-// US Tax Rules
-let us_rules = vec![
-    TaxRule::new("schedule_c_expense", Jurisdiction::US, 
-        "Business expense deduction",
-        |tx| tx.category == "BusinessExpense"),
-];
+let solver = LegalSolver::new();
+let rule = us_schedule_c::rule_ordinary_necessary();
+let mut facts = TransactionFacts::new();
+facts.is_business_activity = Some(true);
+facts.is_ordinary = Some(true);
+facts.is_necessary = Some(false);
 
-// AU Tax Rules  
-let au_rules = vec![
-    TaxRule::new("gst_credit", Jurisdiction::AU,
-        "GST input credit",
-        |tx| tx.gst_included &amp;&amp; tx.amount &gt; 100.0),
-];
+let result = solver.verify(&amp;rule, &amp;facts);
 
-// Verify against jurisdiction
-let solver = LegalSolver::with_rules(Jurisdiction::US, us_rules);
-let result = solver.verify(&amp;transaction);
-
-match result.disposition {
-    Disposition::Unrecoverable =&gt; panic!("Fatal tax issue"),
-    Disposition::Recoverable =&gt; println!("Fix: {}", result.message),
-    Disposition::Advisory =&gt; println!("Suggestion: {}", result.message),
+match result {
+    Z3Result::Satisfied =&gt; println!("rule satisfied"),
+    Z3Result::Violated { witness } =&gt; println!("blocked: {witness}"),
+    Z3Result::Unknown =&gt; println!("more facts required"),
 }
 <span class="boring">}</span></code></pre>
+<p>The visualization plan for this kind of multi-arm branch is documented in <a href="./match-visualization-plan.html">Match Visualization Plan</a>. Branch-heavy examples should include a fan-out sample that keeps arm order stable across Mermaid and isometric views.</p>
 <h2 id="content-hash-identity-model"><a class="header" href="#content-hash-identity-model">Content-Hash Identity Model</a></h2>
 <h3 id="idempotent-ingest-executable"><a class="header" href="#idempotent-ingest-executable">Idempotent Ingest (Executable)</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -553,10 +599,18 @@ let id2 = compute_tx_id("WF-BH-CHK", "2024-01-15", 150.00, "Office Depot");
 assert_eq!(id1, id2); // Idempotent!
 <span class="boring">}</span></code></pre>
 <h3 id="content-hash-flow"><a class="header" href="#content-hash-flow">Content-Hash Flow</a></h3>
-<pre class="mermaid">flowchart LR
-    I1["account|date|amount|desc"] --&gt; B["blake3"]
-    B --&gt; H["64-char hex"]
-    H --&gt; DB["tx_id stored"]
+<pre><code class="language-rhai">fn account_date_amount_desc() -&gt; blake3_hasher
+fn blake3_hasher() -&gt; hex_64_chars
+fn hex_64_chars() -&gt; tx_id_stored
+</code></pre>
+<pre class="mermaid">flowchart TD
+    account_date_amount_desc["account_date_amount_desc"]
+    blake3_hasher["blake3_hasher"]
+    hex_64_chars["hex_64_chars"]
+    tx_id_stored["tx_id_stored"]
+    account_date_amount_desc --&gt; blake3_hasher
+    blake3_hasher --&gt; hex_64_chars
+    hex_64_chars --&gt; tx_id_stored
 </pre>
 
 <h2 id="workflow-dsl-compilation-executable"><a class="header" href="#workflow-dsl-compilation-executable">Workflow DSL Compilation (Executable)</a></h2>
@@ -614,11 +668,11 @@ assert_eq!(updated.category, "OfficeSupplies");
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="intro.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="xero.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="graph.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="mcp-surface.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -628,11 +682,11 @@ assert_eq!(updated.category, "OfficeSupplies");
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="intro.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="xero.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="graph.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="mcp-surface.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>
@@ -661,6 +715,9 @@ assert_eq!(updated.category, "OfficeSupplies");
         <script src="book-a0b12cfe.js"></script>
 
         <!-- Custom JS scripts -->
+        <script src="theme/rhai-live-core-7e58f9cd.js"></script>
+        <script src="theme/rhai-live-ca0b7d40.js"></script>
+        <script src="theme/mdbook-nav-override-2a0f46ea.js"></script>
 
 
 

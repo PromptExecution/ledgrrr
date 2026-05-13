@@ -7,6 +7,9 @@
 
 
         <!-- Custom HTML head -->
+        <!-- Local-first docs theme: no external runtime font requests -->
+        <!-- This file can be populated with custom <head> elements for mdBook. -->
+        <!-- See https://rust-lang.github.io/mdBook/format/config.html#rust -->
 
         <meta name="description" content="">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -16,7 +19,7 @@
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
         <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/chrome-9dfbd86b.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -28,6 +31,8 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/rhai-live-bb027f47.css">
+        <link rel="stylesheet" href="mdbook-admonish-306a1c37.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -35,10 +40,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-2687c903.js";
+            window.path_to_searchindex_js = "searchindex-c072d1a1.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-dd41f5d9.js"></script>
+        <script src="toc-f88c394d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -188,29 +193,30 @@
 <li><a href="./layout.html">Layout</a> - Position calculations</li>
 <li><a href="./render.html">Render</a> - Screen coordinate mapping</li>
 <li><a href="./slint_viz.html">Slint Viz</a> - Slint integration</li>
+<li><a href="./match-visualization-plan.html">Match Visualization Plan</a> - future multi-arm branch semantics</li>
 </ul>
 <h2 id="pipelinegraph"><a class="header" href="#pipelinegraph">PipelineGraph</a></h2>
-<pre class="mermaid">flowchart TB
-    subgraph Input
-        W["Workflow.toml"]
-        S["Pipeline State"]
-    end
-    
-    subgraph Process
-        G["PipelineGraph"]
-        M["to_mermaid()"]
-        H["to_html()"]
-    end
-    
-    subgraph Output
-        MD["Mermaid SVG"]
-        HT["HTML + Mermaid.js"]
-    end
-    
-    W --&gt; G
-    S --&gt; G
-    G --&gt; M --&gt; MD
-    G --&gt; H --&gt; HT
+<pre><code class="language-rhai">fn workflow_toml() -&gt; pipeline_graph
+fn pipeline_state() -&gt; pipeline_graph
+fn pipeline_graph() -&gt; to_mermaid
+fn pipeline_graph() -&gt; to_html
+fn to_mermaid() -&gt; mermaid_svg
+fn to_html() -&gt; html_export
+</code></pre>
+<pre class="mermaid">flowchart TD
+    workflow_toml["workflow_toml"]
+    pipeline_graph["pipeline_graph"]
+    pipeline_state["pipeline_state"]
+    to_mermaid["to_mermaid"]
+    to_html["to_html"]
+    mermaid_svg["mermaid_svg"]
+    html_export["html_export"]
+    workflow_toml --&gt; pipeline_graph
+    pipeline_state --&gt; pipeline_graph
+    pipeline_graph --&gt; to_mermaid
+    pipeline_graph --&gt; to_html
+    to_mermaid --&gt; mermaid_svg
+    to_html --&gt; html_export
 </pre>
 
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -238,6 +244,151 @@
 </span>let mermaid = graph.to_mermaid();
 // Generates stateDiagram-v2
 <span class="boring">}</span></code></pre>
+<h2 id="live-rhai-editor"><a class="header" href="#live-rhai-editor">Live Rhai Editor</a></h2>
+<p>The rendered book now upgrades generated Rhai diagram blocks into a local editor + preview surface. Use <code>just docserve</code>, open the book in a browser, edit a supported <code>```rhai</code> block, and click <code>Regenerate</code> to redraw the chart without changing the source markdown.</p>
+<p>The live editor uses the same narrow diagram DSL as the mdBook preprocessor:</p>
+<ul>
+<li><code>fn source() -&gt; target</code></li>
+<li><code>if expression -&gt; target</code></li>
+<li><code>match expr =&gt; Arm -&gt; target</code></li>
+</ul>
+<p>The preview surface exposes a two-position view slider:</p>
+<ul>
+<li><code>isometric-3d</code> renders an animated SVG scene with deterministic layered placement, so inserting a node causes nearby steps to visibly reflow instead of snapping in place</li>
+<li><code>mermaid-2d</code> keeps the canonical Mermaid flowchart for the same parsed graph</li>
+</ul>
+<p>Diagnostics now surface line-level parse feedback:</p>
+<ul>
+<li>malformed DSL lines are marked as errors</li>
+<li>ignored non-DSL lines are marked as informational notes</li>
+<li>Mermaid failures include a concrete fallback hint to switch to the isometric view</li>
+</ul>
+<p>Node visuals use an internal SVG icon library keyed by inferred workflow role (<code>ingest</code>, <code>validate</code>, <code>classify</code>, <code>review</code>, <code>reconcile</code>, <code>commit</code>, <code>decision</code>), and each node carries an autogenerated glTF data URI when no explicit model is supplied. The docs renderer still draws the isometric scene in SVG so it works inside mdBook without a separate WebGL runtime.</p>
+<h2 id="model-assisted-rule-mutation"><a class="header" href="#model-assisted-rule-mutation">Model-Assisted Rule Mutation</a></h2>
+<p>Each live editor also includes a Rhai mutation prompt panel. Type the desired workflow change, click <code>Prepare Model Prompt</code>, and paste that prompt into the configured local or OpenAI-compatible model. The prompt is constrained to the supported documentation DSL and asks the model to return a replacement block plus a short explanation.</p>
+<p>The checked-in playground does not make browser-side model calls. <code>Apply Example Draft</code> demonstrates the expected interaction by applying a deterministic Phi-family example mutation to the editor, then re-rendering the same Mermaid and isometric views. The default example target is <code>phi-4-mini-reasoning</code>; if a Phi-5 endpoint is configured later, the same prompt contract can be sent through the Slint host chat window or another supervised model bridge without changing the DSL.</p>
+<p>Example prompt request:</p>
+<pre><code class="language-text">Add a medium-confidence review path and keep workbook commit behind review or high confidence.
+</code></pre>
+<p>Example model-shaped mutation:</p>
+<pre><code class="language-rhai">fn classify_rows() -&gt; score_confidence
+if confidence &gt; 0.85 -&gt; commit_workbook
+if confidence &gt; 0.60 -&gt; review_flag
+if confidence &lt;= 0.60 -&gt; escalate_operator
+fn review_flag() -&gt; commit_workbook
+</code></pre>
+<pre class="mermaid">flowchart TD
+    classify_rows["classify_rows"]
+    score_confidence["score_confidence"]
+    review_flag["review_flag"]
+    commit_workbook["commit_workbook"]
+    confidence_gt_0_85{"confidence &gt; 0.85"}
+    confidence_gt_0_6{"confidence &gt; 0.6"}
+    confidence____0_60{"confidence &lt;= 0.60"}
+    escalate_operator["escalate_operator"]
+    classify_rows --&gt; score_confidence
+    review_flag --&gt; commit_workbook
+    confidence_gt_0_85 --&gt;|"true"|commit_workbook
+    confidence_gt_0_85 --&gt;|"false"|confidence_gt_0_6
+    confidence_gt_0_6 --&gt;|"true"|review_flag
+    confidence____0_60 --&gt;|"true"|escalate_operator
+</pre>
+
+<h2 id="sample-gallery"><a class="header" href="#sample-gallery">Sample Gallery</a></h2>
+<p>Use the examples below as copy-paste seeds in the live editor. Each sample is deliberately small enough to make view changes obvious.</p>
+<h3 id="sample-ledger-ingest-happy-path"><a class="header" href="#sample-ledger-ingest-happy-path">Sample: Ledger Ingest Happy Path</a></h3>
+<pre><code class="language-rhai">fn ingest_pdf() -&gt; detect_shape
+fn detect_shape() -&gt; validate_rows
+fn validate_rows() -&gt; classify_rows
+fn classify_rows() -&gt; reconcile_rows
+fn reconcile_rows() -&gt; commit_workbook
+</code></pre>
+<pre class="mermaid">flowchart TD
+    ingest_pdf["ingest_pdf"]
+    detect_shape["detect_shape"]
+    validate_rows["validate_rows"]
+    classify_rows["classify_rows"]
+    reconcile_rows["reconcile_rows"]
+    commit_workbook["commit_workbook"]
+    ingest_pdf --&gt; detect_shape
+    detect_shape --&gt; validate_rows
+    validate_rows --&gt; classify_rows
+    classify_rows --&gt; reconcile_rows
+    reconcile_rows --&gt; commit_workbook
+</pre>
+
+<p>Expected view behavior:</p>
+<ul>
+<li><code>mermaid-2d</code> should read as a simple left-to-right pipeline</li>
+<li><code>isometric-3d</code> should keep every stage on one main spine with no lane fan-out</li>
+</ul>
+<h3 id="sample-confidence-gate-with-review-path"><a class="header" href="#sample-confidence-gate-with-review-path">Sample: Confidence Gate with Review Path</a></h3>
+<pre><code class="language-rhai">fn classify_rows() -&gt; score_confidence
+if confidence &gt; 0.85 -&gt; commit_workbook
+if confidence &gt; 0.60 -&gt; review_flag
+if confidence &lt;= 0.60 -&gt; escalate_operator
+fn review_flag() -&gt; commit_workbook
+</code></pre>
+<pre class="mermaid">flowchart TD
+    classify_rows["classify_rows"]
+    score_confidence["score_confidence"]
+    review_flag["review_flag"]
+    commit_workbook["commit_workbook"]
+    confidence_gt_0_85{"confidence &gt; 0.85"}
+    confidence_gt_0_6{"confidence &gt; 0.6"}
+    confidence____0_60{"confidence &lt;= 0.60"}
+    escalate_operator["escalate_operator"]
+    classify_rows --&gt; score_confidence
+    review_flag --&gt; commit_workbook
+    confidence_gt_0_85 --&gt;|"true"|commit_workbook
+    confidence_gt_0_85 --&gt;|"false"|confidence_gt_0_6
+    confidence_gt_0_6 --&gt;|"true"|review_flag
+    confidence____0_60 --&gt;|"true"|escalate_operator
+</pre>
+
+<p>Expected view behavior:</p>
+<ul>
+<li>Mermaid should show three labeled outgoing edges from the confidence checks</li>
+<li>the isometric view should place <code>review_flag</code> and <code>escalate_operator</code> on separate side lanes</li>
+<li>inserting a new medium-confidence branch should animate the lane spread rather than replacing the whole scene</li>
+</ul>
+<h3 id="sample-match-style-disposition-routing"><a class="header" href="#sample-match-style-disposition-routing">Sample: Match-Style Disposition Routing</a></h3>
+<p>This now uses the dedicated match-arm DSL.</p>
+<pre><code class="language-rhai">fn verify_result() -&gt; match_result_disposition
+match result.disposition =&gt; Disposition::Unrecoverable -&gt; halt_pipeline
+match result.disposition =&gt; Disposition::Recoverable -&gt; repair_and_retry
+match result.disposition =&gt; Disposition::Advisory -&gt; record_note
+fn repair_and_retry() -&gt; requeue_validation
+</code></pre>
+<pre class="mermaid">flowchart TD
+    verify_result["verify_result"]
+    match_result_disposition["match_result_disposition"]
+    repair_and_retry["repair_and_retry"]
+    requeue_validation["requeue_validation"]
+    halt_pipeline["halt_pipeline"]
+    record_note["record_note"]
+    verify_result --&gt; match_result_disposition
+    repair_and_retry --&gt; requeue_validation
+    match_result_disposition --&gt;|"Disposition::Unrecoverable"|halt_pipeline
+    match_result_disposition --&gt;|"Disposition::Recoverable"|repair_and_retry
+    match_result_disposition --&gt;|"Disposition::Advisory"|record_note
+</pre>
+
+<p>Use this sample when comparing the current live rendering with the intended placement and reflow rules in <a href="./match-visualization-plan.html">Match Visualization Plan</a>.</p>
+<h3 id="executable-rust-example"><a class="header" href="#executable-rust-example">Executable Rust Example</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use ledger_core::workflow::examples::ledger_ingest;
+
+let workflow = ledger_ingest();
+workflow.validate().expect("example workflow should be valid");
+
+let mermaid = workflow.to_mermaid();
+let rhai = workflow.to_rhai();
+
+assert!(mermaid.contains("Ingested --&gt; Validating"));
+assert!(rhai.contains("next_state"));
+<span class="boring">}</span></code></pre>
 <h2 id="html-export"><a class="header" href="#html-export">HTML Export</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -256,10 +407,13 @@ pub fn generate_layout(&amp;self, graph: &amp;PipelineGraph) -&gt; HashMap&lt;St
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="workflow.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="concept-affinity.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
+                            <a rel="next prefetch" href="layout.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
 
                         <div style="clear: both"></div>
                     </nav>
@@ -267,10 +421,13 @@ pub fn generate_layout(&amp;self, graph: &amp;PipelineGraph) -&gt; HashMap&lt;St
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="workflow.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="concept-affinity.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
+                    <a rel="next prefetch" href="layout.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
             </nav>
 
         </div>
@@ -297,6 +454,9 @@ pub fn generate_layout(&amp;self, graph: &amp;PipelineGraph) -&gt; HashMap&lt;St
         <script src="book-a0b12cfe.js"></script>
 
         <!-- Custom JS scripts -->
+        <script src="theme/rhai-live-core-7e58f9cd.js"></script>
+        <script src="theme/rhai-live-ca0b7d40.js"></script>
+        <script src="theme/mdbook-nav-override-2a0f46ea.js"></script>
 
 
 

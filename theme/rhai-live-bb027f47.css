@@ -1,0 +1,491 @@
+:root {
+    --content-max-width: 960px;
+    --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+#content {
+    max-width: var(--content-max-width);
+    margin: 0 auto;
+    padding: 2rem 1.5rem 5rem;
+    line-height: 1.65;
+    font-size: 1.05rem;
+    font-family: var(--font-family);
+}
+
+#content main h1 {
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin-bottom: 2rem;
+    border-bottom: none;
+    font-size: 2.8rem;
+    background: linear-gradient(135deg, #0f766e, #0369a1);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+#content main h2 {
+    font-weight: 700;
+    margin-top: 3.5rem;
+    margin-bottom: 1.25rem;
+    border-bottom: 1px solid var(--rhai-line);
+    padding-bottom: 0.5rem;
+}
+
+#content main h3 {
+    font-weight: 600;
+    margin-top: 2.5rem;
+}
+
+.sidebar {
+    background: var(--sidebar-bg, #f6f8fa);
+    border-right: 1px solid var(--rhai-line);
+}
+
+.sidebar-scrollbox {
+    padding: 1rem 0;
+}
+
+.sidebar .chapter {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.sidebar .chapter li {
+    padding: 0.15rem 1rem;
+}
+
+.sidebar .chapter li a {
+    display: block;
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+    color: var(--fg);
+    font-weight: 500;
+    font-size: 0.94rem;
+    text-decoration: none;
+    transition: all 0.15s ease;
+}
+
+.sidebar .chapter li a:hover {
+    background: color-mix(in srgb, var(--sidebar-bg, #f6f8fa) 92%, #0f766e 8%);
+    color: #0f766e;
+}
+
+.sidebar .chapter li a.active {
+    background: #0f766e;
+    color: #ffffff;
+    font-weight: 700;
+    box-shadow: 0 4px 12px rgba(15, 118, 110, 0.2);
+}
+
+.rhai-diagram-shell {
+    --rhai-surface: color-mix(in srgb, var(--bg, #ffffff) 92%, #f0f9ff 8%);
+    --rhai-line: color-mix(in srgb, var(--searchbar-border-color, #d0d7de) 78%, #94a3b8 22%);
+    --rhai-muted: color-mix(in srgb, var(--fg, #1f2328) 72%, #64748b 28%);
+    --rhai-accent: #0f766e;
+    --rhai-accent-soft: #d1fae5;
+    border: 1px solid var(--rhai-line);
+    border-radius: 18px;
+    margin: 1rem 0 1.75rem;
+    overflow: hidden;
+    background:
+        radial-gradient(circle at top left, rgba(14, 165, 233, 0.08), transparent 32%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 60%),
+        var(--rhai-surface);
+    box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+}
+
+.rhai-diagram-toolbar {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: flex-start;
+    padding: 0.9rem 1rem;
+    border-bottom: 1px solid var(--rhai-line);
+    background: linear-gradient(180deg, rgba(148, 163, 184, 0.08), rgba(148, 163, 184, 0.03));
+}
+
+.rhai-diagram-toolbar-left {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.rhai-diagram-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.rhai-diagram-button {
+    border: 1px solid var(--rhai-line);
+    border-radius: 999px;
+    padding: 0.45rem 0.85rem;
+    background: color-mix(in srgb, var(--sidebar-bg, #f6f8fa) 84%, #ffffff 16%);
+    color: inherit;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.rhai-diagram-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.rhai-diagram-status {
+    font-size: 0.92rem;
+    color: var(--rhai-muted);
+}
+
+.rhai-view-switch {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.rhai-view-label {
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--rhai-muted);
+}
+
+.rhai-view-slider {
+    position: relative;
+    display: inline-flex;
+}
+
+.rhai-view-input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.rhai-view-track {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+    min-width: 19rem;
+    border-radius: 999px;
+    border: 1px solid var(--rhai-line);
+    background: rgba(255, 255, 255, 0.75);
+    padding: 0.2rem;
+}
+
+.rhai-view-thumb {
+    position: absolute;
+    top: 0.2rem;
+    left: 0.2rem;
+    width: calc(50% - 0.2rem);
+    bottom: 0.2rem;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #0f766e, #0284c7);
+    box-shadow: 0 8px 24px rgba(14, 116, 144, 0.28);
+    transition: transform 180ms ease;
+}
+
+.rhai-view-input:checked + .rhai-view-track .rhai-view-thumb {
+    transform: translateX(100%);
+}
+
+.rhai-view-option {
+    position: relative;
+    z-index: 1;
+    padding: 0.45rem 0.85rem;
+    text-align: center;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #475569;
+}
+
+.rhai-view-option.is-active {
+    color: #f8fafc;
+}
+
+.rhai-diagram-body {
+    display: grid;
+    grid-template-columns: minmax(19rem, 0.95fr) minmax(20rem, 1.05fr);
+}
+
+.rhai-diagram-editor {
+    min-height: 20rem;
+    padding: 1rem;
+    border: 0;
+    border-right: 1px solid var(--rhai-line);
+    resize: vertical;
+    font: 0.92rem/1.6 var(--code-font-family, monospace);
+    background:
+        linear-gradient(180deg, rgba(15, 23, 42, 0.02), transparent 48%),
+        transparent;
+    color: inherit;
+}
+
+.rhai-diagram-preview {
+    padding: 1rem;
+    overflow: auto;
+    background:
+        radial-gradient(circle at top right, rgba(59, 130, 246, 0.08), transparent 28%),
+        linear-gradient(180deg, rgba(248, 250, 252, 0.6), transparent 50%);
+}
+
+.rhai-diagram-preview svg {
+    max-width: 100%;
+    height: auto;
+}
+
+.rhai-diagram-error {
+    color: #b42318;
+    font-weight: 700;
+}
+
+.rhai-diagram-note {
+    font-size: 0.88rem;
+    color: var(--rhai-muted);
+    padding: 0.8rem 1rem 1rem;
+}
+
+.rhai-model-chat {
+    border-top: 1px solid var(--rhai-line);
+    padding: 0.9rem 1rem 1rem;
+    display: grid;
+    gap: 0.65rem;
+    background: color-mix(in srgb, var(--rhai-surface) 88%, #ffffff 12%);
+}
+
+.rhai-model-chat-title {
+    font-weight: 700;
+    color: inherit;
+}
+
+.rhai-model-chat-input {
+    min-height: 4.75rem;
+    resize: vertical;
+    border: 1px solid var(--rhai-line);
+    border-radius: 8px;
+    padding: 0.7rem;
+    font: 0.92rem/1.45 var(--font-family, system-ui);
+    color: inherit;
+    background: color-mix(in srgb, var(--bg, #ffffff) 94%, #ecfeff 6%);
+}
+
+.rhai-model-chat-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.rhai-model-chat-output {
+    margin: 0;
+    max-height: 18rem;
+    overflow: auto;
+    border: 1px solid var(--rhai-line);
+    border-radius: 8px;
+    padding: 0.75rem;
+    white-space: pre-wrap;
+    background: color-mix(in srgb, var(--bg, #ffffff) 90%, #f1f5f9 10%);
+}
+
+.rhai-diag-panel {
+    margin-top: 0.85rem;
+    border-top: 1px solid var(--rhai-line);
+    padding-top: 0.7rem;
+}
+
+.rhai-diag-title {
+    font-weight: 700;
+    margin-bottom: 0.45rem;
+}
+
+.rhai-diag-panel ul {
+    margin: 0;
+    padding-left: 1.2rem;
+}
+
+.rhai-diag-panel li {
+    margin-bottom: 0.42rem;
+}
+
+.rhai-diag-error {
+    color: #b42318;
+}
+
+.rhai-diag-warning {
+    color: #b54708;
+}
+
+.rhai-diag-info {
+    color: #344054;
+}
+
+.rhai-diag-hint {
+    font-size: 0.88rem;
+    color: var(--rhai-muted);
+}
+
+.rhai-diagram-failure {
+    border: 1px solid rgba(180, 35, 24, 0.16);
+    border-radius: 14px;
+    padding: 0.9rem 1rem;
+    background: rgba(254, 242, 242, 0.7);
+}
+
+.rhai-diagram-original {
+    display: none;
+}
+
+.rhai-isometric-scene {
+    display: block;
+    width: 100%;
+    min-height: 18rem;
+}
+
+.rhai-iso-bg {
+    opacity: 0.95;
+}
+
+#content main table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 2rem 0;
+    border: 1px solid var(--rhai-line);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+#content main table th {
+    background: color-mix(in srgb, var(--sidebar-bg, #f6f8fa) 95%, #0f766e 5%);
+    font-weight: 700;
+    text-align: left;
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid var(--rhai-line);
+}
+
+#content main table td {
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid var(--rhai-line);
+    vertical-align: top;
+}
+
+#content main table tr:last-child td {
+    border-bottom: none;
+}
+
+#content main table tr:hover td {
+    background: color-mix(in srgb, var(--bg, #ffffff) 98%, #0f766e 2%);
+}
+
+#content main pre code {
+    background: transparent;
+    padding: 0;
+    border-radius: 0;
+    font-size: inherit;
+}
+
+#content main :not(pre) > code {
+    background: color-mix(in srgb, var(--bg, #ffffff) 95%, #64748b 5%);
+    padding: 0.2rem 0.4rem;
+    border-radius: 6px;
+    font-size: 0.9em;
+}
+
+#content main pre {
+    border-radius: 12px;
+    padding: 1.25rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    border: 1px solid var(--rhai-line);
+}
+
+.rhai-iso-shadow-plane path {
+    fill: rgba(15, 23, 42, 0.06);
+}
+
+.rhai-iso-edge path {
+    fill: none;
+    stroke: rgba(51, 65, 85, 0.9);
+    stroke-width: 2.2;
+    stroke-linecap: round;
+}
+
+.rhai-iso-edge-label rect {
+    fill: rgba(248, 250, 252, 0.95);
+    stroke: rgba(148, 163, 184, 0.75);
+}
+
+.rhai-iso-edge-label text {
+    fill: #334155;
+    font-size: 11px;
+    font-weight: 700;
+    text-anchor: middle;
+    dominant-baseline: middle;
+}
+
+.rhai-iso-node {
+    filter: drop-shadow(0 10px 18px rgba(15, 23, 42, 0.14));
+}
+
+.rhai-iso-node:hover {
+    filter: drop-shadow(0 18px 30px rgba(15, 23, 42, 0.2));
+}
+
+.rhai-iso-label {
+    fill: #0f172a;
+    font-size: 13px;
+    font-weight: 700;
+    text-rendering: geometricPrecision;
+    paint-order: stroke;
+    stroke: #ffffff;
+    stroke-width: 3px;
+    stroke-linejoin: round;
+}
+
+.rhai-iso-label-center {
+    text-anchor: middle;
+}
+
+.rhai-iso-subtitle {
+    fill: #475569;
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    paint-order: stroke;
+    stroke: #ffffff;
+    stroke-width: 2.5px;
+    stroke-linejoin: round;
+}
+
+@media (max-width: 1000px) {
+    .rhai-diagram-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .rhai-view-track {
+        min-width: 100%;
+    }
+
+    .rhai-diagram-body {
+        grid-template-columns: 1fr;
+    }
+
+    .rhai-diagram-editor {
+        border-right: 0;
+        border-bottom: 1px solid var(--rhai-line);
+    }
+}
+
+@media (max-width: 720px) {
+    .rhai-view-switch {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .rhai-view-track {
+        min-width: 15.5rem;
+    }
+}

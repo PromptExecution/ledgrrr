@@ -7,6 +7,9 @@
 
 
         <!-- Custom HTML head -->
+        <!-- Local-first docs theme: no external runtime font requests -->
+        <!-- This file can be populated with custom <head> elements for mdBook. -->
+        <!-- See https://rust-lang.github.io/mdBook/format/config.html#rust -->
 
         <meta name="description" content="">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -16,7 +19,7 @@
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
         <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/chrome-9dfbd86b.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -28,6 +31,8 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/rhai-live-bb027f47.css">
+        <link rel="stylesheet" href="mdbook-admonish-306a1c37.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -35,10 +40,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-2687c903.js";
+            window.path_to_searchindex_js = "searchindex-c072d1a1.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-dd41f5d9.js"></script>
+        <script src="toc-f88c394d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -181,32 +186,63 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="constraints"><a class="header" href="#constraints">Constraints</a></h1>
-<p>The constraints module implements Kasuari-based data plausibility validation.</p>
-<pre class="mermaid">flowchart LR
-    subgraph Input["Transaction"]
-        A["amount"]
-        D["date"]
-        C["category"]
-    end
-    
-    subgraph Validate["Kasuari Constraint Solver"]
-        RA["AmountRange"]
-        RD["DateWindow"]
-        RC["CategoryPattern"]
-    end
-    
-    subgraph Output["Result"]
-        OK["✓ Valid"]
-        WARN["⚠ Warning"]
-        FAIL["✗ Invalid"]
-    end
-    
-    Input --&gt; Validate
-    RA --&gt; OK
-    RD --&gt; WARN
-    RC --&gt; FAIL
+<p>The constraints module handles plausibility checks and visual placement rules. It deliberately sits next to, but separate from, <a href="./legal.html">Legal Verification</a>.</p>
+<h2 id="constraint-families"><a class="header" href="#constraint-families">Constraint Families</a></h2>
+<pre><code class="language-rhai">fn transaction_input() -&gt; vendor_constraints
+fn transaction_input() -&gt; invoice_arithmetic
+fn pipeline_graph() -&gt; layout_constraints
+fn vendor_constraints() -&gt; constraint_evaluation
+fn invoice_arithmetic() -&gt; constraint_evaluation
+fn layout_constraints() -&gt; visualization_model
+match constraint_evaluation =&gt; Required -&gt; block_pipeline
+match constraint_evaluation =&gt; Strong -&gt; recoverable_issue
+match constraint_evaluation =&gt; Medium -&gt; warning_issue
+match constraint_evaluation =&gt; Weak -&gt; advisory_issue
+</code></pre>
+<pre class="mermaid">flowchart TD
+    transaction_input["transaction_input"]
+    vendor_constraints["vendor_constraints"]
+    invoice_arithmetic["invoice_arithmetic"]
+    pipeline_graph["pipeline_graph"]
+    layout_constraints["layout_constraints"]
+    constraint_evaluation["constraint_evaluation"]
+    visualization_model["visualization_model"]
+    match_constraint_evaluation{"match constraint_evaluation"}
+    block_pipeline["block_pipeline"]
+    recoverable_issue["recoverable_issue"]
+    warning_issue["warning_issue"]
+    advisory_issue["advisory_issue"]
+    transaction_input --&gt; vendor_constraints
+    transaction_input --&gt; invoice_arithmetic
+    pipeline_graph --&gt; layout_constraints
+    vendor_constraints --&gt; constraint_evaluation
+    invoice_arithmetic --&gt; constraint_evaluation
+    layout_constraints --&gt; visualization_model
+    match_constraint_evaluation --&gt;|"Required"|block_pipeline
+    match_constraint_evaluation --&gt;|"Strong"|recoverable_issue
+    match_constraint_evaluation --&gt;|"Medium"|warning_issue
+    match_constraint_evaluation --&gt;|"Weak"|advisory_issue
 </pre>
 
+<h2 id="kasuari-use"><a class="header" href="#kasuari-use">Kasuari Use</a></h2>
+<p>Kasuari-style strengths are used for constraints where failure is graded:</p>
+<ul>
+<li><strong>Required</strong>: must pass before the pipeline proceeds.</li>
+<li><strong>Strong</strong>: recoverable issue; normally needs repair or review.</li>
+<li><strong>Medium</strong>: warning; may proceed with an audit note.</li>
+<li><strong>Weak</strong>: advisory signal.</li>
+</ul>
+<p>This is appropriate for vendor plausibility and document-shape expectations because historical data is rarely a hard legal proof.</p>
+<h2 id="z3-boundary"><a class="header" href="#z3-boundary">Z3 Boundary</a></h2>
+<p>Use Z3 when the application needs proof-like yes/no behavior:</p>
+<ul>
+<li>tax rule satisfaction</li>
+<li>reconciliation balance equations</li>
+<li>workbook export invariants</li>
+<li>mutually exclusive classifications</li>
+<li>workflow transition guards</li>
+</ul>
+<p>Use this module’s constraint evaluation when the question is “how plausible is this value?” rather than “is this formula satisfiable?”</p>
 <h2 id="vendorconstraintset"><a class="header" href="#vendorconstraintset">VendorConstraintSet</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -215,34 +251,30 @@
     pub constraints: Vec&lt;Constraint&gt;,
 }
 <span class="boring">}</span></code></pre>
-<h2 id="constraint-types"><a class="header" href="#constraint-types">Constraint Types</a></h2>
+<p>Typical checks:</p>
 <ul>
-<li><strong>AmountRange</strong>: Valid transaction amount bounds</li>
-<li><strong>DateWindow</strong>: Expected date range for statements</li>
-<li><strong>DescriptionPattern</strong>: Regex pattern for valid descriptions</li>
-<li><strong>AccountFormat</strong>: Valid account number format</li>
-</ul>
-<h2 id="kasuari-integration"><a class="header" href="#kasuari-integration">Kasuari Integration</a></h2>
-<p>The module uses Kasuari strengths for constraint evaluation:</p>
-<ul>
-<li><strong>Strong</strong>: Must pass for validation to succeed</li>
-<li><strong>Medium</strong>: Warning if violated</li>
-<li><strong>Weak</strong>: Advisory if violated</li>
+<li>amount range</li>
+<li>date window</li>
+<li>description pattern</li>
+<li>account format</li>
 </ul>
 <h2 id="invoiceconstraintsolver"><a class="header" href="#invoiceconstraintsolver">InvoiceConstraintSolver</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>pub struct InvoiceConstraintSolver {
-    // ...
-}
-<span class="boring">}</span></code></pre>
-<p>Solves constraints for invoice data with multi-pass validation.</p>
+<p><code>InvoiceConstraintSolver</code> checks invoice arithmetic such as subtotal, tax, and total consistency. Today it is a lightweight plausibility solver; future work can route strict arithmetic proof obligations through Z3 where audit explanations need counterexamples.</p>
+<h2 id="layoutsolver"><a class="header" href="#layoutsolver">LayoutSolver</a></h2>
+<p>The visualization system also uses constraints to keep graph nodes readable. Match arms, default lanes, and rejoin points are layout constraints, not financial constraints.</p>
+<h2 id="related-chapters"><a class="header" href="#related-chapters">Related Chapters</a></h2>
+<ul>
+<li><a href="./legal.html">Legal Verification</a></li>
+<li><a href="./validation.html">Validation</a></li>
+<li><a href="./visualize.html">Visualization</a></li>
+<li><a href="./match-visualization-plan.html">Match Visualization Plan</a></li>
+</ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="legal.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="workflow.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
@@ -256,7 +288,7 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="legal.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="workflow.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
@@ -289,6 +321,9 @@
         <script src="book-a0b12cfe.js"></script>
 
         <!-- Custom JS scripts -->
+        <script src="theme/rhai-live-core-7e58f9cd.js"></script>
+        <script src="theme/rhai-live-ca0b7d40.js"></script>
+        <script src="theme/mdbook-nav-override-2a0f46ea.js"></script>
 
 
 
