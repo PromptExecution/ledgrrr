@@ -23,7 +23,7 @@ env:
   # (wrkflw secure-emulation runs as host processes — no sandboxing of the daemon).
   # If sccache is not installed, RUSTC_WRAPPER is silently ignored by cargo.
   RUSTC_WRAPPER: sccache
-  SCCACHE_DIR: ${{ runner.temp || '/tmp' }}/sccache
+  SCCACHE_DIR: /tmp/sccache
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
 

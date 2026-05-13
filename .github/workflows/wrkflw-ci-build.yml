@@ -1,0 +1,59 @@
+# wrkflw-ci-build: local CI build verification (emulation mode, no Docker required)
+# Run with: wrkflw run .github/workflows/wrkflw-ci-build.yml
+# Or via:   just build
+#
+# Proves that:
+#   1. cargo chef prepare succeeds (the planner step that failed without kani-proofs)
+#   2. cargo build -p ledgerr-mcp compiles cleanly
+#
+# Requires: Rust toolchain on host (cargo-chef installed automatically if missing)
+name: wrkflw-ci-build
+
+on:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  planner-smoke:
+    name: "Planner smoke (cargo chef prepare)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cargo-chef
+        run: |
+          if ! command -v cargo-chef >/dev/null 2>&1; then
+            cargo install cargo-chef --locked
+          fi
+
+      - name: Run cargo chef prepare
+        run: |
+          cargo chef prepare --recipe-path /tmp/recipe.json
+          echo "=== recipe.json written ($(wc -c < /tmp/recipe.json) bytes) ==="
+          python3 -c "
+          import json, sys
+          d = json.load(open('/tmp/recipe.json'))
+          members = [m['relative_path'] for m in d['skeleton']['manifests']]
+          print('workspace members in recipe:', len(members))
+          for m in members:
+              print(' ', m)
+          assert any('kani-proofs' in m for m in members), 'kani-proofs missing from recipe!'
+          print('PASS: kani-proofs present in cargo chef recipe')
+          "
+
+  build-mcp:
+    name: "Build ledgerr-mcp"
+    needs: [planner-smoke]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build ledgerr-mcp
+        run: cargo build -p ledgerr-mcp --bin ledgerr-mcp-server

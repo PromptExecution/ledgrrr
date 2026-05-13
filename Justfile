@@ -433,9 +433,12 @@ stats:
 
 # Build mdbook documentation locally
 # Requires: cargo install mdbook mdbook-mermaid && cargo install --path crates/mdbook-rhai-mermaid
+# mdbook-admonish: cargo install --git https://github.com/padamson/mdbook-admonish.git --branch feat/mdbook-0.5-compat mdbook-admonish
+# TODO: switch to a released version once tommilligan/mdbook-admonish#235 merges
 docgen:
     @if [ ! -x ~/.cargo/bin/mdbook ]; then echo "error: mdbook not found — run: cargo install mdbook mdbook-mermaid"; exit 1; fi
     @if [ ! -x ~/.cargo/bin/mdbook-mermaid ]; then echo "error: mdbook-mermaid not found — run: cargo install mdbook-mermaid"; exit 1; fi
+    @if [ ! -x ~/.cargo/bin/mdbook-admonish ]; then echo "error: mdbook-admonish not found — see comment above docgen recipe in Justfile"; exit 1; fi
     @if [ ! -x ~/.cargo/bin/mdbook-rhai-mermaid ]; then cargo install --path crates/mdbook-rhai-mermaid --quiet; fi
     PATH="$HOME/.cargo/bin:$PATH" ~/.cargo/bin/mdbook build book
     @echo "Docs built in book/book/ — serve with: npx serve book/book"
@@ -475,8 +478,18 @@ docgen-check:
     @echo "Running live-editor unit tests..."
     @node --test book/theme/rhai-live-core.test.js
     @echo "Checking iso-pipeline-objects.html has at least 5 mermaid blocks..."
-    @count=$$(grep -c 'class="mermaid"' book/book/iso-pipeline-objects.html); echo "Found $$count mermaid blocks in iso-pipeline-objects.html"; if [ "$$count" -lt 5 ]; then echo "error: expected at least 5 mermaid blocks, found $$count"; exit 1; fi; echo "✓ iso-pipeline-objects.html has $$count mermaid blocks (>= 5)"
+    @count=$(grep -c 'class="mermaid"' book/book/iso-pipeline-objects.html || true); echo "Found $count mermaid blocks in iso-pipeline-objects.html"; if [ "$count" -lt 5 ]; then echo "error: expected at least 5 mermaid blocks, found $count"; exit 1; fi; echo "✓ iso-pipeline-objects.html has $count mermaid blocks, expected at least 5"
     @echo "All documentation diagrams validated!"
+
+# Verify the exact mdBook output directory published to GitHub Pages.
+docgen-pages-check:
+    just docgen-check
+    @test -f book/book/index.html || { echo "error: GitHub Pages publish payload missing book/book/index.html"; exit 1; }
+    @compgen -G 'book/book/theme/rhai-live-core*.js' >/dev/null || { echo "error: GitHub Pages publish payload missing live editor core asset"; exit 1; }
+    @compgen -G 'book/book/theme/rhai-live-*.js' >/dev/null || { echo "error: GitHub Pages publish payload missing live editor asset"; exit 1; }
+    @compgen -G 'book/book/mdbook-admonish*.css' >/dev/null || { echo "error: GitHub Pages publish payload missing admonish CSS"; exit 1; }
+    @grep -q 'l3dg3rr Ledger Documentation' book/book/index.html || { echo "error: GitHub Pages index does not look like the hosted docs"; exit 1; }
+    @echo "✓ GitHub Pages docs payload validated at book/book/"
 
 # Negative test: verify broken cross-references are present in output (mdBook
 # does not fail on broken links at build time — this confirms the behavior)
@@ -504,6 +517,16 @@ docgen-check-negative:
 # Run the McpProvider smoke test (compile-and-construct, no external binaries needed)
 test-mcp-providers:
     cargo test -p ledgerr-mcp --test mcp_provider_smoke 2>&1 | tail -20
+
+# ─── build: local CI build via wrkflw ──────────────────────────────────────
+
+# Prove the Dockerfile planner fix: runs cargo chef prepare + ledgerr-mcp build
+# via wrkflw emulation mode (no Docker required).
+build emulation="emulation":
+    @if ! command -v wrkflw >/dev/null 2>&1; then echo "error: wrkflw not found — run: cargo install wrkflw"; exit 1; fi
+    @echo "=== wrkflw: CI build verification ==="
+    wrkflw run --runtime {{emulation}} .github/workflows/wrkflw-ci-build.yml
+    @echo "=== build complete ==="
 
 # ─── wrkflw: local CI pipeline runner ──────────────────────────────────────
 

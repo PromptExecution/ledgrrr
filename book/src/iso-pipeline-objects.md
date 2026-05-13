@@ -29,6 +29,52 @@ screen_y = origin_y + (pt.x + pt.z) * scale * 0.5 - pt.y * scale
 
 Contract test: `iso_project(Vec3{x:192, y:0, z:0}, 1.0, 0.0, 0.0)` → `IsoProjected{screen_x:≈166.27, screen_y:96.0}`.
 
+## Rendered Mini-DSL Samples
+
+These samples use the supported Rhai diagram mini-DSL so the mdBook preprocessor
+can emit Mermaid blocks for the GitHub Pages build.
+
+```rhai
+fn raw_statement() -> extracted_rows
+fn extracted_rows() -> deterministic_tx_ids
+fn deterministic_tx_ids() -> validated_facts
+fn validated_facts() -> classified_tx
+fn classified_tx() -> workbook_projection
+```
+
+```rhai
+if constraint_passed == true -> legal_verification
+if constraint_passed == false -> operator_review
+if recovered == true -> legal_verification
+if recovered == false -> blocked_queue
+```
+
+```rhai
+match issue.disposition => Unrecoverable -> blocked_queue
+match issue.disposition => Recoverable -> repair_pipeline
+match issue.disposition => Advisory -> workbook_projection
+```
+
+```rhai
+fn z3_rule_check() -> proof_result
+if proof_result == satisfied -> commit_gate
+if proof_result == violated -> legal_review
+if proof_result == unknown -> operator_review
+```
+
+```rhai
+fn commit_gate() -> audit_log
+fn audit_log() -> evidence_graph
+fn evidence_graph() -> cpa_workbook
+fn cpa_workbook() -> exported_artifact
+```
+
+```rhai
+fn operator_review() -> approval_decision
+fn approval_decision() -> replayable_audit_event
+fn replayable_audit_event() -> evidence_graph
+```
+
 ## Pipeline Layer (z=1)
 
 ### `PipelineState<Ingested>`
