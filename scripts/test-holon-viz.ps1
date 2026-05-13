@@ -94,6 +94,21 @@ if ($cdpOk) {
                 return [System.Text.Encoding]::UTF8.GetString($buf, 0, $res.Count)
             }
 
+            # Wait for buildUI() to populate nav items (WebView2 renders async after CDP connects)
+            $navExpr = 'document.querySelectorAll(".nav-item").length'
+            $navDeadline = (Get-Date).AddSeconds(15)
+            $navReady = $false
+            $navPollId = 100
+            do {
+                $navPollId++
+                $navMsg = '{"id":' + $navPollId + ',"method":"Runtime.evaluate","params":{"expression":"' + $navExpr + '"}}'
+                WsSend $navMsg
+                $rNav = WsRecv
+                if ($rNav -match '"value"\s*:\s*([1-9]\d*)') { $navReady = $true; break }
+                Start-Sleep -Milliseconds 400
+            } while ((Get-Date) -lt $navDeadline)
+            if (-not $navReady) { Write-Host "  WARN: nav items not ready after 15s" -ForegroundColor Yellow }
+
             # Navigate to viz panel (click last nav button = VZ)
             WsSend '{"id":1,"method":"Runtime.evaluate","params":{"expression":"(function(){var btns=document.querySelectorAll(\".nav-item[data-panel-index]\");btns[btns.length-1].click();return \"clicked\";})()" }}'
             $r1 = WsRecv

@@ -22,6 +22,7 @@ pub mod holon;
 pub mod log;
 pub mod observer;
 pub mod renderer;
+pub mod gen;
 pub mod type_graph;
 
 pub use controller::{ProcessController, ProcessStep, TransitionReceipt};

@@ -465,6 +465,13 @@ docserve host="127.0.0.1" port="3000":
     @echo "Serving http://{{host}}:{{port}}"
     cd book/book && python3 -m http.server {{port}} --bind {{host}}
 
+# ─── KerML codegen ───────────────────────────────────────────────────────────
+
+# Regenerate crates/holon-viz/src/gen.rs from types/domain.kerm.
+# Edit types/domain.kerm to add/remove domain types, then run this recipe.
+gen-kerm:
+    cargo run -p xtask-mcpb -- generate-kerm-artifacts
+
 # ─── Zero-drift checks ───────────────────────────────────────────────────────
 
 # MECE zero-drift check: verify all generated artifacts are up to date with their sources.
@@ -498,6 +505,16 @@ check-drift:
         FAIL=1
     else
         echo "PASS: mcp-capability-contract.md is up to date"
+    fi
+
+    echo ""
+    echo "=== check-drift: holon-viz/src/gen.rs ==="
+    cargo run -p xtask-mcpb -- generate-kerm-artifacts --output /tmp/gen_check.rs 2>&1
+    if ! diff crates/holon-viz/src/gen.rs /tmp/gen_check.rs > /dev/null 2>&1; then
+        echo "FAIL: crates/holon-viz/src/gen.rs is out of date — run: just gen-kerm"
+        FAIL=1
+    else
+        echo "PASS: gen.rs is up to date"
     fi
 
     echo ""
