@@ -18,6 +18,8 @@ members = [
   "crates/lfmf-counter",
   "crates/msft-agent-gov-ledgrrr",
   "kani-proofs",
+  "crates/holon-viz",
+  "crates/ledgerr-model-server",
 ]
 resolver = "2"
 
