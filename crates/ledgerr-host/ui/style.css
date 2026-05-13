@@ -723,3 +723,8 @@ button:disabled {
   min-height: 0;
   overflow: hidden;
 }
+
+.viz-tabs { display:flex; gap:4px; margin-right:8px; }
+.viz-tab { background:#1e3a4a; color:#8ab4c8; border:1px solid #2a5068; border-radius:4px; padding:3px 10px; font-size:12px; cursor:pointer; }
+.viz-tab.active { background:#0073a8; color:#fff; border-color:#0073a8; }
+.viz-tab:hover:not(.active) { background:#2a5068; color:#fff; }
