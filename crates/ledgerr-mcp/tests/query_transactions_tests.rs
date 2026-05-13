@@ -7,18 +7,17 @@ use ledgerr_mcp::{
     TurboLedgerService, TurboLedgerTools, QueryTransactionsRequest, IngestStatementRowsRequest,
 };
 use ledger_core::ingest::TransactionInput;
-use std::path::PathBuf;
 
-fn create_test_service() -> TurboLedgerService {
+fn create_test_service() -> (TurboLedgerService, std::path::PathBuf) {
     let workbook_path = common::unique_workbook_path("query_transactions_test");
     let manifest = common::manifest_for_workbook(&workbook_path, 2023);
-    TurboLedgerService::from_manifest_str(&manifest).unwrap()
+    (TurboLedgerService::from_manifest_str(&manifest).unwrap(), workbook_path)
 }
 
 #[test]
 fn test_query_transactions_returns_filtered_results() {
     // Create a service with sample data
-    let service = create_test_service();
+    let (service, workbook_path) = create_test_service();
     
     // Ingest some test transactions
     let tx1 = TransactionInput {
@@ -47,8 +46,8 @@ fn test_query_transactions_returns_filtered_results() {
     
     // Ingest transactions
     let _ = service.ingest_statement_rows(IngestStatementRowsRequest {
-        journal_path: PathBuf::from("test.journal"),
-        workbook_path: PathBuf::from("test.xlsx"),
+        journal_path: workbook_path.with_extension("journal"),
+        workbook_path: workbook_path.clone(),
         ontology_path: None,
         rows: vec![tx1.clone(), tx2.clone(), tx3.clone()],
     });
@@ -97,7 +96,7 @@ fn test_query_transactions_returns_filtered_results() {
 #[test]
 fn test_query_transactions_applies_sorting() {
     // Create a service with sample data
-    let service = create_test_service();
+    let (service, workbook_path) = create_test_service();
     
     // Ingest transactions with different dates and amounts
     let tx1 = TransactionInput {
@@ -125,8 +124,8 @@ fn test_query_transactions_applies_sorting() {
     };
     
     let _ = service.ingest_statement_rows(IngestStatementRowsRequest {
-        journal_path: PathBuf::from("test.journal"),
-        workbook_path: PathBuf::from("test.xlsx"),
+        journal_path: workbook_path.with_extension("journal"),
+        workbook_path: workbook_path.clone(),
         ontology_path: None,
         rows: vec![tx1, tx2, tx3],
     });
@@ -186,7 +185,7 @@ fn test_query_transactions_applies_sorting() {
 #[test]
 fn test_query_transactions_enforces_pagination_limits() {
     // Create a service with many transactions
-    let service = create_test_service();
+    let (service, workbook_path) = create_test_service();
     
     // Create 1500 transactions
     let mut transactions = Vec::new();
@@ -201,8 +200,8 @@ fn test_query_transactions_enforces_pagination_limits() {
     }
     
     let _ = service.ingest_statement_rows(IngestStatementRowsRequest {
-        journal_path: PathBuf::from("test.journal"),
-        workbook_path: PathBuf::from("test.xlsx"),
+        journal_path: workbook_path.with_extension("journal"),
+        workbook_path: workbook_path.clone(),
         ontology_path: None,
         rows: transactions,
     });
@@ -259,7 +258,7 @@ fn test_query_transactions_enforces_pagination_limits() {
 #[test]
 fn test_query_transactions_deterministic_ordering() {
     // Create a service
-    let service = create_test_service();
+    let (service, workbook_path) = create_test_service();
     
     // Create transactions with deterministic content
     let tx1 = TransactionInput {
@@ -280,8 +279,8 @@ fn test_query_transactions_deterministic_ordering() {
     
     // Ingest the same transactions twice and verify consistent results
     let _ = service.ingest_statement_rows(IngestStatementRowsRequest {
-        journal_path: PathBuf::from("test.journal"),
-        workbook_path: PathBuf::from("test.xlsx"),
+        journal_path: workbook_path.with_extension("journal"),
+        workbook_path: workbook_path.clone(),
         ontology_path: None,
         rows: vec![tx1.clone(), tx2.clone()],
     });
