@@ -536,7 +536,7 @@ mod tests {
         initialize_workbook(path).unwrap();
         
         let writer = WorkbookWriter::new(path);
-        writer.append_row(
+        writer.append_row(TransactionRow::new(
             "tx_001",
             "2023-01-15",
             "Acme Corp",
@@ -546,7 +546,7 @@ mod tests {
             0.95,
             false,
             None,
-        ).unwrap();
+        )).unwrap();
         
         let mut workbook: Xlsx<_> = open_workbook(path).unwrap();
         let range = workbook.worksheet_range("TRANSACTIONS").unwrap();
@@ -569,7 +569,7 @@ mod tests {
         initialize_workbook(path).unwrap();
         
         let writer = WorkbookWriter::new(path);
-        writer.append_row(
+        writer.append_row(TransactionRow::new(
             "tx_001",
             "2023-01-15",
             "Acme Corp",
@@ -579,9 +579,9 @@ mod tests {
             0.95,
             false,
             None,
-        ).unwrap();
+        )).unwrap();
         
-        writer.append_row(
+        writer.append_row(TransactionRow::new(
             "tx_002",
             "2023-01-16",
             "Beta Inc",
@@ -591,7 +591,7 @@ mod tests {
             0.88,
             true,
             Some("unusual_amount"),
-        ).unwrap();
+        )).unwrap();
         
         let mut workbook: Xlsx<_> = open_workbook(path).unwrap();
         let range = workbook.worksheet_range("TRANSACTIONS").unwrap();
@@ -636,7 +636,7 @@ mod tests {
         initialize_workbook(path).unwrap();
         
         let writer = WorkbookWriter::new(path);
-        writer.append_row(
+        writer.append_row(TransactionRow::new(
             "tx_001",
             "2023-01-15",
             "Acme Corp",
@@ -646,9 +646,9 @@ mod tests {
             0.95,
             false,
             None,
-        ).unwrap();
+        )).unwrap();
         
-        writer.append_row(
+        writer.append_row(TransactionRow::new(
             "tx_002",
             "2023-01-16",
             "Beta Inc",
@@ -658,7 +658,7 @@ mod tests {
             0.88,
             true,
             None,
-        ).unwrap();
+        )).unwrap();
         
         let mut workbook: Xlsx<_> = open_workbook(path).unwrap();
         let range = workbook.worksheet_range("MUTATION_HISTORY").unwrap();
@@ -718,7 +718,7 @@ mod tests {
         initialize_workbook(path).unwrap();
         
         let writer = WorkbookWriter::new(path);
-        writer.append_row(
+        writer.append_row(TransactionRow::new(
             "tx_001",
             "2023-01-15",
             "Acme Corp",
@@ -728,7 +728,7 @@ mod tests {
             0.95,
             false,
             None,
-        ).unwrap();
+        )).unwrap();
         
         let mut workbook: Xlsx<_> = open_workbook(path).unwrap();
         let range = workbook.worksheet_range("TRANSACTIONS").unwrap();
@@ -746,7 +746,7 @@ mod tests {
         initialize_workbook(path).unwrap();
 
         let writer = WorkbookWriter::new(path);
-        writer.append_row(
+        writer.append_row(TransactionRow::new(
             "tx_001",
             "2023-01-15",
             "Acme Corp",
@@ -756,9 +756,9 @@ mod tests {
             0.95,
             false,
             None,
-        ).unwrap();
+        )).unwrap();
 
-        writer.append_row(
+        writer.append_row(TransactionRow::new(
             "tx_002",
             "2023-01-16",
             "Beta Inc",
@@ -768,7 +768,7 @@ mod tests {
             0.88,
             true,
             Some("unusual_amount"),
-        ).unwrap();
+        )).unwrap();
 
         let mut workbook: Xlsx<_> = open_workbook(path).unwrap();
         assert!(workbook.worksheet_range("TRANSACTIONS").is_ok());
@@ -788,7 +788,7 @@ mod tests {
         let amount_str = amount.to_string();
 
         let writer = WorkbookWriter::new(path);
-        writer.append_row(
+        writer.append_row(TransactionRow::new(
             "tx_001",
             "2023-01-15",
             "Test Vendor",
@@ -798,7 +798,7 @@ mod tests {
             0.95,
             false,
             None,
-        ).unwrap();
+        )).unwrap();
 
         let mut workbook: Xlsx<_> = open_workbook(path).unwrap();
         let range = workbook.worksheet_range("TRANSACTIONS").unwrap();
