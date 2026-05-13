@@ -158,6 +158,8 @@ impl TypeRelationshipGraph {
             typed_node("legal::Z3Result", "Z3Result", "proof_result", "Legal", "Result"),
             typed_node("pipeline::KasuariSolver", "KasuariSolver", "solver_type", "FormalProof", "Proof"),
             typed_node("attest::AttestationSpec", "AttestationSpec", "attestation_type", "Attestation", "Attestation"),
+            typed_node("pipeline::MetaCtx", "MetaCtx", "meta_type", "Pipeline", "Pipeline"),
+            typed_node("validation::Disposition", "Disposition", "result_type", "Pipeline", "Result"),
             type_node("ontology::ArtifactKind", "ArtifactKind", "ontology_enum"),
             type_node("ontology::RelationKind", "RelationKind", "ontology_enum"),
             type_node("ontology::OntologySnapshot", "OntologySnapshot", "ontology_snapshot"),
@@ -194,6 +196,8 @@ impl TypeRelationshipGraph {
             rel("legal::LegalSolver", "iso::HasVisualization", TypeRelationshipKind::Implements),
             rel("legal::Z3Result", "iso::HasVisualization", TypeRelationshipKind::Implements),
             rel("validation::CommitGate", "iso::HasVisualization", TypeRelationshipKind::Implements),
+            rel("pipeline::MetaCtx", "iso::HasVisualization", TypeRelationshipKind::Implements),
+            rel("validation::Disposition", "iso::HasVisualization", TypeRelationshipKind::Implements),
             rel("pipeline::PipelineState<Ingested>", "pipeline::PipelineState<Validated>", TypeRelationshipKind::AdvancesTo),
             rel("pipeline::PipelineState<Validated>", "pipeline::PipelineState<Classified>", TypeRelationshipKind::AdvancesTo),
             rel("pipeline::PipelineState<Classified>", "pipeline::PipelineState<Reconciled>", TypeRelationshipKind::AdvancesTo),
@@ -412,5 +416,52 @@ mod tests {
 
         assert_eq!(json, "\"derives_from\"");
         assert_eq!(TypeRelationshipKind::DerivesFrom.as_label(), "derives_from");
+    }
+    #[test]
+    fn seed_typed_nodes_cover_all_has_visualization_impls() {
+        let seed = TypeRelationshipGraph::seed();
+        let typed_ids: std::collections::HashSet<&str> = seed
+            .nodes
+            .iter()
+            .filter(|n| n.z_layer.is_some())
+            .map(|n| n.id.as_str())
+            .collect();
+
+        let expected: &[&str] = &[
+            "pipeline::PipelineState<Ingested>",
+            "pipeline::PipelineState<Validated>",
+            "pipeline::PipelineState<Classified>",
+            "pipeline::PipelineState<Reconciled>",
+            "pipeline::PipelineState<Committed>",
+            "pipeline::PipelineState<NeedsReview>",
+            "validation::CommitGate",
+            "validation::StageResult<T>",
+            "validation::Issue",
+            "validation::MetaFlag",
+            "pipeline::MetaCtx",
+            "validation::Disposition",
+            "constraints::VendorConstraintSet",
+            "constraints::ConstraintEvaluation",
+            "constraints::InvoiceConstraintSolver",
+            "constraints::InvoiceVerification",
+            "legal::Jurisdiction",
+            "legal::LegalRule",
+            "legal::TransactionFacts",
+            "legal::LegalSolver",
+            "legal::Z3Result",
+            "pipeline::KasuariSolver",
+            "attest::AttestationSpec",
+        ];
+
+        let missing: Vec<&str> = expected
+            .iter()
+            .copied()
+            .filter(|id| !typed_ids.contains(id))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "seed() is missing typed nodes for HasVisualization impls: {:?}",
+            missing
+        );
     }
 }

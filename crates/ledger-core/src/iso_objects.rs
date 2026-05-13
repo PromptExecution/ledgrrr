@@ -114,8 +114,8 @@ impl HasVisualization for ConstraintEvaluation {
             semantic_type: SemanticType::Result,
             z_layer: ZLayer::Constraint,
             rhai_dsl: RhaiDsl::new(
-                r#"let eval = constraint_set.evaluate(amount, day, code, acct);
-if eval.required_pass { classify_ok() } else { flag("constraint_fail") }"#,
+                r#"let res = constraint_set.evaluate(amount, day, code, acct);
+if res.required_pass { classify_ok() } else { flag("constraint_fail") }"#,
             ),
             description: "Numerical constraint evaluation result with pass/fail per-field scores",
         }
@@ -128,8 +128,8 @@ impl HasVisualization for VendorConstraintSet {
             semantic_type: SemanticType::Constraint,
             z_layer: ZLayer::Constraint,
             rhai_dsl: RhaiDsl::new(r#"let bounds = load_vendor_constraints(vendor_id);
-let eval = bounds.evaluate(amount, day_of_month, tax_code, account);
-emit_constraint_result(eval);"#),
+let res = bounds.evaluate(amount, day_of_month, tax_code, account);
+emit_constraint_result(res);"#),
             description: "Vendor-specific statistical bounds: amount percentiles, usual day-of-month, tax code, and account",
         }
     }
@@ -140,7 +140,7 @@ impl HasVisualization for InvoiceConstraintSolver {
         VisualizationSpec {
             semantic_type: SemanticType::Solver,
             z_layer: ZLayer::Constraint,
-            rhai_dsl: RhaiDsl::new(r#"let solver = InvoiceConstraintSolver::new(gst_rate, expected_net);
+            rhai_dsl: RhaiDsl::new(r#"let solver = InvoiceConstraintSolver(gst_rate, expected_net);
 let verification = solver.verify(gross, gst_amount);
 if verification.arithmetic_ok && verification.gst_rate_ok { pass() }"#),
             description: "Invoice GST arithmetic solver — checks gross/net/GST consistency and rate conformance",
@@ -174,10 +174,10 @@ impl HasVisualization for Z3Result {
             semantic_type: SemanticType::Result,
             z_layer: ZLayer::Legal,
             rhai_dsl: RhaiDsl::new(r#"let result = legal_solver.verify(rule, facts);
-match result {
-    Satisfied  => ok(),
-    Violated   => flag("legal_violation"),
-    Unknown    => flag("legal_unknown"),
+switch result {
+    "Satisfied" => ok(),
+    "Violated"  => flag("legal_violation"),
+    "Unknown"   => flag("legal_unknown"),
 }"#),
             description: "Symbolic satisfiability outcome from Z3-style legal predicate check: Satisfied/Violated/Unknown",
         }
@@ -190,7 +190,7 @@ impl HasVisualization for LegalRule {
             semantic_type: SemanticType::Legal,
             z_layer: ZLayer::Legal,
             rhai_dsl: RhaiDsl::new(
-                r#"let rule = LegalRule::new(jurisdiction, "au-gst-38-190")
+                r#"let rule = LegalRule(jurisdiction, "au-gst-38-190")
     .with_formula("supply_type == 'GST_FREE' && vendor_jurisdiction == 'AU'")
     .with_category("GST");
 legal_solver.verify(rule, facts);"#,
@@ -206,9 +206,9 @@ impl HasVisualization for LegalSolver {
         VisualizationSpec {
             semantic_type: SemanticType::Solver,
             z_layer: ZLayer::Legal,
-            rhai_dsl: RhaiDsl::new(r#"let solver = LegalSolver::new();
-let (confidence, issues) = solver.verify_all(jurisdiction.legal_ruleset(), facts);
-if issues.is_empty() { advance_pipeline() } else { route_review(issues) }"#),
+            rhai_dsl: RhaiDsl::new(r#"let solver = LegalSolver();
+let result = solver.verify_all(jurisdiction.legal_ruleset(), facts);
+if result.issues.is_empty() { advance_pipeline() } else { route_review(result.issues) }"#),
             description: "Runs all jurisdiction rules against TransactionFacts, returns aggregate confidence and issue list",
         }
     }
@@ -233,7 +233,7 @@ impl HasVisualization for TransactionFacts {
         VisualizationSpec {
             semantic_type: SemanticType::Legal,
             z_layer: ZLayer::Legal,
-            rhai_dsl: RhaiDsl::new(r#"let facts = TransactionFacts::new()
+            rhai_dsl: RhaiDsl::new(r#"let facts = TransactionFacts()
     .with_vendor("AU")
     .with_supply_type("TAXABLE")
     .with_tax_code("G1")
@@ -254,10 +254,10 @@ impl HasVisualization for CommitGate {
             semantic_type: SemanticType::Gate,
             z_layer: ZLayer::Pipeline,
             rhai_dsl: RhaiDsl::new(r#"let gate = evaluate_commit_gate(stage_result);
-match gate {
-    Approved         => commit_to_workbook(tx),
-    PendingOperator  => route_to_operator(tx, gate.reason),
-    Blocked          => abort_commit(gate.issues),
+switch gate {
+    "Approved"        => commit_to_workbook(tx),
+    "PendingOperator" => route_to_operator(tx, gate.reason),
+    "Blocked"         => abort_commit(gate.issues),
 }"#),
             description: "Approval gate before workbook commit: Approved/PendingOperator/Blocked based on confidence and issues",
         }
@@ -283,10 +283,12 @@ impl HasVisualization for MetaFlag {
             semantic_type: SemanticType::Flag,
             z_layer: ZLayer::Pipeline,
             rhai_dsl: RhaiDsl::new(r#"if vendor_is_new(tx.vendor) {
-    attach_flag(MetaFlag::NewVendor { vendor: tx.vendor });
+    let f = #{ type: "NewVendor", vendor: tx.vendor };
+    attach_flag(f);
 }
 if anomaly_score > THRESHOLD {
-    attach_flag(MetaFlag::AnomalyDetected { code: "AMT_SPIKE", impact: 0.9 });
+    let f = #{ type: "AnomalyDetected", code: "AMT_SPIKE", impact: 0.9 };
+    attach_flag(f);
 }"#),
             description: "Classification meta-annotation: NewVendor, AnomalyDetected, RepairApplied, LowUpstreamConf, or ConstraintWeak",
         }
@@ -302,11 +304,11 @@ impl HasVisualization for MetaCtx {
         VisualizationSpec {
             semantic_type: SemanticType::Pipeline,
             z_layer: ZLayer::Pipeline,
-            rhai_dsl: RhaiDsl::new(r#"let meta = MetaCtx::default();
+            rhai_dsl: RhaiDsl::new(r#"let meta = MetaCtx();
 meta.accumulated_confidence = 0.85;
-meta.flags.push(MetaFlag::NewVendor { vendor: "ACME Corp" });
-meta.stage_trace.push(StageScore { stage: "ingest", confidence: 0.9 });
-meta.stage_trace.push(StageScore { stage: "validate", confidence: 0.8 });"#),
+meta.flags.push(#{ type: "NewVendor", vendor: "ACME Corp" });
+meta.stage_trace.push(#{ stage: "ingest", confidence: 0.9 });
+meta.stage_trace.push(#{ stage: "validate", confidence: 0.8 });"#),
             description: "Accumulated pipeline state flowing forward: confidence score, classification flags, and per-stage trace history",
         }
     }
@@ -317,10 +319,10 @@ impl HasVisualization for Disposition {
         VisualizationSpec {
             semantic_type: SemanticType::Result,
             z_layer: ZLayer::Pipeline,
-            rhai_dsl: RhaiDsl::new(r#"match issue.disposition {
-    Disposition::Unrecoverable => halt_pipeline("critical failure"),
-    Disposition::Recoverable  => continue_with_degraded_confidence(),
-    Disposition::Advisory     => log_and_continue(),
+            rhai_dsl: RhaiDsl::new(r#"switch issue.disposition {
+    "Unrecoverable" => halt_pipeline("critical failure"),
+    "Recoverable"   => continue_with_degraded_confidence(),
+    "Advisory"      => log_and_continue(),
 }"#),
             description: "Issue handling strategy: Unrecoverable halts pipeline, Recoverable continues with degraded confidence, Advisory is informational only",
         }
@@ -351,10 +353,54 @@ impl HasVisualization for KasuariSolver {
             semantic_type: SemanticType::Proof,
             z_layer: ZLayer::FormalProof,
             rhai_dsl: RhaiDsl::new(r#"let solver = KasuariSolver;
-let score = solver.evaluate("amount", value, [(min, max)]);
+let score = solver.evaluate("amount", value, [[min, max]]);
 let strength = solver.strength("required"); // Required | Strong | Medium | Weak
 // Bridges constraint satisfaction into formal layout verification"#),
             description: "Kasuari constraint layout solver — evaluates field values against (min, max) ranges, bridges constraint → formal verification layer",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn all_viz_spec_rhai_dsl_has_valid_syntax() {
+        let engine = rhai::Engine::new();
+        macro_rules! check {
+            ($t:ty) => {{
+                let spec = <$t as HasVisualization>::viz_spec();
+                engine.compile(spec.rhai_dsl.source()).unwrap_or_else(|e| {
+                    panic!(
+                        "Rhai DSL syntax error in {}: {}",
+                        stringify!($t),
+                        e
+                    )
+                });
+            }};
+        }
+        check!(PipelineState<Ingested>);
+        check!(PipelineState<Validated>);
+        check!(PipelineState<Classified>);
+        check!(PipelineState<Reconciled>);
+        check!(PipelineState<Committed>);
+        check!(PipelineState<NeedsReview>);
+        check!(ConstraintEvaluation);
+        check!(VendorConstraintSet);
+        check!(InvoiceConstraintSolver);
+        check!(InvoiceVerification);
+        check!(Z3Result);
+        check!(LegalRule);
+        check!(LegalSolver);
+        check!(Jurisdiction);
+        check!(TransactionFacts);
+        check!(CommitGate);
+        check!(Issue);
+        check!(MetaFlag);
+        check!(MetaCtx);
+        check!(Disposition);
+        check!(StageResult<()>);
+        check!(KasuariSolver);
     }
 }
