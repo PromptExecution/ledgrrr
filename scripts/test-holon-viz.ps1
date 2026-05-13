@@ -49,7 +49,12 @@ Write-Host "`n[launch] starting host-tauri with CDP on port 19222"
 $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=19222"
 $proc = Start-Process -FilePath $Binary -WorkingDirectory "$ProjectRoot\crates\ledgerr-host" -PassThru
 Write-Host "  PID: $($proc.Id)"
-Start-Sleep -Seconds $WaitSeconds
+# Poll for CDP instead of fixed sleep (WebView2 init time varies)
+$cdpDeadline = (Get-Date).AddSeconds([math]::Max($WaitSeconds, 25))
+do {
+    Start-Sleep -Milliseconds 800
+    try { Invoke-RestMethod "$CdpUrl/json/version" -TimeoutSec 2 | Out-Null; break } catch {}
+} while ((Get-Date) -lt $cdpDeadline)
 
 # ── CDP: navigate to viz panel by evaluating JS ──────────────────────────────
 Write-Host "`n[cdp] connecting to $CdpUrl"
@@ -72,7 +77,6 @@ if ($cdpOk) {
 
     if ($wsUrl) {
         # Use CDP Runtime.evaluate to click the Viz nav button and check window._cy
-        Add-Type -AssemblyName System.Net.WebSockets.Client -ErrorAction SilentlyContinue
         try {
             $ws = New-Object System.Net.WebSockets.ClientWebSocket
             $cts = New-Object System.Threading.CancellationTokenSource
