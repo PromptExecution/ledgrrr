@@ -120,7 +120,7 @@ Priority legend: **P1** = current sprint / unblocked, **P2** = next sprint, **P3
 | ~~P2~~ | ~~Concurrent test isolation~~ | Shipped 2026-05-14. `service.workbook_path()` replaces hardcoded `test.xlsx` in 4 call sites. |
 | ~~P2~~ | ~~MECE zero-drift CI check~~ | Shipped 2026-05-14. `just check-drift` covers `bindings.ts` + `mcp-capability-contract.md`; wired into CI. |
 | ~~P2~~ | ~~VZ tab switcher~~ | Shipped 2026-05-14. Type Graph / Pipeline toggle in VZ toolbar. |
-| P2 | KerML metamodel for domain types | Author KerML textual notation for core domain types. Codegen target: Rust structs + TS types from single source. Lives in `xtask` or dedicated `crates/ledger-kerm`. |
+| ~~P2~~ | ~~KerML metamodel for domain types~~ | Shipped 2026-05-14. `types/domain.kerm` — 49-type KerML-profile TOML source. `xtask gen-kerm` regenerates `crates/holon-viz/src/gen.rs`. `seed()` delegates to `gen::generated_seed()`. `check-drift` verifies gen.rs. CDP 7/7 PASS. |
 | ~~P2~~ | ~~`MutationRecord` dead code~~ | Shipped 2026-05-14. Unified into canonical owned struct in `workbook.rs`; `append_mutation_record()` wired; `classify.rs` re-exports. 3 call sites converted. |
 | ~~P2~~ | ~~Seed ↔ `HasVisualization` gap detector~~ | Shipped 2026-05-14. `seed_typed_nodes_cover_all_has_visualization_impls` in `holon-viz/src/type_graph.rs`; 23 typed_node IDs checked. Also fixed seed gap: MetaCtx and Disposition were missing. |
 | ~~P2~~ | ~~Rhai DSL validation~~ | Shipped 2026-05-14. `all_viz_spec_rhai_dsl_has_valid_syntax` in `ledger-core/src/iso_objects.rs`; 22/22 pass. Fixed 12 invalid DSL strings (reserved keywords, struct literals, tuple syntax). |
@@ -246,4 +246,25 @@ Both are tooling constraints, not delegation failures. Coordinator did inline Py
 - `cargo test -p ledger-core all_viz_spec` — 1/1 passed (22 internal checks)
 - `cargo test -p ledger-core` — 9/9 + 1 doc-test passed
 
-*Last updated: 2026-05-14 (P2 gap session)*
+
+## Session Log — 2026-05-14 (KerML codegen session)
+### Shipped
+| Item | Details |
+|------|---------|
+| **`types/domain.kerm`** | KerML-profile TOML source of truth for the holon-viz type graph: 49 types, 59 relationships. Human-readable, single-file, machine-parseable. |
+| **`xtask/src/kerm.rs`** | Parser + codegen for `.kerm` files. `kerm::load()` deserializes TOML; `kerm::codegen()` emits `generated_seed()` Rust function. |
+| **`xtask GenerateKermArtifacts`** | New xtask subcommand. `just gen-kerm` regenerates `crates/holon-viz/src/gen.rs`. |
+| **`crates/holon-viz/src/gen.rs`** | Generated seed file (do not edit). `TypeRelationshipGraph::seed()` now delegates to `gen::generated_seed()`. |
+| **`check-drift` extended** | Justfile `check-drift` now also verifies `gen.rs` is up to date with `domain.kerm`. All 3 artifacts pass. |
+| **CDP test nav polling** | `scripts/test-holon-viz.ps1` — added polling wait for nav items before click (WebView2 renders async; fixed false-fail on fresh app launch). |
+
+### Build Status
+- `cargo test -p holon-viz` — 19/19 passed
+- `cargo check -p ledgerr-host --bin host-tauri` — clean
+- `just check-drift` — all 3 artifacts pass
+- CDP test `just test-holon-viz-fast` — **7/7 PASS**: 47 nodes, 21 z_layer-typed, 57 edges, hierarchy confirmed
+
+### Backlog Status
+All P2 items shipped. Only P3 items remain (holon-viz-wasm, TS build step).
+
+*Last updated: 2026-05-14 (KerML codegen session)*
