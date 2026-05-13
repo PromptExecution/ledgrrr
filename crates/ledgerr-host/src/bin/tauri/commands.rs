@@ -16,23 +16,28 @@ use ledgerr_host::internal_openai::{
 use ledgerr_host::settings::ChatSettings;
 
 use super::state::AppState;
+use holon_viz::{
+    CytoscapeGraph, TypeNode, TypeRelationship, TypeRelationshipGraph, TypeRelationshipKind,
+};
 
 // ── Test harness config ───────────────────────────────────────────────────────
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, Clone, specta::Type)]
 pub struct TestHarnessConfig {
-    pub kill_delay_ms: u64,
+    pub kill_delay_ms: u32,
     pub screenshot_path: String,
     pub pkg_version: String,
     pub build_number: String,
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_cargo_pkg_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn write_dom_dump(dump: String) -> String {
     let path = std::env::temp_dir().join("host-tauri-dom-dump.txt");
     match std::fs::write(&path, &dump) {
@@ -42,6 +47,7 @@ pub fn write_dom_dump(dump: String) -> String {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_test_harness_config() -> TestHarnessConfig {
     let _ = std::fs::write(
         std::env::temp_dir().join("host-tauri-ipc-alive.txt"),
@@ -56,15 +62,13 @@ pub fn get_test_harness_config() -> TestHarnessConfig {
             .ok()
             .unwrap_or_default(),
         pkg_version: env!("CARGO_PKG_VERSION").to_string(),
-        build_number: std::env::var("TAURI_BUILD_NUMBER")
-            .ok()
-            .unwrap_or_default(),
+        build_number: std::env::var("TAURI_BUILD_NUMBER").ok().unwrap_or_default(),
     }
 }
 
 // ── Shared payload types ──────────────────────────────────────────────────────
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, Clone, specta::Type)]
 pub struct InitialState {
     pub version_text: String,
     pub status_text: String,
@@ -79,7 +83,7 @@ pub struct InitialState {
     pub docs_status_text: String,
 }
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, Clone, specta::Type)]
 pub struct ChatSettingsPayload {
     pub endpoint_text: String,
     pub model_text: String,
@@ -88,7 +92,7 @@ pub struct ChatSettingsPayload {
     pub status_text: String,
 }
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, Clone, specta::Type)]
 pub struct RhaiPromptPayload {
     pub system_prompt: String,
     /// Non-empty when the caller should switch to this model (e.g. DEFAULT_RHAI_RULE_MODEL)
@@ -98,7 +102,7 @@ pub struct RhaiPromptPayload {
     pub status: String,
 }
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, Clone, specta::Type)]
 pub struct ChatUpdateEvent {
     pub transcript_text: String,
     pub review_log_text: Option<String>,
@@ -138,6 +142,7 @@ pub fn ensure_internal_endpoint(
 // ── Commands ──────────────────────────────────────────────────────────────────
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_initial_state(state: tauri::State<'_, AppState>) -> Result<InitialState, String> {
     let mut settings = state.store.load().map_err(|e| e.to_string())?;
 
@@ -165,6 +170,7 @@ pub fn get_initial_state(state: tauri::State<'_, AppState>) -> Result<InitialSta
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn save_settings(
     endpoint: String,
     model: String,
@@ -190,6 +196,7 @@ pub fn save_settings(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn send_message(
     window: tauri::Window,
     draft: String,
@@ -362,6 +369,7 @@ pub async fn send_message(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn load_rhai_rule_prompt(
     current_model: String,
     current_system_prompt: String,
@@ -397,6 +405,7 @@ pub fn load_rhai_rule_prompt(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn use_internal_phi(
     system_prompt: String,
     state: tauri::State<'_, AppState>,
@@ -415,6 +424,7 @@ pub fn use_internal_phi(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn use_foundry_local(system_prompt: String) -> Result<ChatSettingsPayload, String> {
     let chat = foundry_local_chat_settings(system_prompt)?;
     let rig_status = foundry_local_status();
@@ -431,6 +441,7 @@ pub fn use_foundry_local(system_prompt: String) -> Result<ChatSettingsPayload, S
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn use_cloud_model(system_prompt: String) -> Result<ChatSettingsPayload, String> {
     let chat = cloud_chat_settings(system_prompt);
 
@@ -446,6 +457,7 @@ pub fn use_cloud_model(system_prompt: String) -> Result<ChatSettingsPayload, Str
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn open_docs_playbook(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
@@ -483,12 +495,13 @@ pub fn open_docs_playbook(
 
 // ── Evidence dashboard ────────────────────────────────────────────────────────
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, Clone, specta::Type)]
 pub struct EvidenceDashboardPayload {
     pub today_queue: ledgerr_host::evidence::TodayQueue,
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_evidence_dashboard(
     state: tauri::State<'_, AppState>,
 ) -> Result<EvidenceDashboardPayload, String> {
@@ -502,13 +515,14 @@ pub fn get_evidence_dashboard(
     Ok(EvidenceDashboardPayload { today_queue })
 }
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, Clone, specta::Type)]
 pub struct ProvenancePayload {
     pub badge: String,
     pub css_class: String,
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_tx_provenance(
     tx_id: String,
     state: tauri::State<'_, AppState>,
@@ -524,41 +538,245 @@ pub fn get_tx_provenance(
     })
 }
 
-/// Return the Cytoscape.js-compatible JSON for the holonic pipeline graph.
+/// Return the Cytoscape.js-compatible graph for the holonic pipeline.
 ///
-/// The frontend Viz panel calls this once on activation and passes the result
-/// directly to `cytoscape({ elements: ... })`.
+/// The frontend Viz panel calls this once on activation. `tauri-specta` generates
+/// typed TypeScript bindings from the `CytoscapeGraph` return type.
 #[tauri::command]
-pub fn get_holon_viz_graph() -> Result<String, String> {
-    use holon_viz::{CytoscapeGraph, Holon, HolonKind};
+#[specta::specta]
+pub fn get_holon_viz_graph() -> Result<CytoscapeGraph, String> {
+    use holon_viz::{Holon, HolonKind};
     use std::collections::HashMap;
 
     let holons = vec![
-        Holon { id: "pipeline".into(), label: "Tax Ledger Pipeline".into(), kind: HolonKind::CapsuleGroup,
-            parent_id: None, children: vec!["ingest".into(),"classify".into(),"reconcile".into(),"attest".into()], metadata: HashMap::new() },
-        Holon { id: "ingest".into(), label: "Ingest PDFs".into(), kind: HolonKind::SysmlBlock,
-            parent_id: Some("pipeline".into()), children: vec!["docling".into(),"blake3-id".into()], metadata: HashMap::new() },
-        Holon { id: "classify".into(), label: "Classify Transactions".into(), kind: HolonKind::SysmlBlock,
-            parent_id: Some("pipeline".into()), children: vec!["rhai-rules".into(),"flag-queue".into()], metadata: HashMap::new() },
-        Holon { id: "reconcile".into(), label: "Reconcile & Export".into(), kind: HolonKind::SysmlBlock,
-            parent_id: Some("pipeline".into()), children: vec!["excel-workbook".into()], metadata: HashMap::new() },
-        Holon { id: "attest".into(), label: "Attest (CPA)".into(), kind: HolonKind::SysmlBlock,
-            parent_id: Some("pipeline".into()), children: vec!["audit-log".into()], metadata: HashMap::new() },
-        Holon { id: "docling".into(), label: "Docling OCR".into(), kind: HolonKind::ProcessNode,
-            parent_id: Some("ingest".into()), children: vec![], metadata: HashMap::new() },
-        Holon { id: "blake3-id".into(), label: "Blake3 Content ID".into(), kind: HolonKind::ProcessNode,
-            parent_id: Some("ingest".into()), children: vec![], metadata: HashMap::new() },
-        Holon { id: "rhai-rules".into(), label: "Rhai Rule Engine".into(), kind: HolonKind::ProcessNode,
-            parent_id: Some("classify".into()), children: vec![], metadata: HashMap::new() },
-        Holon { id: "flag-queue".into(), label: "Flag Queue".into(), kind: HolonKind::ProcessNode,
-            parent_id: Some("classify".into()), children: vec![], metadata: HashMap::new() },
-        Holon { id: "excel-workbook".into(), label: "Excel Workbook".into(), kind: HolonKind::OwlClass,
-            parent_id: Some("reconcile".into()), children: vec![], metadata: HashMap::new() },
-        Holon { id: "audit-log".into(), label: "Immutable Audit Log".into(), kind: HolonKind::AuditEvent,
-            parent_id: Some("attest".into()), children: vec![], metadata: HashMap::new() },
+        Holon {
+            id: "pipeline".into(),
+            label: "Tax Ledger Pipeline".into(),
+            kind: HolonKind::CapsuleGroup,
+            parent_id: None,
+            children: vec![
+                "ingest".into(),
+                "classify".into(),
+                "reconcile".into(),
+                "attest".into(),
+            ],
+            metadata: HashMap::new(),
+        },
+        Holon {
+            id: "ingest".into(),
+            label: "Ingest PDFs".into(),
+            kind: HolonKind::SysmlBlock,
+            parent_id: Some("pipeline".into()),
+            children: vec!["docling".into(), "blake3-id".into()],
+            metadata: HashMap::new(),
+        },
+        Holon {
+            id: "classify".into(),
+            label: "Classify Transactions".into(),
+            kind: HolonKind::SysmlBlock,
+            parent_id: Some("pipeline".into()),
+            children: vec!["rhai-rules".into(), "flag-queue".into()],
+            metadata: HashMap::new(),
+        },
+        Holon {
+            id: "reconcile".into(),
+            label: "Reconcile & Export".into(),
+            kind: HolonKind::SysmlBlock,
+            parent_id: Some("pipeline".into()),
+            children: vec!["excel-workbook".into()],
+            metadata: HashMap::new(),
+        },
+        Holon {
+            id: "attest".into(),
+            label: "Attest (CPA)".into(),
+            kind: HolonKind::SysmlBlock,
+            parent_id: Some("pipeline".into()),
+            children: vec!["audit-log".into()],
+            metadata: HashMap::new(),
+        },
+        Holon {
+            id: "docling".into(),
+            label: "Docling OCR".into(),
+            kind: HolonKind::ProcessNode,
+            parent_id: Some("ingest".into()),
+            children: vec![],
+            metadata: HashMap::new(),
+        },
+        Holon {
+            id: "blake3-id".into(),
+            label: "Blake3 Content ID".into(),
+            kind: HolonKind::ProcessNode,
+            parent_id: Some("ingest".into()),
+            children: vec![],
+            metadata: HashMap::new(),
+        },
+        Holon {
+            id: "rhai-rules".into(),
+            label: "Rhai Rule Engine".into(),
+            kind: HolonKind::ProcessNode,
+            parent_id: Some("classify".into()),
+            children: vec![],
+            metadata: HashMap::new(),
+        },
+        Holon {
+            id: "flag-queue".into(),
+            label: "Flag Queue".into(),
+            kind: HolonKind::ProcessNode,
+            parent_id: Some("classify".into()),
+            children: vec![],
+            metadata: HashMap::new(),
+        },
+        Holon {
+            id: "excel-workbook".into(),
+            label: "Excel Workbook".into(),
+            kind: HolonKind::OwlClass,
+            parent_id: Some("reconcile".into()),
+            children: vec![],
+            metadata: HashMap::new(),
+        },
+        Holon {
+            id: "audit-log".into(),
+            label: "Immutable Audit Log".into(),
+            kind: HolonKind::AuditEvent,
+            parent_id: Some("attest".into()),
+            children: vec![],
+            metadata: HashMap::new(),
+        },
     ];
 
-    CytoscapeGraph::from_holons(&holons)
-        .to_json()
-        .map_err(|e| e.to_string())
+    Ok(CytoscapeGraph::from_holons(&holons))
+}
+
+/// Return the Rust type relationship graph for the Viz panel.
+///
+/// This renders the internal ontology/invariant mesh from the mdBook and Rust
+/// domain model: concrete type-state objects, legal/constraint solvers,
+/// evidence provenance nodes, and workbook projection surfaces.
+#[tauri::command]
+#[specta::specta]
+pub fn get_type_graph() -> Result<CytoscapeGraph, String> {
+    let nodes = vec![
+        type_node("iso::HasVisualization", "HasVisualization", "abstract_trait"),
+        type_node("iso::VisualizationSpec", "VisualizationSpec", "contract_type"),
+        type_node("iso::ZLayer", "ZLayer", "metamodel_enum"),
+        type_node("iso::SemanticType", "SemanticType", "metamodel_enum"),
+        type_node("iso::RhaiDsl", "RhaiDsl", "dsl_contract"),
+        type_node("zlayer::Document", "Document", "z_document"),
+        type_node("zlayer::Pipeline", "Pipeline", "z_pipeline"),
+        type_node("zlayer::Constraint", "Constraint", "z_constraint"),
+        type_node("zlayer::Legal", "Legal", "z_legal"),
+        type_node("zlayer::FormalProof", "FormalProof", "z_proof"),
+        type_node("zlayer::Attestation", "Attestation", "z_attestation"),
+        type_node("pipeline::PipelineState<Ingested>", "PipelineState<Ingested>", "pipeline_state"),
+        type_node("pipeline::PipelineState<Validated>", "PipelineState<Validated>", "pipeline_state"),
+        type_node("pipeline::PipelineState<Classified>", "PipelineState<Classified>", "pipeline_state"),
+        type_node("pipeline::PipelineState<Reconciled>", "PipelineState<Reconciled>", "pipeline_state"),
+        type_node("pipeline::PipelineState<Committed>", "PipelineState<Committed>", "pipeline_state"),
+        type_node("pipeline::PipelineState<NeedsReview>", "PipelineState<NeedsReview>", "review_state"),
+        type_node("validation::CommitGate", "CommitGate", "gate_type"),
+        type_node("validation::StageResult<T>", "StageResult<T>", "validation_type"),
+        type_node("validation::Issue", "Issue", "issue_type"),
+        type_node("validation::MetaFlag", "MetaFlag", "flag_type"),
+        type_node("constraints::VendorConstraintSet", "VendorConstraintSet", "constraint_type"),
+        type_node("constraints::ConstraintEvaluation", "ConstraintEvaluation", "result_type"),
+        type_node("constraints::InvoiceConstraintSolver", "InvoiceConstraintSolver", "solver_type"),
+        type_node("constraints::InvoiceVerification", "InvoiceVerification", "result_type"),
+        type_node("legal::Jurisdiction", "Jurisdiction", "legal_type"),
+        type_node("legal::LegalRule", "LegalRule", "legal_type"),
+        type_node("legal::TransactionFacts", "TransactionFacts", "fact_type"),
+        type_node("legal::LegalSolver", "LegalSolver", "solver_type"),
+        type_node("legal::Z3Result", "Z3Result", "proof_result"),
+        type_node("pipeline::KasuariSolver", "KasuariSolver", "solver_type"),
+        type_node("attest::AttestationSpec", "AttestationSpec", "attestation_type"),
+        type_node("ontology::ArtifactKind", "ArtifactKind", "ontology_enum"),
+        type_node("ontology::RelationKind", "RelationKind", "ontology_enum"),
+        type_node("ontology::OntologySnapshot", "OntologySnapshot", "ontology_snapshot"),
+        type_node("arc_kit_au::EvidenceGraph", "EvidenceGraph", "evidence_graph"),
+        type_node("arc_kit_au::NodeType", "NodeType", "ontology_enum"),
+        type_node("arc_kit_au::SourceDoc", "SourceDoc", "evidence_node"),
+        type_node("arc_kit_au::ExtractedRow", "ExtractedRow", "evidence_node"),
+        type_node("arc_kit_au::Transaction", "Transaction", "evidence_node"),
+        type_node("arc_kit_au::Classification", "Classification", "evidence_node"),
+        type_node("arc_kit_au::ModelProposal", "ModelProposal", "evidence_node"),
+        type_node("arc_kit_au::OperatorApproval", "OperatorApproval", "evidence_node"),
+        type_node("arc_kit_au::WorkbookRow", "WorkbookRow", "evidence_node"),
+        type_node("workbook::TxProjectionRow", "TxProjectionRow", "workbook_projection"),
+        type_node("classify::TaxCategory", "TaxCategory", "taxonomy_type"),
+        type_node("workflow::WorkflowToml", "WorkflowToml", "workflow_type"),
+    ];
+
+    let relationships = vec![
+        rel("iso::VisualizationSpec", "iso::HasVisualization", TypeRelationshipKind::Implements),
+        rel("iso::VisualizationSpec", "iso::ZLayer", TypeRelationshipKind::Contains),
+        rel("iso::VisualizationSpec", "iso::SemanticType", TypeRelationshipKind::Contains),
+        rel("iso::VisualizationSpec", "iso::RhaiDsl", TypeRelationshipKind::Contains),
+        rel("pipeline::PipelineState<Ingested>", "iso::HasVisualization", TypeRelationshipKind::Implements),
+        rel("pipeline::PipelineState<Validated>", "iso::HasVisualization", TypeRelationshipKind::Implements),
+        rel("pipeline::PipelineState<Classified>", "iso::HasVisualization", TypeRelationshipKind::Implements),
+        rel("pipeline::PipelineState<Reconciled>", "iso::HasVisualization", TypeRelationshipKind::Implements),
+        rel("pipeline::PipelineState<Committed>", "iso::HasVisualization", TypeRelationshipKind::Implements),
+        rel("pipeline::PipelineState<NeedsReview>", "iso::HasVisualization", TypeRelationshipKind::Implements),
+        rel("constraints::VendorConstraintSet", "iso::HasVisualization", TypeRelationshipKind::Implements),
+        rel("constraints::ConstraintEvaluation", "iso::HasVisualization", TypeRelationshipKind::Implements),
+        rel("constraints::InvoiceConstraintSolver", "iso::HasVisualization", TypeRelationshipKind::Implements),
+        rel("constraints::InvoiceVerification", "iso::HasVisualization", TypeRelationshipKind::Implements),
+        rel("legal::LegalRule", "iso::HasVisualization", TypeRelationshipKind::Implements),
+        rel("legal::LegalSolver", "iso::HasVisualization", TypeRelationshipKind::Implements),
+        rel("legal::Z3Result", "iso::HasVisualization", TypeRelationshipKind::Implements),
+        rel("validation::CommitGate", "iso::HasVisualization", TypeRelationshipKind::Implements),
+        rel("pipeline::PipelineState<Ingested>", "pipeline::PipelineState<Validated>", TypeRelationshipKind::AdvancesTo),
+        rel("pipeline::PipelineState<Validated>", "pipeline::PipelineState<Classified>", TypeRelationshipKind::AdvancesTo),
+        rel("pipeline::PipelineState<Classified>", "pipeline::PipelineState<Reconciled>", TypeRelationshipKind::AdvancesTo),
+        rel("pipeline::PipelineState<Reconciled>", "validation::CommitGate", TypeRelationshipKind::AdvancesTo),
+        rel("validation::CommitGate", "pipeline::PipelineState<Committed>", TypeRelationshipKind::AdvancesTo),
+        rel("validation::CommitGate", "pipeline::PipelineState<NeedsReview>", TypeRelationshipKind::ValidatedBy),
+        rel("constraints::VendorConstraintSet", "constraints::ConstraintEvaluation", TypeRelationshipKind::Produces),
+        rel("constraints::InvoiceConstraintSolver", "constraints::InvoiceVerification", TypeRelationshipKind::Verifies),
+        rel("constraints::ConstraintEvaluation", "validation::Issue", TypeRelationshipKind::Produces),
+        rel("validation::Issue", "validation::StageResult<T>", TypeRelationshipKind::Contains),
+        rel("validation::StageResult<T>", "validation::CommitGate", TypeRelationshipKind::ValidatedBy),
+        rel("legal::Jurisdiction", "legal::LegalRule", TypeRelationshipKind::Contains),
+        rel("legal::TransactionFacts", "legal::LegalSolver", TypeRelationshipKind::References),
+        rel("legal::LegalRule", "legal::LegalSolver", TypeRelationshipKind::References),
+        rel("legal::LegalSolver", "legal::Z3Result", TypeRelationshipKind::Verifies),
+        rel("legal::Z3Result", "validation::Issue", TypeRelationshipKind::Produces),
+        rel("pipeline::KasuariSolver", "constraints::ConstraintEvaluation", TypeRelationshipKind::Constrains),
+        rel("legal::Z3Result", "attest::AttestationSpec", TypeRelationshipKind::Attests),
+        rel("workflow::WorkflowToml", "pipeline::PipelineState<Ingested>", TypeRelationshipKind::References),
+        rel("workflow::WorkflowToml", "pipeline::PipelineState<Committed>", TypeRelationshipKind::References),
+        rel("ontology::OntologySnapshot", "ontology::ArtifactKind", TypeRelationshipKind::Contains),
+        rel("ontology::OntologySnapshot", "ontology::RelationKind", TypeRelationshipKind::Contains),
+        rel("ontology::RelationKind", "arc_kit_au::EvidenceGraph", TypeRelationshipKind::ProjectsTo),
+        rel("arc_kit_au::EvidenceGraph", "arc_kit_au::NodeType", TypeRelationshipKind::Contains),
+        rel("arc_kit_au::SourceDoc", "arc_kit_au::ExtractedRow", TypeRelationshipKind::Produces),
+        rel("arc_kit_au::ExtractedRow", "arc_kit_au::Transaction", TypeRelationshipKind::Produces),
+        rel("arc_kit_au::Transaction", "arc_kit_au::Classification", TypeRelationshipKind::ClassifiedAs),
+        rel("arc_kit_au::Classification", "arc_kit_au::ModelProposal", TypeRelationshipKind::ValidatedBy),
+        rel("arc_kit_au::ModelProposal", "arc_kit_au::OperatorApproval", TypeRelationshipKind::ValidatedBy),
+        rel("arc_kit_au::Transaction", "arc_kit_au::WorkbookRow", TypeRelationshipKind::ProjectsTo),
+        rel("arc_kit_au::WorkbookRow", "workbook::TxProjectionRow", TypeRelationshipKind::ProjectsTo),
+        rel("workbook::TxProjectionRow", "classify::TaxCategory", TypeRelationshipKind::ClassifiedAs),
+        rel("arc_kit_au::EvidenceGraph", "workbook::TxProjectionRow", TypeRelationshipKind::RecordsIn),
+        rel("zlayer::Document", "arc_kit_au::SourceDoc", TypeRelationshipKind::Contains),
+        rel("zlayer::Pipeline", "pipeline::PipelineState<Ingested>", TypeRelationshipKind::Contains),
+        rel("zlayer::Constraint", "constraints::VendorConstraintSet", TypeRelationshipKind::Contains),
+        rel("zlayer::Legal", "legal::LegalRule", TypeRelationshipKind::Contains),
+        rel("zlayer::FormalProof", "legal::Z3Result", TypeRelationshipKind::Contains),
+        rel("zlayer::Attestation", "attest::AttestationSpec", TypeRelationshipKind::Contains),
+    ];
+
+    Ok(TypeRelationshipGraph::new(nodes, relationships).to_cytoscape())
+}
+
+fn rel(source: &str, target: &str, kind: TypeRelationshipKind) -> TypeRelationship {
+    TypeRelationship::new(source, target, kind)
+}
+
+fn type_node(id: &str, label: &str, kind: &str) -> TypeNode {
+    TypeNode {
+        id: id.to_string(),
+        label: label.to_string(),
+        kind: kind.to_string(),
+        parent_id: None,
+    }
 }

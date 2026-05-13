@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::holon::Holon;
 
 /// Data payload for a Cytoscape.js node element.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct CytoscapeNodeData {
     pub id: String,
     pub label: String,
@@ -20,13 +20,13 @@ pub struct CytoscapeNodeData {
 }
 
 /// A single Cytoscape.js node element.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct CytoscapeNode {
     pub data: CytoscapeNodeData,
 }
 
 /// Data payload for a Cytoscape.js edge element.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct CytoscapeEdgeData {
     pub id: String,
     pub source: String,
@@ -35,7 +35,7 @@ pub struct CytoscapeEdgeData {
 }
 
 /// A single Cytoscape.js edge element.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct CytoscapeEdge {
     pub data: CytoscapeEdgeData,
 }
@@ -43,7 +43,7 @@ pub struct CytoscapeEdge {
 /// Serializable Cytoscape.js graph — nodes and edges with `data` fields.
 ///
 /// Construct via [`HolonGraph::from_holons`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct CytoscapeGraph {
     pub nodes: Vec<CytoscapeNode>,
     pub edges: Vec<CytoscapeEdge>,

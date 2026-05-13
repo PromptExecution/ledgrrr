@@ -44,7 +44,8 @@ ledgrrr is a **local agentic governance proxy**: a memory-safe, deterministicall
 
 **MBSE / SysML-v2 isometric expansion**:
 - Extend the `HasVisualization` trait system to support MBSE meta-type modeling.
-- Integration path: Papyrus EMF bridge or direct SysML-v2 `*.sysml` parser → `VisualizationSpec` emission.
+- Integration path: KerML textual notation as metamodel source of truth → codegen generating both Rust structs and TypeScript types simultaneously. Papyrus EMF bridge is an alternative ingestion path for existing SysML models.
+- Type architecture ruling: SysML v2 / KerML is the canonical type source. `specta`/`tauri-specta` (Rust-first type generation) is eliminated — it creates lock-in that conflicts with model-first architecture. `wasm-bindgen` for client-side graph operations is deferred until a concrete UX item requires it.
 - 3D workflow visualizations embedded in extensible domain types via the existing `ZLayer` stack (Document/Pipeline/Constraint/Legal/FormalProof/Attestation).
 - `SemanticType` enum gains `SysML` variant; `RhaiDsl` captures SysML block/port/flow definitions.
 - Output: operator can view a classified transaction as a SysML block diagram or an isometric pipeline diagram interchangeably.
@@ -542,6 +543,8 @@ Treat this as a standing operational gate, not a one-time migration task.
 
 **Code discovery rule (mandatory):** ALWAYS use `codebase-memory-mcp` tools (`search_graph`, `trace_path`, `get_code_snippet`, `get_architecture`, `query_graph`) for structural code queries. Rationale: grep -r burns 10-30s CPU budget per call, misses cross-crate relationships, pulls irrelevant context. codebase-memory-mcp resolves in 1-3s with structural labels and relationship edges vs. grep -r taking 10+ minutes.
 
+**codebase-memory-mcp defect handling:** When graph tools are missing, return blank/partial `query_graph` rows, or close transport, treat it as suite work rather than a one-off agent workaround. First try the MCP path, capture the failing call/result, use the narrowest fallback needed to keep moving, and link/update downstream tracking at https://github.com/PromptExecution/ledgrrr/issues/97 because `PromptExecution/codebase-memory-mcp-b00t-ir0n-ledg3rr` currently has GitHub Issues disabled.
+
 **AGENTS.md as persistent operator manual:** This file is intentionally operational rather than reactive. Stable guidance here improves future agent quality by avoiding noise in transcripts and focusing on durable patterns.
 
 ### 2026-05-13 (PM): Coordinator Protocol — Retrospective Improvements
@@ -585,3 +588,28 @@ The 2026-05-13 Tauri Cytoscape integration is the canonical example of what NOT 
 #### b00t Surface: `hive` — Correct Usage
 
 The `hive` surface declares `"pattern": "parallel-subagents", "isolation": "worktree"`. This means: for any task with ≥2 independent implementation concerns, spawn ≥2 agents simultaneously. Single-agent sequential execution of multi-concern tasks violates the declared operator surface.
+
+---
+
+### Viz Layer — Type Architecture Ruling (2026-05-13)
+
+**Four MECE layers — do not collapse them:**
+
+| Layer | Owner | Change Rate | Notes |
+|-------|-------|-------------|-------|
+| Metamodel | SysML v2 / KerML | Slow | Source of truth for what types exist |
+| Contract | Rust structs (generated from metamodel) | Medium | Generated, not hand-authored long-term |
+| Transport | Tauri invoke() boundary | Low | Hand-authored TS interface now; codegen later |
+| Render | Cytoscape.js / JS | Fast | Consumes transport layer JSON |
+
+**Approved — use for transport layer:**
+- `specta` + `tauri-specta`: `#[derive(specta::Type)]` on Cytoscape types in `holon-viz`; `#[specta::specta]` on commands; `Builder` exports `ui/bindings.ts` on debug builds. Operator approved 2026-05-13 PM-3.
+
+**Deferred — add only when a P1 UX item requires it:**
+- `wasm-bindgen` / `holon-viz-wasm` crate: client-side graph filtering. No current PRD item requires it. Do not add speculatively.
+
+**Do First (current sprint):**
+- Hand-authored `ui/types.ts`: `VizNode`, `VizEdge`, `CytoscapeGraph` interfaces. ~20 lines. Zero tooling commitment. Unblocks `TypeGraphCommand`.
+
+**Scheduled:**
+- KerML metamodel for domain types → `xtask` codegen generating Rust structs + TS types from one source. Invest after metamodel is stable.

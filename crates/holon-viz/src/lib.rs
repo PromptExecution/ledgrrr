@@ -22,6 +22,7 @@ pub mod holon;
 pub mod log;
 pub mod observer;
 pub mod renderer;
+pub mod type_graph;
 
 pub use controller::{ProcessController, ProcessStep, TransitionReceipt};
 pub use cytoscape::{CytoscapeEdge, CytoscapeGraph, CytoscapeNode};
@@ -30,6 +31,7 @@ pub use holon::{Holon, HolonKind};
 pub use log::{ActionKind, ActionRecord, ImmutableActionLog};
 pub use observer::{VizObservation, VizObserver};
 pub use renderer::HtmlRenderer;
+pub use type_graph::{TypeNode, TypeRelationship, TypeRelationshipGraph, TypeRelationshipKind};
 
 use thiserror::Error;
 

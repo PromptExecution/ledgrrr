@@ -14,6 +14,8 @@ var activePanel=0;
 var DASH_PANEL_INDEX=PANELS.findIndex(function(p){return p.id==='dash'});
 var VIZ_PANEL_INDEX=PANELS.findIndex(function(p){return p.id==='viz'});
 var _vizInitialized=false;
+var _vizAllElements=[];
+var VIZ_FIT_PADDING=72;
 
 function showPanel(i){
   activePanel=i;
@@ -34,7 +36,7 @@ function panelTemplate(id){
   t.logs='<div class="panel-title-row"><span class="panel-title">Logs</span></div><div class="log-tabs"><button class="log-tab active" data-log="0">Transport</button><button class="log-tab" data-log="1">Review</button></div><div id="log-panel-0" class="log-subpanel transport-bg"><div class="log-label">Transport</div><div id="rig-log" class="log-content"></div></div><div id="log-panel-1" class="log-subpanel review-bg hidden"><div class="log-label review-label">Diffsets</div><div id="review-log" class="log-content"></div></div></div>';
   t.dash='<span class="panel-title">Dashboard</span><div id="evidence-summary" class="evidence-summary"><div class="ev-card ev-card-blocked"><div class="ev-card-value" id="blocked-value">-</div><div class="ev-card-label">Blocked</div></div><div class="ev-card ev-card-ready"><div class="ev-card-value" id="ready-value">-</div><div class="ev-card-label">Ready</div></div><div class="ev-card ev-card-exported"><div class="ev-card-value" id="exported-value">-</div><div class="ev-card-label">Exported</div></div><div class="ev-card ev-card-issues"><div class="ev-card-value" id="issues-value">-</div><div class="ev-card-label">Issues</div></div></div><div class="ev-section"><div class="ev-section-title">Last Action</div><div id="ev-last-action" class="ev-last-action">Loading...</div></div><div class="ev-section"><div class="ev-section-title">Next Actions</div><ul id="ev-next-actions" class="ev-next-actions"></ul></div><div class="ev-section"><div class="ev-section-title">Providers</div><div id="ev-provider-status" class="ev-provider-status">Loading...</div></div><div class="ev-refresh-row"><button id="btn-refresh-dashboard">Refresh</button></div>';
   t.settings='<span class="panel-title">Settings</span><label class="field-label" for="input-endpoint">Endpoint</label><input id="input-endpoint" type="text" class="field-input"/><label class="field-label" for="input-model">Model</label><input id="input-model" type="text" class="field-input"/><label class="field-label" for="input-api-key">Key</label><input id="input-api-key" type="text" class="field-input"/><label class="field-label" for="input-system-prompt">System Prompt</label><textarea id="input-system-prompt" class="field-input system-prompt-area" rows="6"></textarea><div class="settings-actions"><button id="btn-use-phi">Use Phi-4</button><button id="btn-use-foundry">Use Win AI</button><button id="btn-use-cloud">Use Cloud</button><button id="btn-save-settings">Save</button></div>';
-  t.viz='<div class="panel-title-row"><span class="panel-title">Pipeline Viz</span><button id="btn-viz-refresh" style="margin-left:auto">Refresh</button></div><div id="cy" style="width:100%;height:calc(100vh - 80px);background:#111;"></div>';
+  t.viz='<div class="panel-title-row viz-title-row"><span class="panel-title">Ontology Viz</span><div class="viz-toolbar"><button id="btn-viz-zoom-out" title="Zoom out">-</button><button id="btn-viz-zoom-in" title="Zoom in">+</button><button id="btn-viz-fit" title="Fit graph">Fit</button><button id="btn-viz-reset" title="Reset zoom">1:1</button><button id="btn-viz-layout" title="Run layout">Layout</button><button id="btn-viz-labels" title="Toggle node labels">Labels</button><button id="btn-viz-edge-labels" title="Toggle relationship labels">Edges</button><input id="viz-search" class="viz-search" type="search" placeholder="Find type"/><select id="viz-edge-filter" class="viz-select"><option value="">All relations</option></select><button id="btn-viz-clear" title="Clear filters">Clear</button><button id="btn-viz-refresh" title="Reload graph">Refresh</button></div></div><div class="viz-body"><div id="cy" class="viz-canvas"></div><aside id="viz-detail" class="viz-detail"><div class="viz-detail-title">Selection</div><div id="viz-detail-body" class="viz-detail-body">Select a node or relationship.</div></aside></div>';
   t.docs='<span class="panel-title">Docs Playbook</span><p id="docs-status-text" class="docs-status"></p><div class="docs-actions"><button id="btn-open-docs">Open Docs</button><button id="btn-load-rhai-mutation">Load Rhai</button></div><div class="docs-preview-wrap"><div id="docs-rig-log" class="log-content"></div></div>';
   return t[id]||'';
 }
@@ -311,28 +313,149 @@ function initVizPanel(){
   if(_vizInitialized)return;
   var cy_div=document.getElementById('cy');
   if(!cy_div||typeof cytoscape==='undefined')return;
-  invoke('get_holon_viz_graph').then(function(json){
-    var data=JSON.parse(json);
+  invoke('get_type_graph').then(function(data){
     var elements=[];
     (data.nodes||[]).forEach(function(n){elements.push({data:n.data});});
     (data.edges||[]).forEach(function(e){elements.push({data:e.data});});
+    _vizAllElements=elements;
     window._cy=cytoscape({
       container:cy_div,
       elements:elements,
-      layout:{name:'cose',animate:false},
+      minZoom:0.18,
+      maxZoom:3.0,
+      layout:{name:'dagre',rankDir:'TB',nodeSep:50,rankSep:70,animate:false},
       style:[
         {selector:'node',style:{'label':'data(label)','background-color':'#1a6fa8','color':'#fff',
           'text-valign':'center','text-halign':'center','font-size':'11px',
-          'width':'label','height':'label','padding':'8px','shape':'roundrectangle'}},
+          'width':'label','height':'label','padding':'8px','shape':'roundrectangle',
+          'border-width':1,'border-color':'#0b4f71'}},
         {selector:'edge',style:{'curve-style':'bezier','target-arrow-shape':'triangle',
-          'line-color':'#555','target-arrow-color':'#555','width':1.5}},
+          'line-color':'#6f8794','target-arrow-color':'#6f8794','width':1.5}},
+        {selector:'.faded',style:{'opacity':0.18,'text-opacity':0.12}},
+        {selector:'.hidden-filter',style:{'display':'none'}},
+        {selector:'.matched',style:{'border-width':3,'border-color':'#f28c28','z-index':999}},
+        {selector:'.hide-label',style:{'label':''}},
+        {selector:':selected',style:{'border-width':3,'border-color':'#f28c28','line-color':'#f28c28','target-arrow-color':'#f28c28'}},
         {selector:'node[kind="CapsuleGroup"]',style:{'background-color':'#5a3e8a'}},
         {selector:'node[kind="AuditEvent"]',style:{'background-color':'#7a3030'}},
         {selector:'node[kind="OwlClass"]',style:{'background-color':'#2e6e45'}},
+        {selector:'node[kind="trait"]',style:{'background-color':'#5a3e8a','shape':'hexagon'}},
+        {selector:'node[kind="enum"]',style:{'background-color':'#2e6e45','shape':'diamond'}},
+        {selector:'node[kind="mcp_tool"]',style:{'background-color':'#8a6b1f','shape':'tag'}},
+        {selector:'node[kind="tauri_command"]',style:{'background-color':'#7a3030','shape':'roundrectangle'}},
+        {selector:'node[kind="abstract_trait"]',style:{'background-color':'#003b5c','shape':'hexagon'}},
+        {selector:'node[kind="contract_type"],node[kind="dsl_contract"]',style:{'background-color':'#005d7f','shape':'roundrectangle'}},
+        {selector:'node[kind="metamodel_enum"],node[kind="ontology_enum"]',style:{'background-color':'#007c89','shape':'diamond'}},
+        {selector:'node[kind="z_document"]',style:{'background-color':'#5f7480','shape':'roundrectangle'}},
+        {selector:'node[kind="z_pipeline"],node[kind="pipeline_state"]',style:{'background-color':'#0073a8','shape':'roundrectangle'}},
+        {selector:'node[kind="z_constraint"],node[kind="constraint_type"]',style:{'background-color':'#00a0af','shape':'roundrectangle'}},
+        {selector:'node[kind="z_legal"],node[kind="legal_type"]',style:{'background-color':'#c3482f','shape':'roundrectangle'}},
+        {selector:'node[kind="z_proof"],node[kind="proof_result"]',style:{'background-color':'#00856f','shape':'roundrectangle'}},
+        {selector:'node[kind="z_attestation"],node[kind="attestation_type"]',style:{'background-color':'#f28c28','shape':'roundrectangle','color':'#172b3a'}},
+        {selector:'node[kind="solver_type"]',style:{'background-color':'#00856f','shape':'barrel'}},
+        {selector:'node[kind="result_type"]',style:{'background-color':'#0097a9','shape':'round-diamond'}},
+        {selector:'node[kind="issue_type"],node[kind="review_state"]',style:{'background-color':'#c3482f','shape':'octagon'}},
+        {selector:'node[kind="gate_type"]',style:{'background-color':'#f28c28','shape':'vee','color':'#172b3a'}},
+        {selector:'node[kind="evidence_graph"],node[kind="evidence_node"]',style:{'background-color':'#6f8794','shape':'roundrectangle'}},
+        {selector:'node[kind="workbook_projection"]',style:{'background-color':'#5aa646','shape':'tag'}},
+        {selector:'node[kind="taxonomy_type"]',style:{'background-color':'#7fbf3f','shape':'diamond','color':'#172b3a'}},
+        {selector:'node[kind="workflow_type"]',style:{'background-color':'#005d7f','shape':'rhomboid'}},
+        {selector:'edge',style:{'label':'data(label)','font-size':'9px','color':'#173b4a','text-background-color':'#ffffff','text-background-opacity':0.92,'text-background-padding':'2px'}},
       ]
     });
     _vizInitialized=true;
+    setupVizControls();
+    setVizDetail(null);
+    window._cy.ready(function(){
+      setTimeout(function(){if(window._cy)window._cy.fit(window._cy.elements().not('.hidden-filter'),VIZ_FIT_PADDING);},300);
+    });
     var btn=document.getElementById('btn-viz-refresh');
     if(btn)btn.addEventListener('click',function(){_vizInitialized=false;window._cy&&window._cy.destroy();initVizPanel();});
-  }).catch(function(e){console.error('[viz] get_holon_viz_graph failed:',e);});
+  }).catch(function(e){console.error('[viz] get_type_graph failed:',e);});
+}
+
+function runVizLayout(){
+  if(!window._cy)return;
+  var layout=window._cy.layout({name:'dagre',rankDir:'TB',nodeSep:50,rankSep:70,animate:false});
+  window._cy.one('layoutstop',function(){window._cy.fit(window._cy.elements().not('.hidden-filter'),VIZ_FIT_PADDING);});
+  layout.run();
+}
+
+function zoomVizBy(factor){
+  var cy=window._cy;if(!cy)return;
+  cy.zoom({level:cy.zoom()*factor,renderedPosition:{x:cy.width()/2,y:cy.height()/2}});
+}
+
+function populateVizFilters(){
+  var edgeSel=document.getElementById('viz-edge-filter');
+  if(!edgeSel||!window._cy)return;
+  edgeSel.innerHTML='<option value="">All relations</option>';
+  var labels={};
+  window._cy.edges().forEach(function(e){labels[e.data('label')]=true;});
+  Object.keys(labels).sort().forEach(function(l){
+    if(!l)return;
+    var o=document.createElement('option');o.value=l;o.textContent=l;edgeSel.appendChild(o);
+  });
+}
+
+function applyVizFilters(){
+  var cy=window._cy;if(!cy)return;
+  var query=(document.getElementById('viz-search')?.value||'').toLowerCase().trim();
+  var edgeLabel=document.getElementById('viz-edge-filter')?.value||'';
+  cy.elements().removeClass('hidden-filter matched faded');
+  cy.nodes().forEach(function(n){
+    var label=String(n.data('label')||'').toLowerCase();
+    var id=String(n.data('id')||'').toLowerCase();
+    var searchOk=!query||label.indexOf(query)!==-1||id.indexOf(query)!==-1;
+    if(!searchOk)n.addClass('hidden-filter');
+    else if(query)n.addClass('matched');
+  });
+  cy.edges().forEach(function(e){
+    if(edgeLabel&&e.data('label')!==edgeLabel)e.addClass('hidden-filter');
+    if(e.source().hasClass('hidden-filter')||e.target().hasClass('hidden-filter'))e.addClass('hidden-filter');
+  });
+  var visible=cy.elements().not('.hidden-filter');
+  if(query||edgeLabel){
+    cy.elements().not(visible).addClass('faded');
+    if(visible.length>0)cy.fit(visible,VIZ_FIT_PADDING);
+  }
+}
+
+function setVizDetail(ele){
+  var body=document.getElementById('viz-detail-body');
+  if(!body)return;
+  if(!ele){
+    body.textContent='Select a node or relationship.';
+    return;
+  }
+  if(ele.isNode&&ele.isNode()){
+    body.innerHTML='<div><b>'+escapeHtml(ele.data('label')||'')+'</b></div><div>'+escapeHtml(ele.data('id')||'')+'</div><div class="viz-detail-chip">'+escapeHtml(ele.data('kind')||'')+'</div>';
+  }else{
+    body.innerHTML='<div><b>'+escapeHtml(ele.data('label')||'relationship')+'</b></div><div>'+escapeHtml(ele.data('source')||'')+'</div><div>→</div><div>'+escapeHtml(ele.data('target')||'')+'</div>';
+  }
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});
+}
+
+function setupVizControls(){
+  var cy=window._cy;if(!cy)return;
+  populateVizFilters();
+  document.getElementById('btn-viz-zoom-in')?.addEventListener('click',function(){zoomVizBy(1.2);});
+  document.getElementById('btn-viz-zoom-out')?.addEventListener('click',function(){zoomVizBy(0.83);});
+  document.getElementById('btn-viz-fit')?.addEventListener('click',function(){cy.fit(cy.elements().not('.hidden-filter'),VIZ_FIT_PADDING);});
+  document.getElementById('btn-viz-reset')?.addEventListener('click',function(){cy.zoom(1);cy.center();});
+  document.getElementById('btn-viz-layout')?.addEventListener('click',function(){runVizLayout();});
+  document.getElementById('btn-viz-labels')?.addEventListener('click',function(){cy.nodes().toggleClass('hide-label');});
+  document.getElementById('btn-viz-edge-labels')?.addEventListener('click',function(){cy.edges().toggleClass('hide-label');});
+  document.getElementById('viz-search')?.addEventListener('input',applyVizFilters);
+  document.getElementById('viz-edge-filter')?.addEventListener('change',applyVizFilters);
+  document.getElementById('btn-viz-clear')?.addEventListener('click',function(){
+    var s=document.getElementById('viz-search');if(s)s.value='';
+    var e=document.getElementById('viz-edge-filter');if(e)e.value='';
+    applyVizFilters();cy.fit(undefined,VIZ_FIT_PADDING);
+  });
+  cy.on('tap','node,edge',function(evt){setVizDetail(evt.target);});
+  cy.on('tap',function(evt){if(evt.target===cy)setVizDetail(null);});
 }

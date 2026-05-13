@@ -41,14 +41,14 @@ impl EvidenceState {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct TodayQueue {
     pub providers: Vec<crate::internal_openai::ProviderInfo>,
-    pub ready_to_review: usize,
-    pub blocked: usize,
-    pub exported: usize,
+    pub ready_to_review: u32,
+    pub blocked: u32,
+    pub exported: u32,
     /// Transactions that have ValidationIssue nodes attached.
-    pub with_validation_issues: usize,
+    pub with_validation_issues: u32,
     pub last_action_summary: String,
     pub next_actions: Vec<String>,
 }
@@ -57,10 +57,10 @@ impl TodayQueue {
     pub fn from_state(evidence: &EvidenceState, settings: &AppSettings) -> Self {
         let providers = provider_status(settings);
         let summary = evidence.graph.work_queue_summary();
-        let blocked = summary.blocked;
-        let ready = summary.ready_to_review;
-        let exported = summary.exported;
-        let validation = summary.with_validation_issues;
+        let blocked = saturating_u32(summary.blocked);
+        let ready = saturating_u32(summary.ready_to_review);
+        let exported = saturating_u32(summary.exported);
+        let validation = saturating_u32(summary.with_validation_issues);
 
         let last_action_summary = if evidence.checked {
             if blocked == 0 && ready == 0 && validation == 0 {
@@ -124,6 +124,10 @@ impl TodayQueue {
             next_actions,
         }
     }
+}
+
+fn saturating_u32(value: usize) -> u32 {
+    u32::try_from(value).unwrap_or(u32::MAX)
 }
 
 #[cfg(test)]
