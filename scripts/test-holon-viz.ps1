@@ -1,7 +1,10 @@
 <#
 .SYNOPSIS
     Build the Tauri host, launch it with CDP, and verify the holon-viz panel
-    renders a Cytoscape graph (window._cy has nodes).
+    renders a Cytoscape graph (window._cy has nodes). Also asserts:
+    - z_layer metadata is present on >= 10 typed nodes (HasVisualization seed)
+    - dagre TB layout is hierarchical (root node Y < child node Y)
+    - edge count is substantial (>= 20 relationships)
 
 .EXAMPLE
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\Projects\l3dg3rr\scripts\test-holon-viz.ps1"
@@ -104,6 +107,36 @@ if ($cdpOk) {
             Check "window._cy initialized (nodes >= 0)" { $nodeCount -ge 0 }
             Check "graph has nodes (>= 5 holons)" { $nodeCount -ge 5 }
             Write-Host "  node count: $nodeCount"
+
+            # ── Check 1: z_layer metadata ────────────────────────────────────
+            WsSend '{"id":3,"method":"Runtime.evaluate","params":{"expression":"window._cy.nodes(\"[z_layer]\").length"}}'
+            $r3 = WsRecv
+            Write-Host "  z_layer nodes: $($r3.Substring(0,[math]::Min(200,$r3.Length)))"
+            $zLayerCount = -1
+            if ($r3 -match '"value"\s*:\s*(-?\d+)') { $zLayerCount = [int]$Matches[1] }
+            Check "nodes carry z_layer metadata (>= 10 typed nodes)" { $zLayerCount -ge 10 }
+            Write-Host "  z_layer count: $zLayerCount"
+
+            # ── Check 2: dagre layout is hierarchical ────────────────────────
+            # Note: the 1500ms sleep before check 2 (node count) covers dagre
+            # async layout completion; no additional sleep needed here.
+            $dagreExpr = '(function(){ var cy = window._cy; if (!cy) return -1; var topNode = cy.nodes().min(function(n){ return n.position().y; }).ele; if (!topNode || !topNode.id) return -1; var children = topNode.outgoers(\"node\"); if (children.length === 0) return 0; var topY = topNode.position().y; var anyChildBelow = children.some(function(c){ return c.position().y > topY; }); return anyChildBelow ? 1 : 0; })()'
+            WsSend "{`"id`":4,`"method`":`"Runtime.evaluate`",`"params`":{`"expression`":`"$dagreExpr`"}}"
+            $r4 = WsRecv
+            Write-Host "  dagre hierarchy: $($r4.Substring(0,[math]::Min(200,$r4.Length)))"
+            $dagreVal = -1
+            if ($r4 -match '"value"\s*:\s*(-?\d+)') { $dagreVal = [int]$Matches[1] }
+            Check "dagre layout is hierarchical (root Y < child Y)" { $dagreVal -eq 1 }
+            Write-Host "  dagre result: $dagreVal"
+
+            # ── Check 3: edge count ──────────────────────────────────────────
+            WsSend '{"id":5,"method":"Runtime.evaluate","params":{"expression":"window._cy.edges().length"}}'
+            $r5 = WsRecv
+            Write-Host "  edge count raw: $($r5.Substring(0,[math]::Min(200,$r5.Length)))"
+            $edgeCount = -1
+            if ($r5 -match '"value"\s*:\s*(-?\d+)') { $edgeCount = [int]$Matches[1] }
+            Check "graph has edges (>= 20 relationships)" { $edgeCount -ge 20 }
+            Write-Host "  edge count: $edgeCount"
 
             $ws.CloseAsync([System.Net.WebSockets.WebSocketCloseStatus]::NormalClosure, "done", $cts.Token).Wait(2000) | Out-Null
         } catch {
