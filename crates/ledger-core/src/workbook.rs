@@ -55,15 +55,15 @@ impl<'a> TransactionRow<'a> {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct MutationRecord<'a> {
-    pub timestamp: &'a str,
-    pub tx_id: &'a str,
-    pub agent_id: &'a str,
-    pub ring: &'a str,
-    pub action: &'a str,
-    pub before: &'a str,
-    pub after: &'a str,
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MutationRecord {
+    pub timestamp: String,
+    pub tx_id: String,
+    pub agent_id: String,
+    pub ring: String,
+    pub action: String,
+    pub before: String,
+    pub after: String,
 }
 
 pub fn initialize_workbook(path: &Path) -> Result<(), rust_xlsxwriter::XlsxError> {
@@ -306,6 +306,22 @@ impl WorkbookWriter {
             return Err("timestamp cannot be empty".into());
         }
         self.append_mutation_internal(Some(timestamp), action, tx_id, agent_id, ring, before, after)
+    }
+
+    /// Convenience wrapper: construct a [`MutationRecord`] and pass it here instead of 7 `&str` args.
+    pub fn append_mutation_record(
+        &self,
+        record: &MutationRecord,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.append_mutation(
+            &record.timestamp,
+            &record.tx_id,
+            &record.agent_id,
+            &record.ring,
+            &record.action,
+            &record.before,
+            &record.after,
+        )
     }
 
     fn append_mutation_internal(
