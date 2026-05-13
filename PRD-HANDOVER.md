@@ -121,7 +121,7 @@ Priority legend: **P1** = current sprint / unblocked, **P2** = next sprint, **P3
 | ~~P2~~ | ~~MECE zero-drift CI check~~ | Shipped 2026-05-14. `just check-drift` covers `bindings.ts` + `mcp-capability-contract.md`; wired into CI. |
 | ~~P2~~ | ~~VZ tab switcher~~ | Shipped 2026-05-14. Type Graph / Pipeline toggle in VZ toolbar. |
 | P2 | KerML metamodel for domain types | Author KerML textual notation for core domain types. Codegen target: Rust structs + TS types from single source. Lives in `xtask` or dedicated `crates/ledger-kerm`. |
-| P2 | `MutationRecord` dead code | `crates/ledger-core/src/workbook.rs` — `MutationRecord` struct added but never used. Delete or wire to `append_mutation_internal`. |
+| ~~P2~~ | ~~`MutationRecord` dead code~~ | Shipped 2026-05-14. Unified into canonical owned struct in `workbook.rs`; `append_mutation_record()` wired; `classify.rs` re-exports. 3 call sites converted. |
 | P2 | Seed ↔ `HasVisualization` gap detector | Unit test asserting `TypeRelationshipGraph::seed()` node IDs ⊇ all 21 known `HasVisualization` impl type names. Prevents silent drift when new impls are added. |
 | P2 | Rhai DSL validation | Test that calls `rhai::Engine::new().compile()` on each `HasVisualization` impl's `viz_spec().rhai_dsl`. Catches silent syntax breakage. |
 | P2 | `HasVisualization` trait wiring | Wire `HasVisualization` implementations from `ledger-core/src/iso_objects.rs` into Cytoscape node metadata (ZLayer → node color, SemanticType → node shape) |
@@ -209,11 +209,15 @@ Good-faith review of prior session's unpushed commits identified structural gaps
 | **MECE zero-drift check** | `Justfile` — `check-drift` recipe verifies `bindings.ts` and `mcp-capability-contract.md` are up to date; `gen/schemas/*.json` explicitly excluded (Windows-only, no Linux regen path). Wired into `.github/workflows/ci.yml` after Clippy. `bindings.ts` regenerated with `z_layer`/`semantic_type` fields. |
 | **`ledger_ops.rs` call site fix** | `crates/ledger-core/src/ledger_ops.rs` — `append_row` call updated to `TransactionRow::new(...)` struct form (breakage from prior session's arg-reduction refactor). |
 
+| **`MutationRecord` unification** | `workbook.rs` — `MutationRecord<'a>` (borrowed, dead) replaced by canonical owned `MutationRecord` with `Serialize`/`Deserialize`. `append_mutation_record(&self, record: &MutationRecord)` added as typed wrapper. `classify.rs` duplicate deleted; re-exported via `pub use`. 3 `ledger_ops.rs` call sites converted from 7-arg form to struct. |
+| **`ledger-core` test call sites fixed** | `workbook.rs` tests — 9 `append_row(10 args)` calls updated to `TransactionRow::new(...)`. Pre-existing breakage from the arg-reduction refactor; caught on first full `cargo test -p ledger-core` run. |
+
 ### Build Status
 - `cargo check -p holon-viz` — clean
 - `cargo test -p holon-viz` — 18/18 passed
 - `cargo check -p ledgerr-host --bin host-tauri` — clean
 - `cargo test -p ledgerr-mcp -- --test-threads=8` — clean (twice)
+- `cargo test -p ledger-core` — 9/9 passed
 - CDP test `just test-holon-viz-fast` — 7/7 PASS
 
 ### Agent Delegation Notes
@@ -227,4 +231,4 @@ Both are tooling constraints, not delegation failures. Coordinator did inline Py
 
 ---
 
-*Last updated: 2026-05-14*
+*Last updated: 2026-05-14 (end of session)*
