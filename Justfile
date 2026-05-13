@@ -518,6 +518,16 @@ docgen-check-negative:
 test-mcp-providers:
     cargo test -p ledgerr-mcp --test mcp_provider_smoke 2>&1 | tail -20
 
+# ─── build: local CI build via wrkflw ──────────────────────────────────────
+
+# Prove the Dockerfile planner fix: runs cargo chef prepare + ledgerr-mcp build
+# via wrkflw emulation mode (no Docker required).
+build emulation="emulation":
+    @if ! command -v wrkflw >/dev/null 2>&1; then echo "error: wrkflw not found — run: cargo install wrkflw"; exit 1; fi
+    @echo "=== wrkflw: CI build verification ==="
+    wrkflw run --runtime {{emulation}} .github/workflows/wrkflw-ci-build.yml
+    @echo "=== build complete ==="
+
 # ─── wrkflw: local CI pipeline runner ──────────────────────────────────────
 
 # Run the wrkflw-local-docgen workflow locally using emulation mode (no Docker).
