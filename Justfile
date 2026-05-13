@@ -106,6 +106,19 @@ test:
 wsl2-pwsh-tauri-build:
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\Projects\l3dg3rr\scripts\tauri-build.ps1"
 
+# Build host-tauri (Windows toolchain via PowerShell) then launch with CDP for viz demo.
+# Opens the tray app — click VZ in the sidebar to see the Cytoscape pipeline graph.
+demo-viz:
+    powershell.exe -NoProfile -Command '$env:PATH="C:\Users\wendy\.cargo\bin;C:\msys64\mingw64\bin;"+$env:PATH; Set-Location "D:\Projects\l3dg3rr"; cargo build -p ledgerr-host --bin host-tauri; if ($LASTEXITCODE -ne 0){throw "build failed"}; Write-Host "Build OK — launching with CDP on port 19222"; $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=19222"; Start-Process -FilePath "D:\Projects\l3dg3rr\target\debug\host-tauri.exe" -WorkingDirectory "D:\Projects\l3dg3rr\crates\ledgerr-host"; Write-Host "Launched — click VZ in the sidebar"'
+
+# Run the CDP-based holon-viz acceptance test (builds, launches, asserts window._cy has nodes).
+test-holon-viz:
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\Projects\l3dg3rr\scripts\test-holon-viz.ps1"
+
+# Same as test-holon-viz but skips the build step (uses existing binary).
+test-holon-viz-fast:
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\Projects\l3dg3rr\scripts\test-holon-viz.ps1" -SkipBuild
+
 # ─── Local model assets ───────────────────────────────────────────────────────
 
 # Install Microsoft Foundry Local on Windows, then print version and service status.

@@ -8,9 +8,12 @@ var PANELS=[
   {id:'dash',icon:'DB',label:'Dashboard'},
   {id:'settings',icon:'ST',label:'Settings'},
   {id:'docs',icon:'DK',label:'Docs Playbook'},
+  {id:'viz',icon:'VZ',label:'Viz'},
 ];
 var activePanel=0;
 var DASH_PANEL_INDEX=PANELS.findIndex(function(p){return p.id==='dash'});
+var VIZ_PANEL_INDEX=PANELS.findIndex(function(p){return p.id==='viz'});
+var _vizInitialized=false;
 
 function showPanel(i){
   activePanel=i;
@@ -22,6 +25,7 @@ function showPanel(i){
     b.classList.toggle('active',j===i);
   });
   if(DASH_PANEL_INDEX!==-1&&i===DASH_PANEL_INDEX)refreshDashboard();
+  if(VIZ_PANEL_INDEX!==-1&&i===VIZ_PANEL_INDEX)initVizPanel();
 }
 
 function panelTemplate(id){
@@ -30,6 +34,7 @@ function panelTemplate(id){
   t.logs='<div class="panel-title-row"><span class="panel-title">Logs</span></div><div class="log-tabs"><button class="log-tab active" data-log="0">Transport</button><button class="log-tab" data-log="1">Review</button></div><div id="log-panel-0" class="log-subpanel transport-bg"><div class="log-label">Transport</div><div id="rig-log" class="log-content"></div></div><div id="log-panel-1" class="log-subpanel review-bg hidden"><div class="log-label review-label">Diffsets</div><div id="review-log" class="log-content"></div></div></div>';
   t.dash='<span class="panel-title">Dashboard</span><div id="evidence-summary" class="evidence-summary"><div class="ev-card ev-card-blocked"><div class="ev-card-value" id="blocked-value">-</div><div class="ev-card-label">Blocked</div></div><div class="ev-card ev-card-ready"><div class="ev-card-value" id="ready-value">-</div><div class="ev-card-label">Ready</div></div><div class="ev-card ev-card-exported"><div class="ev-card-value" id="exported-value">-</div><div class="ev-card-label">Exported</div></div><div class="ev-card ev-card-issues"><div class="ev-card-value" id="issues-value">-</div><div class="ev-card-label">Issues</div></div></div><div class="ev-section"><div class="ev-section-title">Last Action</div><div id="ev-last-action" class="ev-last-action">Loading...</div></div><div class="ev-section"><div class="ev-section-title">Next Actions</div><ul id="ev-next-actions" class="ev-next-actions"></ul></div><div class="ev-section"><div class="ev-section-title">Providers</div><div id="ev-provider-status" class="ev-provider-status">Loading...</div></div><div class="ev-refresh-row"><button id="btn-refresh-dashboard">Refresh</button></div>';
   t.settings='<span class="panel-title">Settings</span><label class="field-label" for="input-endpoint">Endpoint</label><input id="input-endpoint" type="text" class="field-input"/><label class="field-label" for="input-model">Model</label><input id="input-model" type="text" class="field-input"/><label class="field-label" for="input-api-key">Key</label><input id="input-api-key" type="text" class="field-input"/><label class="field-label" for="input-system-prompt">System Prompt</label><textarea id="input-system-prompt" class="field-input system-prompt-area" rows="6"></textarea><div class="settings-actions"><button id="btn-use-phi">Use Phi-4</button><button id="btn-use-foundry">Use Win AI</button><button id="btn-use-cloud">Use Cloud</button><button id="btn-save-settings">Save</button></div>';
+  t.viz='<div class="panel-title-row"><span class="panel-title">Pipeline Viz</span><button id="btn-viz-refresh" style="margin-left:auto">Refresh</button></div><div id="cy" style="width:100%;height:calc(100vh - 80px);background:#111;"></div>';
   t.docs='<span class="panel-title">Docs Playbook</span><p id="docs-status-text" class="docs-status"></p><div class="docs-actions"><button id="btn-open-docs">Open Docs</button><button id="btn-load-rhai-mutation">Load Rhai</button></div><div class="docs-preview-wrap"><div id="docs-rig-log" class="log-content"></div></div>';
   return t[id]||'';
 }
@@ -301,3 +306,33 @@ document.addEventListener('DOMContentLoaded',function(){
     });
   });
 });
+
+function initVizPanel(){
+  if(_vizInitialized)return;
+  var cy_div=document.getElementById('cy');
+  if(!cy_div||typeof cytoscape==='undefined')return;
+  invoke('get_holon_viz_graph').then(function(json){
+    var data=JSON.parse(json);
+    var elements=[];
+    (data.nodes||[]).forEach(function(n){elements.push({data:n.data});});
+    (data.edges||[]).forEach(function(e){elements.push({data:e.data});});
+    window._cy=cytoscape({
+      container:cy_div,
+      elements:elements,
+      layout:{name:'cose',animate:false},
+      style:[
+        {selector:'node',style:{'label':'data(label)','background-color':'#1a6fa8','color':'#fff',
+          'text-valign':'center','text-halign':'center','font-size':'11px',
+          'width':'label','height':'label','padding':'8px','shape':'roundrectangle'}},
+        {selector:'edge',style:{'curve-style':'bezier','target-arrow-shape':'triangle',
+          'line-color':'#555','target-arrow-color':'#555','width':1.5}},
+        {selector:'node[kind="CapsuleGroup"]',style:{'background-color':'#5a3e8a'}},
+        {selector:'node[kind="AuditEvent"]',style:{'background-color':'#7a3030'}},
+        {selector:'node[kind="OwlClass"]',style:{'background-color':'#2e6e45'}},
+      ]
+    });
+    _vizInitialized=true;
+    var btn=document.getElementById('btn-viz-refresh');
+    if(btn)btn.addEventListener('click',function(){_vizInitialized=false;window._cy&&window._cy.destroy();initVizPanel();});
+  }).catch(function(e){console.error('[viz] get_holon_viz_graph failed:',e);});
+}

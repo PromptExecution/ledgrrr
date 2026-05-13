@@ -13,6 +13,10 @@ chrono.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
+[[bin]]
+name = "holon-viz-demo"
+path = "src/bin/demo.rs"
+
 [dev-dependencies]
 serde_json.workspace = true
 tempfile.workspace = true

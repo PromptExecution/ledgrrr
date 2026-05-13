@@ -113,6 +113,7 @@ fn main() {
             commands::get_test_harness_config,
             commands::write_dom_dump,
             commands::get_cargo_pkg_version,
+            commands::get_holon_viz_graph,
         ])
         .build(tauri::generate_context!())
         .unwrap_or_else(|e| {

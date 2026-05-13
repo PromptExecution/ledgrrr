@@ -523,3 +523,42 @@ pub fn get_tx_provenance(
         css_class: badge.css_class().to_string(),
     })
 }
+
+/// Return the Cytoscape.js-compatible JSON for the holonic pipeline graph.
+///
+/// The frontend Viz panel calls this once on activation and passes the result
+/// directly to `cytoscape({ elements: ... })`.
+#[tauri::command]
+pub fn get_holon_viz_graph() -> Result<String, String> {
+    use holon_viz::{CytoscapeGraph, Holon, HolonKind};
+    use std::collections::HashMap;
+
+    let holons = vec![
+        Holon { id: "pipeline".into(), label: "Tax Ledger Pipeline".into(), kind: HolonKind::CapsuleGroup,
+            parent_id: None, children: vec!["ingest".into(),"classify".into(),"reconcile".into(),"attest".into()], metadata: HashMap::new() },
+        Holon { id: "ingest".into(), label: "Ingest PDFs".into(), kind: HolonKind::SysmlBlock,
+            parent_id: Some("pipeline".into()), children: vec!["docling".into(),"blake3-id".into()], metadata: HashMap::new() },
+        Holon { id: "classify".into(), label: "Classify Transactions".into(), kind: HolonKind::SysmlBlock,
+            parent_id: Some("pipeline".into()), children: vec!["rhai-rules".into(),"flag-queue".into()], metadata: HashMap::new() },
+        Holon { id: "reconcile".into(), label: "Reconcile & Export".into(), kind: HolonKind::SysmlBlock,
+            parent_id: Some("pipeline".into()), children: vec!["excel-workbook".into()], metadata: HashMap::new() },
+        Holon { id: "attest".into(), label: "Attest (CPA)".into(), kind: HolonKind::SysmlBlock,
+            parent_id: Some("pipeline".into()), children: vec!["audit-log".into()], metadata: HashMap::new() },
+        Holon { id: "docling".into(), label: "Docling OCR".into(), kind: HolonKind::ProcessNode,
+            parent_id: Some("ingest".into()), children: vec![], metadata: HashMap::new() },
+        Holon { id: "blake3-id".into(), label: "Blake3 Content ID".into(), kind: HolonKind::ProcessNode,
+            parent_id: Some("ingest".into()), children: vec![], metadata: HashMap::new() },
+        Holon { id: "rhai-rules".into(), label: "Rhai Rule Engine".into(), kind: HolonKind::ProcessNode,
+            parent_id: Some("classify".into()), children: vec![], metadata: HashMap::new() },
+        Holon { id: "flag-queue".into(), label: "Flag Queue".into(), kind: HolonKind::ProcessNode,
+            parent_id: Some("classify".into()), children: vec![], metadata: HashMap::new() },
+        Holon { id: "excel-workbook".into(), label: "Excel Workbook".into(), kind: HolonKind::OwlClass,
+            parent_id: Some("reconcile".into()), children: vec![], metadata: HashMap::new() },
+        Holon { id: "audit-log".into(), label: "Immutable Audit Log".into(), kind: HolonKind::AuditEvent,
+            parent_id: Some("attest".into()), children: vec![], metadata: HashMap::new() },
+    ];
+
+    CytoscapeGraph::from_holons(&holons)
+        .to_json()
+        .map_err(|e| e.to_string())
+}
