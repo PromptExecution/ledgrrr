@@ -543,3 +543,45 @@ Treat this as a standing operational gate, not a one-time migration task.
 **Code discovery rule (mandatory):** ALWAYS use `codebase-memory-mcp` tools (`search_graph`, `trace_path`, `get_code_snippet`, `get_architecture`, `query_graph`) for structural code queries. Rationale: grep -r burns 10-30s CPU budget per call, misses cross-crate relationships, pulls irrelevant context. codebase-memory-mcp resolves in 1-3s with structural labels and relationship edges vs. grep -r taking 10+ minutes.
 
 **AGENTS.md as persistent operator manual:** This file is intentionally operational rather than reactive. Stable guidance here improves future agent quality by avoiding noise in transcripts and focusing on durable patterns.
+
+### 2026-05-13 (PM): Coordinator Protocol — Retrospective Improvements
+
+The following rules were obvious in retrospect but were not enforced during the 2026-05-13 Tauri Cytoscape integration session. The coordinator exhausted operator context twice in the same day by doing implementation work inline instead of delegating. These rules are now mandatory.
+
+#### Rule: Explore-Before-Build (mandatory)
+
+Before writing or editing any file in an unfamiliar crate/module, spawn an `Explore` agent to answer: "What files exist? What is the entry point? What patterns are already established?" Cost: ~1 tool call. Skipping this cost the session 3 operator corrections and a context burn.
+
+#### Rule: Coordinator Writes Prompts, Not Code
+
+The coordinator's only permitted file operations are:
+- Writing sub-agent prompt text (in the Agent tool)
+- Reading output files to verify agent work
+- Writing memory files to `/home/wendy/.claude/projects/.../memory/`
+
+Every `Edit` or `Write` call in the coordinator for implementation (Rust, JS, PS, Justfile) is a delegation failure. If you catch yourself writing implementation inline: stop, write the agent prompt instead.
+
+#### Rule: Architecture-First for Cross-Crate Work
+
+When a task spans more than one crate or file type (e.g., Rust command + JS frontend + PowerShell + Justfile), the mandatory sequence is:
+1. Explore agent: read all relevant files, identify patterns
+2. Plan agent (optional): design the integration
+3. Parallel implementation agents: one per layer (rust-craftsman for Rust, general-purpose for JS/PS/Justfile)
+4. Coordinator: verify diffs only
+
+#### Rule: Correction Cost Accounting
+
+Each operator correction = 1 context burn unit. Two corrections in one task = spawn a new agent instead of continuing inline. The cost of spawning is always lower than the cost of continued inline iteration under correction.
+
+#### Pattern: VZ Panel Integration (reference implementation)
+
+The 2026-05-13 Tauri Cytoscape integration is the canonical example of what NOT to do (all inline) and what TO do (the correct sequence would have been):
+1. Explore: read `crates/ledgerr-host/src/bin/tauri/`, `ui/main.js`, `Justfile` wsl2-pwsh-* recipes
+2. rust-craftsman: add `holon-viz` dep + `get_holon_viz_graph` command to `commands.rs` + register in `main.rs`
+3. general-purpose: patch `ui/main.js` PANELS + `initVizPanel()` + `index.html` CDN
+4. general-purpose: write `scripts/test-holon-viz.ps1` + Justfile recipes
+5. Coordinator: `cargo check -p ledgerr-host` to verify, commit
+
+#### b00t Surface: `hive` — Correct Usage
+
+The `hive` surface declares `"pattern": "parallel-subagents", "isolation": "worktree"`. This means: for any task with ≥2 independent implementation concerns, spawn ≥2 agents simultaneously. Single-agent sequential execution of multi-concern tasks violates the declared operator surface.
