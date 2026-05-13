@@ -386,7 +386,7 @@ dependencies = [
 
 [[package]]
 name = "arc-kit-au"
-version = "1.8.1"
+version = "1.9.0"
 dependencies = [
  "blake3",
  "chrono",
@@ -1066,7 +1066,7 @@ dependencies = [
 
 [[package]]
 name = "b00t-iface"
-version = "1.8.1"
+version = "1.9.0"
 dependencies = [
  "datum",
  "dirs",
@@ -2562,7 +2562,7 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
 name = "datum"
-version = "1.8.1"
+version = "1.9.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -4529,7 +4529,7 @@ dependencies = [
 
 [[package]]
 name = "holon-viz"
-version = "1.8.1"
+version = "1.9.0"
 dependencies = [
  "blake3",
  "chrono",
@@ -5561,7 +5561,7 @@ dependencies = [
 
 [[package]]
 name = "kani-proofs"
-version = "0.1.0"
+version = "1.9.0"
 dependencies = [
  "ledger-core",
 ]
@@ -5676,7 +5676,7 @@ checksum = "7a79a3332a6609480d7d0c9eab957bca6b455b91bb84e66d19f5ff66294b85b8"
 
 [[package]]
 name = "ledger-attest"
-version = "1.8.1"
+version = "1.9.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5685,7 +5685,7 @@ dependencies = [
 
 [[package]]
 name = "ledger-core"
-version = "1.8.1"
+version = "1.9.0"
 dependencies = [
  "anyhow",
  "arc-kit-au",
@@ -5725,7 +5725,7 @@ dependencies = [
 
 [[package]]
 name = "ledgerr-focus"
-version = "1.8.1"
+version = "1.9.0"
 dependencies = [
  "arrow",
  "blake3",
@@ -5740,7 +5740,7 @@ dependencies = [
 
 [[package]]
 name = "ledgerr-host"
-version = "1.8.1"
+version = "1.9.0"
 dependencies = [
  "anyhow",
  "arc-kit-au",
@@ -5769,7 +5769,7 @@ dependencies = [
 
 [[package]]
 name = "ledgerr-llm"
-version = "1.8.1"
+version = "1.9.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -5784,7 +5784,7 @@ dependencies = [
 
 [[package]]
 name = "ledgerr-mcp"
-version = "1.8.1"
+version = "1.9.0"
 dependencies = [
  "agentmesh",
  "arc-kit-au",
@@ -5817,7 +5817,7 @@ dependencies = [
 
 [[package]]
 name = "ledgerr-mcp-core"
-version = "1.8.1"
+version = "1.9.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -5827,7 +5827,7 @@ dependencies = [
 
 [[package]]
 name = "ledgerr-model-server"
-version = "1.8.1"
+version = "1.9.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -5840,7 +5840,7 @@ dependencies = [
 
 [[package]]
 name = "ledgerr-xero"
-version = "1.8.1"
+version = "1.9.0"
 dependencies = [
  "base64 0.22.1",
  "blake3",
@@ -5916,7 +5916,7 @@ dependencies = [
 
 [[package]]
 name = "lfmf-counter"
-version = "1.8.1"
+version = "1.9.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -6281,7 +6281,7 @@ dependencies = [
 
 [[package]]
 name = "mdbook-rhai-mermaid"
-version = "1.8.1"
+version = "1.9.0"
 dependencies = [
  "indexmap 2.14.0",
  "serde",
@@ -6657,7 +6657,7 @@ dependencies = [
 
 [[package]]
 name = "msft-agent-gov-ledgrrr"
-version = "1.8.1"
+version = "1.9.0"
 dependencies = [
  "agentmesh",
  "agentmesh-mcp",
@@ -7488,7 +7488,7 @@ dependencies = [
 
 [[package]]
 name = "ontology-extractor"
-version = "1.8.1"
+version = "1.9.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -8887,7 +8887,7 @@ dependencies = [
 
 [[package]]
 name = "rotel-visual"
-version = "1.8.1"
+version = "1.9.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -13780,7 +13780,7 @@ checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
 
 [[package]]
 name = "xtask-mcpb"
-version = "1.8.1"
+version = "1.9.0"
 dependencies = [
  "clap",
  "hex",
