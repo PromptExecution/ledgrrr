@@ -360,6 +360,12 @@ function initVizPanel(){
         {selector:'node[kind="workbook_projection"]',style:{'background-color':'#5aa646','shape':'tag'}},
         {selector:'node[kind="taxonomy_type"]',style:{'background-color':'#7fbf3f','shape':'diamond','color':'#172b3a'}},
         {selector:'node[kind="workflow_type"]',style:{'background-color':'#005d7f','shape':'rhomboid'}},
+        {selector:'node[z_layer="Pipeline"]',style:{'background-color':'#0073a8'}},
+        {selector:'node[z_layer="Constraint"]',style:{'background-color':'#00a0af'}},
+        {selector:'node[z_layer="Legal"]',style:{'background-color':'#c3482f'}},
+        {selector:'node[z_layer="FormalProof"]',style:{'background-color':'#00856f'}},
+        {selector:'node[z_layer="Attestation"]',style:{'background-color':'#f28c28','color':'#172b3a'}},
+        {selector:'node[z_layer="Document"]',style:{'background-color':'#5f7480'}},
         {selector:'edge',style:{'label':'data(label)','font-size':'9px','color':'#173b4a','text-background-color':'#ffffff','text-background-opacity':0.92,'text-background-padding':'2px'}},
       ]
     });

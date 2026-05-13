@@ -1161,7 +1161,7 @@ impl LedgerOperation for PdfIngestOp {
                     }
 
                     // Persist classified transaction to workbook
-                    writer.append_row(
+                    writer.append_row(crate::workbook::TransactionRow::new(
                         &tx_id,
                         &tx_input.date,
                         &candidate.key,
@@ -1171,7 +1171,7 @@ impl LedgerOperation for PdfIngestOp {
                         outcome.confidence,
                         outcome.needs_review,
                         None,
-                    ).map_err(|e| LedgerOpError::Workbook(format!("failed to persist {}: {}", tx_id, e)))?;
+                    )).map_err(|e| LedgerOpError::Workbook(format!("failed to persist {}: {}", tx_id, e)))?;
                     seen_tx_ids.insert(tx_id);
                 }
                 Err(e) => {
