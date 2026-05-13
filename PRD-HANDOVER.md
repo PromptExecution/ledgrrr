@@ -146,3 +146,42 @@ The following initiatives extend the VZ panel beyond its MVP state. They are seq
 **Isolated viz rendering confirmed.** Cytoscape runs inside WebView2 (full Chromium engine); no WASM compilation of JS libraries is required. The `HasVisualization` isometric layer — Rhai DSL, `ZLayer`, and isometric projection math — remains architecturally separate and untouched by the viz panel work. The only integration point is the Tauri command boundary: `TypeGraphCommand` returns `CytoscapeGraph` JSON, and `initVizPanel()` consumes it. This keeps the rendering concern fully isolated from the domain model.
 
 **Observer → kaizen loop.** Once `cytoscape-dagre` is wired, connect `VizObserver` (CDP screenshot → `tauri-vision-analyze.py`) to a `just test-holon-viz` assertion that verifies node layout is hierarchical — specifically that the top node has a lower Y coordinate than its children. This closes the automated visual regression loop and gives the kaizen workflow a stable signal for layout correctness without requiring manual inspection.
+
+---
+
+## Session Log — 2026-05-13 (Post-Checkpoint Critical Review)
+
+### Review Focus
+Maintainability; introspective visualization and self-introspection; zero-drift declarative documentation.
+
+### Issues Identified
+
+| Issue | Location | Problem |
+|-------|----------|---------|
+| **Contract drift** | `mcp_adapter.rs:328-358` | `tool_names_for(&["core"])` returned 4 tools, but `PUBLISHED_TOOLS` declares 10 |
+| **Hardcoded doc count** | `contract.rs:927` | "9 top-level" hardcoded; not derived from `PUBLISHED_TOOLS.len()` |
+| **Excessive function arguments** | `workbook.rs:168,205,266,282` | 4 functions exceed 7-arg clippy limit (10/7, 8/7) |
+
+### Fixes Applied
+
+| Fix | Files | Detail |
+|-----|-------|--------|
+| **Contract alignment** | `crates/ledgerr-mcp/src/mcp_adapter.rs` | Rewrote `tool_names_for` to return all 10 tools from `PUBLISHED_TOOLS`; removed legacy gate |
+| **Dynamic doc generation** | `crates/ledgerr-mcp/src/contract.rs` | Changed hardcoded "9" to `PUBLISHED_TOOLS.len()` |
+| **Arg reduction** | `crates/ledger-core/src/workbook.rs` | Added `TransactionRow` and `MutationRecord` structs |
+
+### Build Status
+- `cargo clippy -p ledgerr-mcp` — clean
+- `cargo clippy -p ledger-core` — clean
+- `cargo run -p ledgerr-mcp --bin regen-docs` — docs now say "10 top-level"
+
+### Zero-Drift Principle Applied
+All docs now derive from Rust types — no static strings that could drift.
+
+### Self-Introspection Gap
+- `HasVisualization` on domain types: ✅ (21 impls)
+- Self-viz (viz → viz): ❌ not implemented
+
+---
+
+*Last updated: 2026-05-13*

@@ -324,13 +324,19 @@ pub fn tool_names() -> Vec<String> {
     tool_names_for(&features)
 }
 
-#[cfg(feature = "legacy")]
 pub fn tool_names_for(features: &[&str]) -> Vec<String> {
     let mut tools = Vec::new();
 
-    if features.contains(&"core") {
+    let want_core = features.is_empty() || features.contains(&"core");
+    if want_core {
         tools.push(DOCUMENTS_TOOL.to_string());
+        tools.push(REVIEW_TOOL.to_string());
+        tools.push(RECONCILIATION_TOOL.to_string());
         tools.push(WORKFLOW_TOOL.to_string());
+        tools.push(AUDIT_TOOL.to_string());
+        tools.push(TAX_TOOL.to_string());
+        tools.push(ONTOLOGY_TOOL.to_string());
+        tools.push(XERO_TOOL.to_string());
         tools.push(EVIDENCE_TOOL.to_string());
         tools.push(FOCUS_TOOL.to_string());
     }
