@@ -27,9 +27,7 @@ export const commands = {
 	/**
 	 *  Return the Rust type relationship graph for the Viz panel.
 	 * 
-	 *  This renders the internal ontology/invariant mesh from the mdBook and Rust
-	 *  domain model: concrete type-state objects, legal/constraint solvers,
-	 *  evidence provenance nodes, and workbook projection surfaces.
+	 *  Delegates to [`TypeRelationshipGraph::seed()`] in `holon-viz`.
 	 */
 	getTypeGraph: () => typedError<CytoscapeGraph_Serialize, string>(__TAURI_INVOKE("get_type_graph")),
 };
@@ -96,6 +94,10 @@ export type CytoscapeNodeData_Deserialize = {
 	kind: string,
 	/**  Optional parent for compound graphs (Cytoscape compound nodes). */
 	parent: string | null,
+	/**  `ZLayer` variant from `HasVisualization::viz_spec()`, if available. */
+	z_layer: string | null,
+	/**  `SemanticType` variant from `HasVisualization::viz_spec()`, if available. */
+	semantic_type: string | null,
 };
 
 /**  Data payload for a Cytoscape.js node element. */
@@ -105,6 +107,10 @@ export type CytoscapeNodeData_Serialize = {
 	kind: string,
 	/**  Optional parent for compound graphs (Cytoscape compound nodes). */
 	parent?: string | null,
+	/**  `ZLayer` variant from `HasVisualization::viz_spec()`, if available. */
+	z_layer?: string | null,
+	/**  `SemanticType` variant from `HasVisualization::viz_spec()`, if available. */
+	semantic_type?: string | null,
 };
 
 /**  A single Cytoscape.js node element. */
