@@ -122,8 +122,8 @@ Priority legend: **P1** = current sprint / unblocked, **P2** = next sprint, **P3
 | ~~P2~~ | ~~VZ tab switcher~~ | Shipped 2026-05-14. Type Graph / Pipeline toggle in VZ toolbar. |
 | P2 | KerML metamodel for domain types | Author KerML textual notation for core domain types. Codegen target: Rust structs + TS types from single source. Lives in `xtask` or dedicated `crates/ledger-kerm`. |
 | ~~P2~~ | ~~`MutationRecord` dead code~~ | Shipped 2026-05-14. Unified into canonical owned struct in `workbook.rs`; `append_mutation_record()` wired; `classify.rs` re-exports. 3 call sites converted. |
-| P2 | Seed ↔ `HasVisualization` gap detector | Unit test asserting `TypeRelationshipGraph::seed()` node IDs ⊇ all 21 known `HasVisualization` impl type names. Prevents silent drift when new impls are added. |
-| P2 | Rhai DSL validation | Test that calls `rhai::Engine::new().compile()` on each `HasVisualization` impl's `viz_spec().rhai_dsl`. Catches silent syntax breakage. |
+| ~~P2~~ | ~~Seed ↔ `HasVisualization` gap detector~~ | Shipped 2026-05-14. `seed_typed_nodes_cover_all_has_visualization_impls` in `holon-viz/src/type_graph.rs`; 23 typed_node IDs checked. Also fixed seed gap: MetaCtx and Disposition were missing. |
+| ~~P2~~ | ~~Rhai DSL validation~~ | Shipped 2026-05-14. `all_viz_spec_rhai_dsl_has_valid_syntax` in `ledger-core/src/iso_objects.rs`; 22/22 pass. Fixed 12 invalid DSL strings (reserved keywords, struct literals, tuple syntax). |
 | P2 | `HasVisualization` trait wiring | Wire `HasVisualization` implementations from `ledger-core/src/iso_objects.rs` into Cytoscape node metadata (ZLayer → node color, SemanticType → node shape) |
 | P3 | `holon-viz-wasm` crate | `wasm-bindgen` on `VizGraph` for client-side filtering (e.g., filter-by-kind). Add when filter UX is a P1 item. Do not add speculatively. |
 | P3 | TypeScript build step for UI | `cytoscape@3` has built-in TS types; add `esbuild` build step to `ui/` when ready |
@@ -231,4 +231,19 @@ Both are tooling constraints, not delegation failures. Coordinator did inline Py
 
 ---
 
-*Last updated: 2026-05-14 (end of session)*
+
+## Session Log — 2026-05-14 (P2 quality gap session)
+### Shipped
+| Item | Details |
+|------|---------|
+| **Seed gap fix** | `crates/holon-viz/src/type_graph.rs` — `seed()` was missing `MetaCtx` and `Disposition` as `typed_node` entries (had z_layer/semantic_type). Added `pipeline::MetaCtx` (Pipeline/Pipeline) and `validation::Disposition` (Pipeline/Result) with corresponding `Implements` edges. |
+| **Seed gap detector test** | `seed_typed_nodes_cover_all_has_visualization_impls` — asserts all 23 canonical typed_node IDs are present in `seed()`. Prevents silent drift when new `HasVisualization` impls are added without updating the seed. |
+| **Rhai DSL syntax validation** | `all_viz_spec_rhai_dsl_has_valid_syntax` in `ledger-core/src/iso_objects.rs` — calls `rhai::Engine::new().compile()` on all 22 `viz_spec().rhai_dsl.source()` values. 22/22 pass. |
+| **12 Rhai DSL fixes** | Fixed reserved-keyword violations (`eval`→`res`, `new`→fn-call style, `default`→`MetaCtx()`), `match`→`switch` (Rhai keyword), struct literals in arg position→Rhai object maps (`#{}`), and tuple-in-array `(a,b)`→`[a,b]` across `ConstraintEvaluation`, `VendorConstraintSet`, `InvoiceConstraintSolver`, `Z3Result`, `LegalRule`, `LegalSolver`, `TransactionFacts`, `CommitGate`, `MetaFlag`, `MetaCtx`, `Disposition`, `KasuariSolver`. |
+
+### Build Status
+- `cargo test -p holon-viz` — 19/19 passed
+- `cargo test -p ledger-core all_viz_spec` — 1/1 passed (22 internal checks)
+- `cargo test -p ledger-core` — 9/9 + 1 doc-test passed
+
+*Last updated: 2026-05-14 (P2 gap session)*
