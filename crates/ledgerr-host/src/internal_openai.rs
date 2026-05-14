@@ -21,6 +21,15 @@ pub const INTERNAL_ROTEL_EXPORT_PLAN_URL: &str = "http://127.0.0.1:15115/rotel/e
 pub const INTERNAL_ROTEL_LOGS_URL: &str = "http://127.0.0.1:15115/v1/logs";
 pub const INTERNAL_ROTEL_METRICS_URL: &str = "http://127.0.0.1:15115/v1/metrics";
 pub const INTERNAL_ROTEL_TRACES_URL: &str = "http://127.0.0.1:15115/v1/traces";
+
+/// Returns the rotel-visual base URL using the ROTEL_PORT env var (default 4318).
+pub fn rotel_visual_base_url() -> String {
+    let port: u16 = std::env::var("ROTEL_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(4318u16);
+    format!("http://127.0.0.1:{port}")
+}
 pub const INTERNAL_PHI_MODEL: &str = "phi-4-mini-reasoning";
 pub const INTERNAL_LOCAL_API_KEY: &str = "local-tool-tray";
 pub const DEFAULT_CLOUD_CHAT_URL: &str = "https://api.openai.com/v1/chat/completions";
@@ -467,10 +476,14 @@ pub fn docs_playbook_status() -> String {
 }
 
 pub fn internal_rotel_status() -> String {
-    let plan = RotelExportPlan::from_endpoint(&internal_rotel_endpoint(INTERNAL_OPENAI_ADDR));
+    let base = rotel_visual_base_url();
+    let plan = RotelExportPlan::from_endpoint(&RotelEndpoint {
+        otlp_http_endpoint: base.clone(),
+        ..RotelEndpoint::default()
+    });
     [
-        "rotel: embedded in internal OpenAI-compatible listener".to_string(),
-        format!("health_endpoint: {INTERNAL_ROTEL_HEALTH_URL}"),
+        format!("rotel: forwarded to rotel-visual at {base}"),
+        format!("health_endpoint: {base}/health"),
         format!("logs_endpoint: {}", plan.logs_url),
         format!("metrics_endpoint: {}", plan.metrics_url),
         format!("traces_endpoint: {}", plan.traces_url),
@@ -920,9 +933,9 @@ fn route_http_request_for_addr(
     json_response(200, &chat_response(&request, assistant_text))
 }
 
-fn internal_rotel_endpoint(addr: &str) -> RotelEndpoint {
+fn internal_rotel_endpoint(_addr: &str) -> RotelEndpoint {
     RotelEndpoint {
-        otlp_http_endpoint: format!("http://{addr}"),
+        otlp_http_endpoint: rotel_visual_base_url(),
         otlp_grpc_endpoint: "internal-listener-disabled".to_string(),
         arrow_connector_enabled: true,
     }
@@ -960,30 +973,79 @@ fn otlp_signal_from_request_line(request_line: &str) -> Option<OTelSignal> {
 }
 
 fn rotel_otlp_response(signal: OTelSignal, body: &[u8]) -> String {
-    let payload = match serde_json::from_slice::<serde_json::Value>(body) {
-        Ok(value) => value,
+    let payload: serde_json::Value = match serde_json::from_slice(body) {
+        Ok(payload) => payload,
         Err(error) => {
             return json_response(
                 400,
-                &serde_json::json!({ "error": format!("invalid OTLP JSON payload: {error}") }),
+                &serde_json::json!({
+                    "error": format!("invalid OTLP JSON payload: {error}")
+                }),
             );
         }
     };
-    let resource_count = otlp_resource_count(signal, &payload);
-    json_response(
-        202,
-        &serde_json::json!({
-            "accepted": true,
-            "service": "rotel-embedded",
-            "listener": "l3dg3rr-internal-openai",
-            "signal": signal.as_str(),
-            "content_type": "application/json",
-            "resource_count": resource_count,
-            "payload_bytes": body.len(),
-            "arrow_connector_enabled": true,
-            "classification_columns": ledger_core::observability::TelemetryArrowBatch::classification_columns(),
-        }),
-    )
+    let base = rotel_visual_base_url();
+    let path = match signal {
+        OTelSignal::Log => "/v1/logs",
+        OTelSignal::Metric => "/v1/metrics",
+        OTelSignal::Trace => "/v1/traces",
+    };
+    let url = format!("{base}{path}");
+
+    match reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+    {
+        Ok(client) => match client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .body(body.to_vec())
+            .send()
+        {
+            Ok(resp) => {
+                let status = resp.status().as_u16();
+                let resp_body = resp.text().unwrap_or_default();
+                let reason = match status {
+                    200 => "OK",
+                    202 => "Accepted",
+                    400 => "Bad Request",
+                    _ => "",
+                };
+                format!(
+                    "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    resp_body.len(),
+                    resp_body
+                )
+            }
+            Err(e) => {
+                // rotel-visual not reachable — return a fallback response
+                let payload = serde_json::json!({
+                    "accepted": true,
+                    "service": "rotel-embedded-fallback",
+                    "listener": "l3dg3rr-internal-openai",
+                    "signal": signal.as_str(),
+                    "content_type": "application/json",
+                    "resource_count": otlp_resource_count(signal, &payload),
+                    "payload_bytes": body.len(),
+                    "arrow_connector_enabled": true,
+                    "classification_columns": ledger_core::observability::TelemetryArrowBatch::classification_columns(),
+                    "note": format!("rotel-visual unreachable at {url}: {e}"),
+                });
+                json_response(202, &payload)
+            }
+        },
+        Err(_) => {
+            // Fallback if reqwest client can't be built
+            json_response(
+                202,
+                &serde_json::json!({
+                    "accepted": true,
+                    "signal": signal.as_str(),
+                    "note": "rotel-visual proxy unavailable"
+                }),
+            )
+        }
+    }
 }
 
 fn otlp_resource_count(signal: OTelSignal, payload: &serde_json::Value) -> usize {
@@ -1306,7 +1368,7 @@ mod tests {
         assert!(response.starts_with("HTTP/1.1 200 OK"));
         assert!(response.contains("\"service\":\"rotel-embedded\""));
         assert!(response.contains("\"listener\":\"l3dg3rr-internal-openai\""));
-        assert!(response.contains("\"logs\":\"http://127.0.0.1:15115/v1/logs\""));
+        assert!(response.contains("\"logs\":\"http://127.0.0.1:4318/v1/logs\""));
         assert!(response.contains("\"arrow_connector_enabled\":true"));
     }
 
@@ -1317,9 +1379,9 @@ mod tests {
         let response = route_http_request(raw.as_bytes(), &FixedBackend, None);
 
         assert!(response.starts_with("HTTP/1.1 200 OK"));
-        assert!(response.contains("\"logs_url\":\"http://127.0.0.1:15115/v1/logs\""));
-        assert!(response.contains("\"metrics_url\":\"http://127.0.0.1:15115/v1/metrics\""));
-        assert!(response.contains("\"traces_url\":\"http://127.0.0.1:15115/v1/traces\""));
+        assert!(response.contains("\"logs_url\":\"http://127.0.0.1:4318/v1/logs\""));
+        assert!(response.contains("\"metrics_url\":\"http://127.0.0.1:4318/v1/metrics\""));
+        assert!(response.contains("\"traces_url\":\"http://127.0.0.1:4318/v1/traces\""));
         assert!(response.contains("\"abstract_regex_type\""));
     }
 
@@ -1331,9 +1393,9 @@ mod tests {
             route_http_request_for_addr(raw.as_bytes(), &FixedBackend, None, "127.0.0.1:18081");
 
         assert!(response.starts_with("HTTP/1.1 200 OK"));
-        assert!(response.contains("\"logs_url\":\"http://127.0.0.1:18081/v1/logs\""));
-        assert!(response.contains("\"metrics_url\":\"http://127.0.0.1:18081/v1/metrics\""));
-        assert!(response.contains("\"traces_url\":\"http://127.0.0.1:18081/v1/traces\""));
+        assert!(response.contains("\"logs_url\":\"http://127.0.0.1:4318/v1/logs\""));
+        assert!(response.contains("\"metrics_url\":\"http://127.0.0.1:4318/v1/metrics\""));
+        assert!(response.contains("\"traces_url\":\"http://127.0.0.1:4318/v1/traces\""));
     }
 
     #[test]
@@ -1370,7 +1432,7 @@ mod tests {
         let response = route_http_request(raw.as_bytes(), &FixedBackend, None);
 
         assert!(response.starts_with("HTTP/1.1 400 Bad Request"));
-        assert!(response.contains("invalid OTLP JSON payload"));
+        assert!(response.contains("\"error\":\"invalid OTLP JSON payload:"));
     }
 
     #[test]

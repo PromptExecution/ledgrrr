@@ -12,7 +12,6 @@ blake3.workspace = true
 chrono.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
-specta = { version = "=2.0.0-rc.25", features = ["derive"] }
 
 [[bin]]
 name = "holon-viz-demo"
@@ -21,6 +20,6 @@ path = "src/bin/demo.rs"
 [dev-dependencies]
 serde_json.workspace = true
 tempfile.workspace = true
-
-[dev-dependencies]
-serde_json.workspace = true
+# CDP integration test dependency — only required when TEST_WEBVIEW=1 is set
+# cargo test --test holon_viz_visual_e2e      # e2e with live Tauri WebView2
+# cargo test                                    # unit + integration (no webview)

@@ -23,7 +23,7 @@ const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
 #[derive(Debug, Clone)]
 pub struct LlmConfig {
     pub api_key: String,
-    /// Model for vision/chat completions (default: gpt-4o).
+    /// Model for vision/chat completions (default: phi-4-mini-reasoning for local-first).
     pub model: String,
     /// Optional base URL override — enables local OpenAI-compatible endpoints
     /// (Ollama, LM Studio, future Gemma4 / Qwen3 adapters).
@@ -35,7 +35,8 @@ impl LlmConfig {
     pub fn from_env() -> Self {
         Self {
             api_key: std::env::var("OPENAI_API_KEY").unwrap_or_default(),
-            model: std::env::var("LEDGERR_LLM_MODEL").unwrap_or_else(|_| "gpt-4o".into()),
+            model: std::env::var("LEDGERR_LLM_MODEL")
+                .unwrap_or_else(|_| "phi-4-mini-reasoning".into()),
             base_url: std::env::var("LEDGERR_LLM_BASE_URL").ok(),
             temperature: 0.0,
         }

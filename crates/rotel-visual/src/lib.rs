@@ -695,10 +695,62 @@ pub fn create_app() -> Result<Router, anyhow::Error> {
 }
 
 pub async fn run_server() -> Result<(), anyhow::Error> {
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080")
+    let port: u16 = std::env::var("ROTEL_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(4318u16);
+
+    // --- Pre-bind port collision check ---
+    let check_addr = format!("127.0.0.1:{port}");
+    match std::net::TcpStream::connect_timeout(
+        &check_addr.parse::<std::net::SocketAddr>().unwrap(),
+        std::time::Duration::from_millis(200),
+    ) {
+        Ok(_) => {
+            eprintln!(
+                "WARN: Port {port} is already in use by another process. \
+                 rotel-visual may conflict with the existing listener."
+            );
+            // Optionally try to identify the owner via /proc/net/tcp (Linux)
+            #[cfg(target_os = "linux")]
+            {
+                if let Ok(contents) = std::fs::read_to_string("/proc/net/tcp") {
+                    for line in contents.lines().skip(1) {
+                        let parts: Vec<&str> = line.split_whitespace().collect();
+                        if parts.len() >= 10 {
+                            // local_address is in hex colon format: 00000000:10DE
+                            if let Some(port_hex) = parts[1].split(':').nth(1) {
+                                if u16::from_str_radix(port_hex, 16).ok() == Some(port) {
+                                    if let Ok(pid) = parts[9].trim_end_matches(':').parse::<u32>() {
+                                        if pid > 0 {
+                                            eprintln!(
+                                                "  -> PID {pid} is listening on port {port}. \
+                                                 Run: ps -p {pid} -o comm= to identify the process."
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Err(_) => {
+            // Port is free — good to proceed
+        }
+    }
+
+    let addr = format!("0.0.0.0:{port}");
+    let listener = tokio::net::TcpListener::bind(&addr)
         .await
-        .map_err(|e| anyhow::anyhow!("Failed to bind to 0.0.0.0:8080: {e}"))?;
-    info!("Rotel Visual OTel Surface starting on 0.0.0.0:8080");
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to bind to {addr}: {e}. \
+                 Port may be in use. Set ROTEL_PORT env var to use a different port."
+            )
+        })?;
+    info!("Rotel Visual OTel Surface starting on {addr}");
 
     axum::serve(listener, create_app()?)
         .await
