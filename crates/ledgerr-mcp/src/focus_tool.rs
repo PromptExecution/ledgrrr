@@ -265,24 +265,13 @@ fn save_records(records: &[FocusToolRecord]) {
     }
 }
 
-/// Serialize focus_tool tests to prevent racy access to the global store.
-#[cfg(test)]
-static FOCUS_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
 /// Reset the global store (test helper).  Only available in `#[cfg(test)]`.
-/// Clears both in-memory store and on-disk sidecar to prevent parallel
-/// test leakage.
 #[cfg(test)]
 fn reset_store_for_test() {
     if let Ok(mut guard) = FOCUS_RECORDS.lock() {
         guard.clear();
     }
     FOCUS_LOADED.store(false, Ordering::Release);
-    // Wipe the on-disk sidecar so initialize_store() starts fresh
-    let path = focus_records_path();
-    if path.exists() {
-        let _ = std::fs::remove_file(&path);
-    }
 }
 
 fn handle_append(input: FocusToolInput) -> Result<FocusToolOutput, String> {
@@ -441,7 +430,7 @@ mod tests {
 
     #[test]
     fn test_append_focus_record() {
-        isolate_focus_test!();
+        reset_store_for_test();
         let input = FocusToolInput {
             action: "append_focus_record".into(),
             records: vec![make_record("control", 100.0)],
@@ -537,7 +526,12 @@ mod tests {
 
     #[test]
     fn test_query_summary() {
-        isolate_focus_test!();
+        // Use a temp dir to avoid loading existing records from the default path
+        let tmp = tempfile::tempdir().unwrap();
+        let tmp_path = tmp.path().join("focus_records.json");
+        std::env::set_var("FOCUS_SIDECAR_PATH", tmp_path.to_str().unwrap());
+
+        reset_store_for_test();
         let input = FocusToolInput {
             action: "query_focus_summary".into(),
             records: vec![],
@@ -553,7 +547,12 @@ mod tests {
 
     #[test]
     fn test_persistence_round_trip() {
-        isolate_focus_test!();
+        // Use a temp dir so test data doesn't pollute the real sidecar
+        let tmp = tempfile::tempdir().unwrap();
+        let tmp_path = tmp.path().join("focus_records.json");
+        std::env::set_var("FOCUS_SIDECAR_PATH", tmp_path.to_str().unwrap());
+
+        reset_store_for_test();
 
         // Append a record
         let append_input = FocusToolInput {
