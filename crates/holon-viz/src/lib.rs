@@ -20,12 +20,19 @@ pub mod cytoscape;
 pub mod emitter;
 pub mod holon;
 pub mod log;
+pub mod observer;
+pub mod renderer;
+pub mod gen;
+pub mod type_graph;
 
 pub use controller::{ProcessController, ProcessStep, TransitionReceipt};
 pub use cytoscape::{CytoscapeEdge, CytoscapeGraph, CytoscapeNode};
 pub use emitter::{Owl2Emitter, SysmlV2Emitter};
 pub use holon::{Holon, HolonKind};
 pub use log::{ActionKind, ActionRecord, ImmutableActionLog};
+pub use observer::{VizObservation, VizObserver};
+pub use renderer::HtmlRenderer;
+pub use type_graph::{TypeNode, TypeRelationship, TypeRelationshipGraph, TypeRelationshipKind};
 
 use thiserror::Error;
 
@@ -48,7 +55,15 @@ pub enum HolonError {
     #[error("step already registered: {0}")]
     DuplicateStep(String),
 
+    /// I/O error (file read/write).
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
+
     /// JSON serialization/deserialization failure.
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
+
+    /// Render-time failure (e.g. template logic error).
+    #[error("render error: {0}")]
+    Render(String),
 }

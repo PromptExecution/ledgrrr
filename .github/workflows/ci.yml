@@ -47,6 +47,12 @@ jobs:
         with:
           sarif_file: clippy.sarif
 
+      - name: Install just
+        run: cargo install just --locked
+
+      - name: Check generated artifact drift (bindings.ts + mcp-capability-contract.md)
+        run: just check-drift
+
       - name: Validate datum AST parser and linter
         run: cargo test -p datum 2>&1
 

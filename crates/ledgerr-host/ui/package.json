@@ -1,0 +1,16 @@
+{
+  "name": "@ledgrrr/ui",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0",
+    "esbuild": "^0.25.0",
+    "@types/cytoscape": "^3.21.0"
+  }
+}

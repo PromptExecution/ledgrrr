@@ -12,6 +12,15 @@ blake3.workspace = true
 chrono.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+specta = { version = "=2.0.0-rc.25", features = ["derive"] }
+
+[[bin]]
+name = "holon-viz-demo"
+path = "src/bin/demo.rs"
+
+[dev-dependencies]
+serde_json.workspace = true
+tempfile.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

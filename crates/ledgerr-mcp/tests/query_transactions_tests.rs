@@ -46,8 +46,8 @@ fn test_query_transactions_returns_filtered_results() {
     
     // Ingest transactions
     let _ = service.ingest_statement_rows(IngestStatementRowsRequest {
-        journal_path: workbook_path.with_extension("journal"),
-        workbook_path: workbook_path.clone(),
+        journal_path: PathBuf::from("test.journal"),
+        workbook_path: service.workbook_path().to_path_buf(),
         ontology_path: None,
         rows: vec![tx1.clone(), tx2.clone(), tx3.clone()],
     });
@@ -124,8 +124,8 @@ fn test_query_transactions_applies_sorting() {
     };
     
     let _ = service.ingest_statement_rows(IngestStatementRowsRequest {
-        journal_path: workbook_path.with_extension("journal"),
-        workbook_path: workbook_path.clone(),
+        journal_path: PathBuf::from("test.journal"),
+        workbook_path: service.workbook_path().to_path_buf(),
         ontology_path: None,
         rows: vec![tx1, tx2, tx3],
     });
@@ -200,8 +200,8 @@ fn test_query_transactions_enforces_pagination_limits() {
     }
     
     let _ = service.ingest_statement_rows(IngestStatementRowsRequest {
-        journal_path: workbook_path.with_extension("journal"),
-        workbook_path: workbook_path.clone(),
+        journal_path: PathBuf::from("test.journal"),
+        workbook_path: service.workbook_path().to_path_buf(),
         ontology_path: None,
         rows: transactions,
     });
@@ -279,8 +279,8 @@ fn test_query_transactions_deterministic_ordering() {
     
     // Ingest the same transactions twice and verify consistent results
     let _ = service.ingest_statement_rows(IngestStatementRowsRequest {
-        journal_path: workbook_path.with_extension("journal"),
-        workbook_path: workbook_path.clone(),
+        journal_path: PathBuf::from("test.journal"),
+        workbook_path: service.workbook_path().to_path_buf(),
         ontology_path: None,
         rows: vec![tx1.clone(), tx2.clone()],
     });

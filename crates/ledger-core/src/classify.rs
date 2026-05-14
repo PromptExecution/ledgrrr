@@ -61,16 +61,7 @@ pub enum Flag {
     ReviewRequired,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct MutationRecord {
-    pub timestamp: String,
-    pub tx_id: String,
-    pub agent_id: String,
-    pub ring: String,
-    pub action: String,
-    pub before: String,
-    pub after: String,
-}
+pub use crate::workbook::MutationRecord;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClassifiedTransaction {

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::holon::Holon;
 
 /// Data payload for a Cytoscape.js node element.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct CytoscapeNodeData {
     pub id: String,
     pub label: String,
@@ -17,16 +17,22 @@ pub struct CytoscapeNodeData {
     /// Optional parent for compound graphs (Cytoscape compound nodes).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent: Option<String>,
+    /// `ZLayer` variant from `HasVisualization::viz_spec()`, if available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub z_layer: Option<String>,
+    /// `SemanticType` variant from `HasVisualization::viz_spec()`, if available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub semantic_type: Option<String>,
 }
 
 /// A single Cytoscape.js node element.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct CytoscapeNode {
     pub data: CytoscapeNodeData,
 }
 
 /// Data payload for a Cytoscape.js edge element.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct CytoscapeEdgeData {
     pub id: String,
     pub source: String,
@@ -35,7 +41,7 @@ pub struct CytoscapeEdgeData {
 }
 
 /// A single Cytoscape.js edge element.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct CytoscapeEdge {
     pub data: CytoscapeEdgeData,
 }
@@ -43,7 +49,7 @@ pub struct CytoscapeEdge {
 /// Serializable Cytoscape.js graph — nodes and edges with `data` fields.
 ///
 /// Construct via [`HolonGraph::from_holons`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct CytoscapeGraph {
     pub nodes: Vec<CytoscapeNode>,
     pub edges: Vec<CytoscapeEdge>,
@@ -64,6 +70,8 @@ impl CytoscapeGraph {
                     label: h.label.clone(),
                     kind: format!("{:?}", h.kind),
                     parent: h.parent_id.clone(),
+                    z_layer: None,
+                    semantic_type: None,
                 },
             })
             .collect();

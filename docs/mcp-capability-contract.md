@@ -4,7 +4,7 @@ This file is generated from `crates/ledgerr-mcp/src/contract.rs`.
 
 Rust code is the only source of truth for the published MCP surface. If this file drifts from the contract module, tests should fail.
 
-The default catalog is intentionally small: 9 top-level `ledgerr_*` tools. Each tool uses a required `action` field so the major capability families stay visible while related operations are grouped under one top-level command.
+The default catalog is intentionally small: 10 top-level `ledgerr_*` tools. Each tool uses a required `action` field so the major capability families stay visible while related operations are grouped under one top-level command.
 
 ## Published MCP Tools
 

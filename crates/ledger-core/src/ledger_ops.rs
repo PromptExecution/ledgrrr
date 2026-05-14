@@ -471,18 +471,18 @@ impl LedgerOperation for ClassifyTransactionsOp {
             if !ctx.dry_run {
                 let needs_review = outcome.confidence < self.review_threshold;
                 writer
-                    .append_mutation(
-                        &chrono::Utc::now().to_rfc3339(),
-                        &tx_id,
-                        "classify-transactions-op",
-                        "agent",
-                        &format!("classify:{}", outcome.category),
-                        "Unclassified",
-                        &format!(
+                    .append_mutation_record(&crate::workbook::MutationRecord {
+                        timestamp: chrono::Utc::now().to_rfc3339(),
+                        tx_id: tx_id.clone(),
+                        agent_id: "classify-transactions-op".to_string(),
+                        ring: "agent".to_string(),
+                        action: format!("classify:{}", outcome.category),
+                        before: "Unclassified".to_string(),
+                        after: format!(
                             "{}|conf={:.3}|review={}",
                             outcome.category, outcome.confidence, needs_review
                         ),
-                    )
+                    })
                     .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
             }
             classified += 1;
@@ -616,15 +616,15 @@ impl LedgerOperation for ReconcileAccountOp {
             issues.push(msg.clone());
             if !ctx.dry_run && !self.dry_run {
                 writer
-                    .append_mutation(
-                        &chrono::Utc::now().to_rfc3339(),
-                        dup_id,
-                        "reconcile-account-op",
-                        "agent",
-                        "reconcile:duplicate",
-                        "",
-                        &msg,
-                    )
+                    .append_mutation_record(&crate::workbook::MutationRecord {
+                        timestamp: chrono::Utc::now().to_rfc3339(),
+                        tx_id: dup_id.clone(),
+                        agent_id: "reconcile-account-op".to_string(),
+                        ring: "agent".to_string(),
+                        action: "reconcile:duplicate".to_string(),
+                        before: String::new(),
+                        after: msg.clone(),
+                    })
                     .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
             }
         }
@@ -636,15 +636,15 @@ impl LedgerOperation for ReconcileAccountOp {
             issues.push(msg.clone());
             if !ctx.dry_run && !self.dry_run {
                 writer
-                    .append_mutation(
-                        &chrono::Utc::now().to_rfc3339(),
-                        outlier_id,
-                        "reconcile-account-op",
-                        "agent",
-                        "reconcile:outlier",
-                        "",
-                        &msg,
-                    )
+                    .append_mutation_record(&crate::workbook::MutationRecord {
+                        timestamp: chrono::Utc::now().to_rfc3339(),
+                        tx_id: outlier_id.clone(),
+                        agent_id: "reconcile-account-op".to_string(),
+                        ring: "agent".to_string(),
+                        action: "reconcile:outlier".to_string(),
+                        before: String::new(),
+                        after: msg.clone(),
+                    })
                     .map_err(|e| LedgerOpError::Workbook(e.to_string()))?;
             }
         }
@@ -1161,7 +1161,7 @@ impl LedgerOperation for PdfIngestOp {
                     }
 
                     // Persist classified transaction to workbook
-                    writer.append_row(
+                    writer.append_row(crate::workbook::TransactionRow::new(
                         &tx_id,
                         &tx_input.date,
                         &candidate.key,
@@ -1171,7 +1171,7 @@ impl LedgerOperation for PdfIngestOp {
                         outcome.confidence,
                         outcome.needs_review,
                         None,
-                    ).map_err(|e| LedgerOpError::Workbook(format!("failed to persist {}: {}", tx_id, e)))?;
+                    )).map_err(|e| LedgerOpError::Workbook(format!("failed to persist {}: {}", tx_id, e)))?;
                     seen_tx_ids.insert(tx_id);
                 }
                 Err(e) => {
