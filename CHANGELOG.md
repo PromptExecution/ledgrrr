@@ -2,6 +2,87 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.9.0 - 2026-05-13
+#### Bug Fixes
+- **(ci)** add GTK deps to Dockerfile, remove --all-features - (02fc48b) - Claude Sonnet (coordinator)
+- **(ci)** add feat/** to push branch trigger - (9bcf48a) - Claude Sonnet (coordinator)
+- **(ci)** remove --all-features, explict feature list, drop real_datums from CI - (3517129) - Claude Sonnet (coordinator)
+- **(ci)** replace --all-features with explicit feature list, skip real_datums in CI - (4917f80) - Claude Sonnet (coordinator)
+- **(ci)** checkout _b00t_ as sibling dir for include_str! path resolution - (f960b31) - Claude Sonnet (coordinator)
+- **(ci)** checkout _b00t_ repo for real_datums feature tests - (c92f32d) - Claude Sonnet (coordinator)
+- **(clippy)** zero warnings workspace-wide, remove handle_external_tool vestigial param - (5e634e4) - Claude Sonnet (coordinator)
+- **(clippy)** resolve all PR #71 review issues — unused imports, operator precedence, and_then→map - (dca1773) - Claude Sonnet (coordinator)
+- **(datum)** apply clippy autofix for vec_init_then_push and unused mut - (5b12fa6) - Claude Sonnet (coordinator)
+- **(docgen)** resolve all 8 documentation generation pipeline gaps - (106b60c) - Claude Sonnet (coordinator)
+- **(evidence)** address MECE review findings - (3e1cd28) - copilot-swe-agent[bot]
+- **(gitignore)** .b00t/scratch/ and .b00t/datums/*.txt ignored, loop writes to scratch - (d1134d7) - Claude Sonnet (coordinator)
+- **(ledger-core)** remove conflicting From impl in ingest.rs (#93) - (73d5250) - PromptExecution.com
+- **(mcp)** flatten schemars oneOf for Claude API input_schema compatibility (#83) - (898613e) - PromptExecution.com
+- **(mcp/contract)** bouncer follow-ups — atomic JSONL writes + conditional additionalProperties removal (#87) - (75fd8a4) - PromptExecution.com
+- **(prd9)** address code review feedback on cfg gates and dead code - (162affc) - copilot-swe-agent[bot]
+- **(prd9)** address compilation errors, shutdown gap, and visual narrative readiness gaps - (9770321) - copilot-swe-agent[bot]
+- **(review)** hardcoded SCCACHE_DIR path, indentation and SVG tspan in to_animated_svg - (be0523d) - copilot-swe-agent[bot]
+- **(rotel-visual)** resolve compilation errors — unclosed delimiters, shadowed identifiers - (96ecb94) - Claude Sonnet (coordinator)
+- **(rotel-visual)** address all review feedback from PR #65 - (e4baa7b) - copilot-swe-agent[bot]
+- **(sort)** add deterministic tx-id tie-break to apply_transaction_sort; add PRD handover doc - (af973b6) - Claude Sonnet (coordinator)
+- **(tauri)** functional panel UI with working navigation - (1655a66) - Claude Sonnet (coordinator)
+- **(tauri)** autorun with telemetry dump, 5s countdown then exit - (24067d4) - Claude Sonnet (coordinator)
+- **(tauri/evidence)** MECE review — 6 correctness, security and UX fixes - (719b165) - copilot-swe-agent[bot]
+- **(tauri/mece)** restore CSS, wire EvidenceState, fix dashboard command + XSS + auto-refresh - (efad326) - copilot-swe-agent[bot]
+- **(tauri/ui)** guard DASH_PANEL_INDEX != -1, use template literal for provider display - (3874f9f) - copilot-swe-agent[bot]
+- **(tests)** eliminate flaky sort test by using unique workbook paths per test - (46cbaa5) - Claude Sonnet (coordinator)
+- close 9 of 10 identified pipeline gaps (ops stubs, semantic matching) (#95) - (994b34c) - PromptExecution.com
+- address PR review feedback on ledgerr-focus and ledgerr-mcp - (b9a358c) - copilot-swe-agent[bot]
+- apply review feedback - doc comment, workbook headers, verify test - (5a44339) - copilot-swe-agent[bot]
+- apply reviewer feedback for lfmf-counter and ontology-extractor - (275a567) - copilot-swe-agent[bot]
+- RhaiDsl type errors in iso/iso_objects, merge conflict markers in iso.rs - (6554f0d) - Claude Sonnet (coordinator)
+#### Documentation
+- **(agents)** context exhaustion post-mortem + delegation rules - (3e509cc) - Claude Sonnet (coordinator)
+- **(release)** odd/even minor version policy + Justfile enforcement (#49) - (49c9ff7) - PromptExecution.com
+- session learning — force-push guard, generated panel pattern, evidence graph - (1800f14) - Claude Sonnet (coordinator)
+#### Features
+- **(cdp)** CDP automation harness, clean-build, test scripts - (9d095c6) - Claude Sonnet (coordinator)
+- **(cdp)** enable WebView2 remote debugging via env var - (9c74c1a) - Claude Sonnet (coordinator)
+- **(dashboard)** generated panels, b00t handshake, UI hardening (#81) - (1d8588f) - PromptExecution.com
+- **(evidence)** wire arc-kit-au evidence graph into MCP query tools - (b5adf44) - Claude Sonnet (coordinator)
+- **(holon-viz)** scaffold holonic viz engine + model server stub - (e34d982) - Claude Sonnet (coordinator)
+- **(ledgerr-mcp)** PRD-10 financial pipeline + MCP gaps #24 #25 #26 (#89) - (d5eb2e7) - PromptExecution.com
+- **(mdbook-rhai-mermaid)** expose parser and emitter as library - (74bf80a) - brianh
+- **(prd-6-future)** ledger-attest proc-macro crate — #[attested] lint skeleton (#59) (#94) - (5da2f0a) - PromptExecution.com
+- **(prd-7)** materialize AUDIT.log sheet — AuditRow, 9 columns, MetaFlag Display (#57) (#92) - (0539143) - PromptExecution.com
+- **(prd-7)** populate TransactionFacts from PipelineState doc_fields (#55) (#90) - (d624be4) - PromptExecution.com
+- **(prd-8)** Kani harness crate + CI — InvoiceConstraintSolver, VendorConstraintSet, CommitGate (#56) (#91) - (53debf5) - PromptExecution.com
+- **(prd9)** add docs UI scaffolding with isometric canvas and vite config - (27cf983) - Claude Sonnet (coordinator)
+- **(prd9)** add VizManifest/VizSpecOwned types and xtask export command - (41f251f) - Claude Sonnet (coordinator)
+- **(rotel)** OTel journal surface — embedded collector, log-shape classifier, visual dashboard - (bc1a8e1) - Brian H
+- **(rotel-visual)** end-to-end OTLP ingestion → classification → visualization pipeline - (be90a67) - Brian H
+- **(tauri)** baked build counter, release build + MSI install - (ecf928d) - Claude Sonnet (coordinator)
+- **(tauri)** test loop with monotonic build counter, DOM versioning - (ac86b41) - Claude Sonnet (coordinator)
+- **(tauri)** version titlebar with build counter from harness - (9b773e0) - Claude Sonnet (coordinator)
+- **(tauri)** local vision analysis with Florence-2-base - (853a193) - Claude Sonnet (coordinator)
+- **(tauri)** countdown footer, screenshot capture, full SLO trace - (1c7b8a2) - Claude Sonnet (coordinator)
+- **(tauri)** test harness with UUID signal path, 3x kill redundancy, SLO trace - (30b67fd) - Claude Sonnet (coordinator)
+- **(tauri)** merge host-tauri into ledgerr-host, replace Slint as desktop host - (e582b91) - Claude Sonnet (coordinator)
+- **(tauri)** rename binary to ledgrrr, install via MSI with admin elevation - (d28c0d2) - Claude Sonnet (coordinator)
+- **(tauri)** build script with pre-flight check, hash signing, datum TOML - (a8c23ae) - Claude Sonnet (coordinator)
+- **(tauri)** generated panels + EvidenceState dashboard - (13dd370) - Claude Sonnet (coordinator)
+- **(tauri)** surface EvidenceState/TodayQueue in Dashboard panel - (240d6b0) - Claude Sonnet (coordinator)
+- **(wrkflw)** add local docgen visualization pipeline test workflow - (e0652a1) - Claude Sonnet (coordinator)
+- ledgerr-focus FOCUS v1.3 crate, ledgerr_focus MCP tool, Dockerfile, workspace registration - (1573711) - brianh
+- checkpoint workspace core updates - (f82a938) - Brian H
+- add lfmf and ontology tooling - (54ca266) - Brian H
+#### Miscellaneous Chores
+- **(lockfile)** sync rotel-visual version to 1.8.1 - (ac40309) - brianh
+- **(rustfmt)** apply rustfmt across workspace - (a56ec94) - Claude Sonnet (coordinator)
+#### Performance Improvements
+- use sort_unstable_by in extract_rust_idioms - (63e3200) - copilot-swe-agent[bot]
+#### Refactoring
+- **(otel)** idiomatic abstractions, self-telemetry, SARIF SLO wiring - (76ea89d) - Brian H
+#### Tests
+- avoid persisting lfmf counters in doctests - (8f00edc) - Brian H
+
+- - -
+
 ## v1.8.1 - 2026-05-02
 #### Features
 - (**b00t-iface**) SARIF module enhancements and ralph stub - (27cabfa) - Claude Sonnet (coordinator), *Claude Sonnet 4.6*

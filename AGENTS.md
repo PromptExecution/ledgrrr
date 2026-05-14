@@ -529,6 +529,91 @@ Treat this as a standing operational gate, not a one-time migration task.
 > Profile not yet configured. Run `/gsd:profile-user` to generate your developer profile.
 > This section is managed by `generate-claude-profile` -- do not edit manually.
 <!-- GSD:profile-end -->
+### 2026-05-13: Context Exhaustion Post-Mortem — Delegation Failures
+
+#### What Went Wrong
+
+A long CI-gate + release session exhausted context without cutting a clean release. Root causes:
+
+**1. Inline CI polling instead of background agents**
+The coordinator polled `gh run view` in a loop directly in the main context, consuming thousands of tokens on raw JSON and step-by-step output. Every `gh run view --json jobs` call pulled multi-KB payloads that were parsed and printed inline.
+
+*Rule:* Any wait longer than one poll cycle must use `run_in_background: true` with an `until` loop, or delegate to a `general-purpose` subagent. Never poll CI inline more than twice in a single turn.
+
+**2. Long-running commands (cargo test, just release) run inline**
+`just release minor` runs `cargo test --all-features` which takes 12+ minutes. Running it synchronously blocks the main context for the entire duration.
+
+*Rule:* Any command that takes more than ~60 seconds must run with `run_in_background: true`. For release steps: delegate the entire release sequence (`just release minor`) to a `general-purpose` agent with the instruction to report pass/fail and the final git log.
+
+**3. Code exploration with grep/Read instead of codebase-memory-mcp**
+The coordinator used `grep -rn`, `cat`, `wc -l`, and `sed -n` to survey existing crates and find test failures. Each call returned raw source in context. The structural survey of `rotel-visual`, `iso.rs`, `visualize.rs`, `ontology.rs` alone consumed ~8K tokens that codebase-memory-mcp would have answered in ~200 tokens.
+
+*Rule:* NEVER use grep/Read/cat for structural queries (function defs, type shapes, callers, module structure). Use `codebase-memory-mcp` first. Use grep only for string literals and config values.
+
+**4. Scaffolding delegation without full agent isolation**
+New crate scaffolding (`holon-viz`, `ledgerr-model-server`) was delegated to `rust-craftsman` — good — but the coordinator then re-read the output inline (`ls`, `cargo check`) and loaded the results into context. The verification step should be inside the agent prompt itself.
+
+*Rule:* When delegating implementation to a subagent, include verification (`cargo check -p <crate>`) in the agent prompt. Trust the agent's completion report. Only inspect inline if the agent reports failure.
+
+**5. Test fix done inline instead of delegated**
+Diagnosing and fixing `collect_datum_files` + `test_query_transactions_applies_sorting` was done step by step in main context. Each `cargo test -p ... --all-features` run took 20-50s and dumped compiler output inline.
+
+*Rule:* Flaky or failing tests should be delegated to `rust-craftsman` with: (a) exact test name, (b) failure message, (c) file path and line number. The agent fixes and verifies. Report back.
+
+#### Correct Pattern for CI-Gate + Release Sessions
+
+```
+coordinator:
+  1. push branch → background (git push)
+  2. spawn general-purpose agent in background:
+       "poll gh run view <run_id> every 60s until conclusion != null.
+        report: conclusion, failing steps if any, run URL"
+  3. do other work (feature planning, scaffolding) in foreground
+  4. when agent reports CI green:
+       spawn general-purpose agent (foreground):
+         "on branch main: just release minor 2>&1
+          report: pass/fail, version tag created, git log --oneline -3"
+  5. switch to feature branch, continue work
+```
+
+Never hold CI polling or multi-minute compilations in the coordinator context.
+
+#### b00t Usage Rules
+
+- `b00t` is **alphaware** — treat as test scaffolding only. Never make it a production release gate.
+- Do NOT add `b00t` deps to release-critical paths (`ledgerr-mcp`, `ledger-core`, CI steps).
+- b00t will consume `holon-viz` downstream for visualization/test animation. Not the other way.
+- `_b00t_/datums` may not exist in all environments. Tests gated on `real_datums` feature must gracefully skip (return early) when the dir is absent — never `unwrap()`.
+
+#### Observer/Test Pattern for Viz UX (2026-05-13)
+
+Established design for testing the `holon-viz` Cytoscape.js rendering layer:
+
+```
+CytoscapeGraph (Rust) → HTML renderer → serve in Tauri WebView
+       ↓
+CDP screenshot (port 19222, scripts/tauri-cdp-test.ps1)
+       ↓
+scripts/tauri-vision-analyze.py --image <png>  (Florence-2-base via uv)
+       ↓
+VizObservation { caption, nodes_detected, edges_detected }
+       ↓
+assert!(observation.matches(&expected_holon_spec))
+```
+
+Two test tiers:
+- **Fast (no vision):** headless Cytoscape JSON round-trip via `chromiumoxide` — verify topology from serialized graph, not pixels. Inner loop.
+- **Slow (vision):** Florence-2-base screenshot analysis via CDP. Outer loop, requires Tauri host running. Triggered by `TAURI_TEST_SCREENSHOT_PATH` env var.
+
+Florence-2 script: `scripts/tauri-vision-analyze.py`. Uses `uv run` — no Python env setup required.
+
+#### Release Gate Status (2026-05-13)
+
+- v1.9.0 blocked by flaky `test_query_transactions_applies_sorting` + `test_query_transactions_deterministic_ordering` in `ledgerr-mcp/tests/query_transactions_tests.rs`. These pass in isolation but fail under full parallel `--all-features` run. Likely non-deterministic sort under concurrent ingest. Fix: add deterministic tie-break (e.g., tx_id as secondary sort key) in `TurboLedgerService::query_transactions`.
+- Feature branch `feat/holonic-viz-sysml-owl2-cytoscape` is ahead of main with `holon-viz` + `ledgerr-model-server` scaffolded and compiling.
+
+---
+
 ### 2026-05-09: PRD-10 Financial Pipeline Adversarial Agent Loop Session
 
 #### Non-Obvious Lessons Learned

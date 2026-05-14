@@ -601,7 +601,7 @@ fn apply_transaction_sort<'a>(
             let ord = a.1.description.cmp(&b.1.description);
             if sort_spec.direction == SortDirection::Desc { ord.reverse() } else { ord }
         }
-    });
+    }.then_with(|| a.0.cmp(&b.0)));
     
     transactions
 }
