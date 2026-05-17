@@ -9,9 +9,9 @@ fn test_app() -> axum::Router {
 
 #[tokio::test]
 async fn test_health_endpoint() {
-    let app = rotel_visual::create_app().expect("create_app failed");
+    let _app = rotel_visual::create_app().expect("create_app failed");
 
-    let response = app
+    let response = _app
         .oneshot(
             Request::builder()
                 .uri("/health")
@@ -26,9 +26,9 @@ async fn test_health_endpoint() {
 
 #[tokio::test]
 async fn test_dashboard_endpoint() {
-    let app = rotel_visual::create_app().expect("create_app failed");
+    let _app = rotel_visual::create_app().expect("create_app failed");
 
-    let response = app
+    let response = _app
         .oneshot(
             Request::builder()
                 .uri("/")
@@ -50,7 +50,7 @@ async fn test_dashboard_endpoint() {
 
 #[tokio::test]
 async fn test_otlp_logs_ingestion_accepts_json_and_returns_202() {
-    let app = rotel_visual::create_app().expect("create_app failed");
+    let _app = rotel_visual::create_app().expect("create_app failed");
 
     let body = json!({
         "resourceLogs": [
@@ -78,7 +78,7 @@ async fn test_otlp_logs_ingestion_accepts_json_and_returns_202() {
 
 #[tokio::test]
 async fn test_otlp_metrics_ingestion_accepts_json_and_returns_202() {
-    let app = rotel_visual::create_app().expect("create_app failed");
+    let _app = rotel_visual::create_app().expect("create_app failed");
 
     let body = json!({
         "resourceMetrics": [
@@ -106,7 +106,7 @@ async fn test_otlp_metrics_ingestion_accepts_json_and_returns_202() {
 
 #[tokio::test]
 async fn test_otlp_traces_ingestion_accepts_json_and_returns_202() {
-    let app = rotel_visual::create_app().expect("create_app failed");
+    let _app = rotel_visual::create_app().expect("create_app failed");
 
     let body = json!({
         "resourceSpans": [
@@ -134,9 +134,9 @@ async fn test_otlp_traces_ingestion_accepts_json_and_returns_202() {
 
 #[tokio::test]
 async fn test_otlp_logs_rejects_invalid_json_with_400() {
-    let app = rotel_visual::create_app().expect("create_app failed");
+    let _app = rotel_visual::create_app().expect("create_app failed");
 
-    let response = app
+    let response = _app
         .oneshot(
             Request::builder()
                 .uri("/v1/logs")
@@ -202,7 +202,7 @@ async fn test_classified_artifacts_are_accepted_via_otlp_logs() {
 async fn test_ring_buffer_populated_after_otlp_log_ingest() {
     // Verify that ingesting OTLP logs populates the ring buffer (returns 202).
     // Ring-buffer replay to new WebSocket subscribers requires a live server.
-    let app = rotel_visual::create_app().expect("create_app failed");
+    let _app = rotel_visual::create_app().expect("create_app failed");
 
     // Ingest a log to populate the ring buffer
     let body = json!({
@@ -282,7 +282,7 @@ async fn test_metrics_endpoint_increments_after_ingestion() {
         .await
         .unwrap();
     let baseline_json: serde_json::Value = serde_json::from_slice(&baseline_body).unwrap();
-    let baseline_logs = baseline_json["logs_ingested_total"].as_u64().unwrap();
+    let baseline_metrics = baseline_json["metrics_ingested_total"].as_u64().unwrap();
 
     // Ingest a metric — must include a named metric so the counter increments
     let body = json!({
@@ -291,7 +291,7 @@ async fn test_metrics_endpoint_increments_after_ingestion() {
                 "resource": { "attributes": [] },
                 "scopeMetrics": [
                     {
-                        "metrics": [{ "name": "test_counter" }]
+                        "metrics": [{ "name": "test_metric_1" }]
                     }
                 ]
             }
@@ -325,9 +325,9 @@ async fn test_metrics_endpoint_increments_after_ingestion() {
         .await
         .unwrap();
     let after_json: serde_json::Value = serde_json::from_slice(&after_body).unwrap();
-    let after_logs = after_json["metrics_ingested_total"].as_u64().unwrap();
+    let after_metrics = after_json["metrics_ingested_total"].as_u64().unwrap();
 
-    assert_eq!(after_logs, baseline_logs + 1);
+    assert_eq!(after_metrics, baseline_metrics + 1);
 }
 
 #[tokio::test]

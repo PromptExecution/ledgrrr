@@ -44,7 +44,7 @@ WORKDIR /app
 
 COPY --from=builder /app/target/release/ledgerr-mcp-server /usr/local/bin/ledgerr-mcp-server
 
-ENV LEDGER_WORKBOOK_PATH=/data/tax-ledger.xlsx
+ENV LEDGERR_WORKBOOK_PATH=/data/tax-ledger.xlsx
 ENV LEDGER_PDF_INBOX=/data/inbox
 
 CMD ["/usr/local/bin/ledgerr-mcp-server"]

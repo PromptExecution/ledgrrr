@@ -66,7 +66,7 @@ just mcp-podman-run main               # pull + run, mount $PWD/data:/data
 
 The container runs `/usr/local/bin/ledgerr-mcp-server` (stdio MCP transport).
 Mount `-v $PWD/data:/data` for workbook and PDF inbox.
-Env vars: `LEDGER_WORKBOOK_PATH`, `LEDGER_PDF_INBOX`.
+Env vars: `LEDGERR_WORKBOOK_PATH`, `LEDGER_PDF_INBOX`.
 
 ## Secrets Required (CI)
 

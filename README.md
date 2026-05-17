@@ -1,5 +1,7 @@
 # l3dg3rr
 
+> **Note on naming:** This project uses multiple names (`l3dg3rr`, `ledgerr-mcp`, `ledgrrr`, `ledg3rr`) depending on context. See [POLYSEME-MAP.md](docs/POLYSEME-MAP.md) for the mapping.
+
 [![CI](https://github.com/PromptExecution/l3dg3rr/actions/workflows/ci.yml/badge.svg)](https://github.com/PromptExecution/l3dg3rr/actions/workflows/ci.yml)
 [![Release](https://github.com/PromptExecution/l3dg3rr/actions/workflows/release.yml/badge.svg)](https://github.com/PromptExecution/l3dg3rr/actions/workflows/release.yml)
 [![Documentation](https://img.shields.io/badge/docs-github.io-blue)](https://promptexecution.github.io/l3dg3rr/)

@@ -2,6 +2,13 @@
 //!
 //! Actions: append_focus_record, query_focus_summary, compute_focus_delta, experiment_score.
 //! All actions accept JSON input and return JSON output via the MCP contract.
+//!
+//! # Persistence
+//! Focus records are persisted to a JSON file so they survive MCP server restarts.
+//! The file path is controlled by the `FOCUS_SIDECAR_PATH` env var (default:
+//! `~/.local/share/b00t/focus/focus_records.json`). On startup, existing records
+//! are loaded from this file. Every call to `handle_append` extends both the
+//! in-memory store AND the file (atomically via tmp+rename).
 
 use ledgerr_focus::{
     compute_focus_delta, format_focus_cli, ChargeCategory, ChargeFrequency, CostAndUsageRow,
@@ -11,6 +18,9 @@ use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FocusToolInput {
@@ -157,6 +167,113 @@ fn validate_focus_record(record: &FocusToolRecord) -> Result<(), String> {
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Persistence — focus records are saved to a JSON file so they survive server
+// restarts.  On first access the file is loaded into a global `Mutex`-guarded
+// Vec; every `handle_append` extends both the Vec and the file atomically.
+// ---------------------------------------------------------------------------
+
+/// Resolve the storage path from `FOCUS_SIDECAR_PATH` env var, falling back
+/// to `~/.local/share/b00t/focus/focus_records.json`.
+fn focus_records_path() -> PathBuf {
+    let raw = std::env::var("FOCUS_SIDECAR_PATH")
+        .unwrap_or_else(|_| "~/.local/share/b00t/focus/focus_records.json".to_string());
+    PathBuf::from(shellexpand::tilde(&raw).as_ref())
+}
+
+/// Global in-memory store. Loaded from disk on first use via
+/// [`initialize_store`]; extended by [`handle_append`].
+static FOCUS_RECORDS: Mutex<Vec<FocusToolRecord>> = Mutex::new(Vec::new());
+static FOCUS_LOADED: AtomicBool = AtomicBool::new(false);
+
+/// Lazily populate the global store from the JSON file on disk.
+/// Safe to call multiple times — only loads once.
+fn initialize_store() {
+    if FOCUS_LOADED.load(Ordering::Acquire) {
+        return;
+    }
+    let mut guard = FOCUS_RECORDS.lock().expect("focus records lock poisoned");
+    if !FOCUS_LOADED.load(Ordering::Acquire) {
+        let path = focus_records_path();
+        if path.exists() {
+            match std::fs::read_to_string(&path) {
+                Ok(content) => {
+                    match serde_json::from_str::<Vec<FocusToolRecord>>(&content) {
+                        Ok(records) => {
+                            *guard = records;
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                path = %path.display(),
+                                err = %e,
+                                "focus_records.json parse error — starting with empty store"
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        path = %path.display(),
+                        err = %e,
+                        "focus_records.json read error — starting with empty store"
+                    );
+                }
+            }
+        }
+        FOCUS_LOADED.store(true, Ordering::Release);
+    }
+}
+
+/// Atomically write the full record list to the JSON file.
+/// Uses a temporary sibling file + rename so a crash mid-write never
+/// leaves a truncated sidecar.
+fn save_records(records: &[FocusToolRecord]) {
+    let path = focus_records_path();
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            tracing::warn!(
+                path = %parent.display(),
+                err = %e,
+                "failed to create focus records directory"
+            );
+            return;
+        }
+    }
+    let json = match serde_json::to_string_pretty(records) {
+        Ok(j) => j,
+        Err(e) => {
+            tracing::warn!(err = %e, "focus records serialization failed");
+            return;
+        }
+    };
+    let tmp_path = path.with_extension("json.tmp");
+    if let Err(e) = std::fs::write(&tmp_path, &json) {
+        tracing::warn!(
+            path = %tmp_path.display(),
+            err = %e,
+            "focus records temp write failed"
+        );
+        return;
+    }
+    if let Err(e) = std::fs::rename(&tmp_path, &path) {
+        tracing::warn!(
+            from = %tmp_path.display(),
+            to = %path.display(),
+            err = %e,
+            "focus records rename failed"
+        );
+    }
+}
+
+/// Reset the global store (test helper).  Only available in `#[cfg(test)]`.
+#[cfg(test)]
+fn reset_store_for_test() {
+    if let Ok(mut guard) = FOCUS_RECORDS.lock() {
+        guard.clear();
+    }
+    FOCUS_LOADED.store(false, Ordering::Release);
+}
+
 fn handle_append(input: FocusToolInput) -> Result<FocusToolOutput, String> {
     // Validate all incoming records against the FOCUS v1.3 schema before processing
     for record in &input.records {
@@ -175,10 +292,20 @@ fn handle_append(input: FocusToolInput) -> Result<FocusToolOutput, String> {
         .collect::<Vec<_>>()
         .join("\n");
 
-    let summary = input
-        .experiment_id
-        .as_ref()
-        .map(|eid| format!("FOCUS {FOCUS_SPEC_VERSION}: {n} rows appended to experiment {eid}", n = rows.len()));
+    // Persist: extend the in-memory store AND write to the JSON file so records
+    // survive MCP server restarts.
+    initialize_store();
+    if let Ok(mut guard) = FOCUS_RECORDS.lock() {
+        guard.extend(input.records.clone());
+        save_records(&guard);
+    }
+
+    let summary = input.experiment_id.as_ref().map(|eid| {
+        format!(
+            "FOCUS {FOCUS_SPEC_VERSION}: {n} rows appended to experiment {eid}",
+            n = rows.len()
+        )
+    });
 
     Ok(FocusToolOutput {
         spec_version: FOCUS_SPEC_VERSION,
@@ -191,6 +318,17 @@ fn handle_append(input: FocusToolInput) -> Result<FocusToolOutput, String> {
 }
 
 fn handle_query_summary(_input: FocusToolInput) -> Result<FocusToolOutput, String> {
+    // Read from the persisted store to reflect all previously appended records.
+    initialize_store();
+    let (count, total_cost) = match FOCUS_RECORDS.lock() {
+        Ok(guard) => {
+            let c = guard.len();
+            let total: f64 = guard.iter().map(|r| r.billed_cost).sum();
+            (c, total)
+        }
+        Err(_) => (0, 0.0),
+    };
+
     Ok(FocusToolOutput {
         spec_version: FOCUS_SPEC_VERSION,
         action: "query_focus_summary".into(),
@@ -198,7 +336,7 @@ fn handle_query_summary(_input: FocusToolInput) -> Result<FocusToolOutput, Strin
         focus_cli: String::new(),
         delta: None,
         experiment_summary: Some(format!(
-            "FOCUS {FOCUS_SPEC_VERSION}: ledgerr-focus crate bound, ready for record ingestion"
+            "FOCUS {FOCUS_SPEC_VERSION}: {count} records stored, total billed cost: {total_cost:.2}"
         )),
     })
 }
@@ -282,6 +420,7 @@ mod tests {
 
     #[test]
     fn test_append_focus_record() {
+        reset_store_for_test();
         let input = FocusToolInput {
             action: "append_focus_record".into(),
             records: vec![make_record("control", 100.0)],
@@ -373,6 +512,12 @@ mod tests {
 
     #[test]
     fn test_query_summary() {
+        // Use a temp dir to avoid loading existing records from the default path
+        let tmp = tempfile::tempdir().unwrap();
+        let tmp_path = tmp.path().join("focus_records.json");
+        std::env::set_var("FOCUS_SIDECAR_PATH", tmp_path.to_str().unwrap());
+
+        reset_store_for_test();
         let input = FocusToolInput {
             action: "query_focus_summary".into(),
             records: vec![],
@@ -380,6 +525,63 @@ mod tests {
             personality: None,
         };
         let output = handle_focus_tool(input).unwrap();
-        assert!(output.experiment_summary.unwrap().contains("FOCUS"));
+        // With no appended records, summary should say "0 records stored"
+        let msg = output.experiment_summary.unwrap();
+        assert!(msg.contains("FOCUS"));
+        assert!(msg.contains("0 records stored"));
+    }
+
+    #[test]
+    fn test_persistence_round_trip() {
+        // Use a temp dir so test data doesn't pollute the real sidecar
+        let tmp = tempfile::tempdir().unwrap();
+        let tmp_path = tmp.path().join("focus_records.json");
+        std::env::set_var("FOCUS_SIDECAR_PATH", tmp_path.to_str().unwrap());
+
+        reset_store_for_test();
+
+        // Append a record
+        let append_input = FocusToolInput {
+            action: "append_focus_record".into(),
+            records: vec![make_record("control", 42.0)],
+            experiment_id: Some("exp-002".into()),
+            personality: None,
+        };
+        let append_output = handle_focus_tool(append_input).unwrap();
+        assert_eq!(append_output.rows_written, 1);
+
+        // Query summary — should see the appended record
+        let query_input = FocusToolInput {
+            action: "query_focus_summary".into(),
+            records: vec![],
+            experiment_id: None,
+            personality: None,
+        };
+        let query_output = handle_focus_tool(query_input).unwrap();
+        let msg = query_output.experiment_summary.unwrap();
+        assert!(msg.contains("1 records stored"));
+        assert!(msg.contains("42.00")); // total billed cost
+
+        // Append a second record
+        let append2_input = FocusToolInput {
+            action: "append_focus_record".into(),
+            records: vec![make_record("treatment", 58.0)],
+            experiment_id: Some("exp-002".into()),
+            personality: None,
+        };
+        let append2_output = handle_focus_tool(append2_input).unwrap();
+        assert_eq!(append2_output.rows_written, 1);
+
+        // Query again — should see both records
+        let query2_input = FocusToolInput {
+            action: "query_focus_summary".into(),
+            records: vec![],
+            experiment_id: None,
+            personality: None,
+        };
+        let query2_output = handle_focus_tool(query2_input).unwrap();
+        let msg2 = query2_output.experiment_summary.unwrap();
+        assert!(msg2.contains("2 records stored"));
+        assert!(msg2.contains("100.00")); // 42 + 58
     }
 }

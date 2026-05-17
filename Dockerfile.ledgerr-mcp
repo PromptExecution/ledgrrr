@@ -6,5 +6,5 @@ RUN cargo build --release -p ledgerr-mcp
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/ledgerr-mcp-server /usr/local/bin/ledgerr-mcp
-EXPOSE 8001
+# NOTE: No EXPOSE — this MCP server uses stdio transport, not TCP.
 ENTRYPOINT ["/usr/local/bin/ledgerr-mcp"]

@@ -26,7 +26,7 @@ pub mod gen;
 pub mod type_graph;
 
 pub use controller::{ProcessController, ProcessStep, TransitionReceipt};
-pub use cytoscape::{CytoscapeEdge, CytoscapeGraph, CytoscapeNode};
+pub use cytoscape::{CytoscapeEdge, CytoscapeEdgeData, CytoscapeGraph, CytoscapeNode, CytoscapeNodeData};
 pub use emitter::{Owl2Emitter, SysmlV2Emitter};
 pub use holon::{Holon, HolonKind};
 pub use log::{ActionKind, ActionRecord, ImmutableActionLog};
