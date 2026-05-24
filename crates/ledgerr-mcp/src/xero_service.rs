@@ -166,6 +166,7 @@ impl XeroService {
             entities.push(OntologyEntityInput {
                 kind: OntologyEntityKind::XeroContact,
                 attrs,
+                custom_kind: None,
             });
         }
 
@@ -177,6 +178,7 @@ impl XeroService {
             entities.push(OntologyEntityInput {
                 kind: OntologyEntityKind::XeroBankAccount,
                 attrs,
+                custom_kind: None,
             });
         }
 
@@ -188,11 +190,12 @@ impl XeroService {
             entities.push(OntologyEntityInput {
                 kind: OntologyEntityKind::Account,
                 attrs,
+                custom_kind: None,
             });
         }
 
         let inserted = store
-            .upsert_entities(entities)
+            .upsert_entities(entities, None)
             .map_err(|e| ToolError::Internal(e.to_string()))?
             .inserted_count;
 

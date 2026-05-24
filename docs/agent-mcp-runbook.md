@@ -6,7 +6,7 @@ Agent workflows must use `initialize`, `notifications/initialized`, `tools/list`
 
 ## Runtime Model
 
-The default published surface is the 8-tool catalog:
+The default published surface is the `ledgerr_*` catalog generated from `PUBLISHED_TOOLS`:
 
 - `ledgerr_documents`
 - `ledgerr_review`
@@ -18,6 +18,8 @@ The default published surface is the 8-tool catalog:
 - `ledgerr_xero`
 - `ledgerr_focus`
 - `ledgerr_evidence`
+- `ledgerr_schema`
+- `ledgerr_manifest`
 
 Each tool requires an `action` argument.
 

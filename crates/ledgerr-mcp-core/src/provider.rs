@@ -2,6 +2,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use serde_json::{json, Value};
 use thiserror::Error;
@@ -220,6 +221,166 @@ impl McpProvider for StdioMcpProvider {
     }
 }
 
+pub struct HttpMcpProvider {
+    name: String,
+    endpoint: String,
+    bearer_token: Option<String>,
+    client: reqwest::blocking::Client,
+    next_id: Arc<Mutex<u64>>,
+}
+
+impl HttpMcpProvider {
+    pub fn new(
+        name: impl Into<String>,
+        endpoint: impl Into<String>,
+        bearer_token: Option<String>,
+    ) -> ProviderResult<Self> {
+        let endpoint = normalize_mcp_endpoint(&endpoint.into());
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .map_err(|e| ProviderError::Io(e.to_string()))?;
+        Ok(Self {
+            name: name.into(),
+            endpoint,
+            bearer_token,
+            client,
+            next_id: Arc::new(Mutex::new(1)),
+        })
+    }
+
+    pub fn endpoint(&self) -> &str {
+        &self.endpoint
+    }
+
+    fn next_id(&self) -> u64 {
+        let mut id = self.next_id.lock().unwrap_or_else(|e| e.into_inner());
+        let curr = *id;
+        *id += 1;
+        curr
+    }
+
+    fn json_rpc(&self, method: &str, params: Option<Value>) -> ProviderResult<Value> {
+        let mut request = json!({
+            "jsonrpc": "2.0",
+            "id": self.next_id(),
+            "method": method,
+        });
+        if let Some(p) = params {
+            request["params"] = p;
+        }
+
+        let mut builder = self.client.post(&self.endpoint).json(&request);
+        if let Some(token) = self
+            .bearer_token
+            .as_deref()
+            .filter(|token| !token.is_empty())
+        {
+            builder = builder.bearer_auth(token);
+        }
+
+        let response = builder
+            .send()
+            .map_err(|e| ProviderError::Io(e.to_string()))?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(ProviderError::Protocol(format!(
+                "http status {} from {}",
+                status, self.endpoint
+            )));
+        }
+        let response: Value = response
+            .json()
+            .map_err(|e| ProviderError::Json(e.to_string()))?;
+        if let Some(error) = response.get("error") {
+            return Err(ProviderError::Protocol(format!(
+                "json-rpc error: {}",
+                error
+            )));
+        }
+        Ok(response["result"].clone())
+    }
+}
+
+impl McpProvider for HttpMcpProvider {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn initialize(&self) -> ProviderResult<ProviderInfo> {
+        let init_result = self.json_rpc(
+            "initialize",
+            Some(json!({
+                "protocolVersion": "2024-11-05",
+                "capabilities": {
+                    "tools": {},
+                    "prompts": {},
+                    "resources": {
+                        "subscribe": true,
+                        "listChanged": true
+                    }
+                },
+                "clientInfo": {
+                    "name": "ledgrrr",
+                    "version": env!("CARGO_PKG_VERSION")
+                }
+            })),
+        )?;
+        let version = init_result
+            .get("serverInfo")
+            .and_then(|v| v.get("version"))
+            .and_then(Value::as_str)
+            .unwrap_or("0.0.0")
+            .to_string();
+
+        self.json_rpc("notifications/initialized", None).ok();
+
+        let tools_result = self.json_rpc("tools/list", None)?;
+        let tools_arr = tools_result
+            .get("tools")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+
+        let tools = tools_arr
+            .into_iter()
+            .map(|t| ToolDescriptor {
+                name: t["name"].as_str().unwrap_or("unknown").to_string(),
+                input_schema: t.get("inputSchema").cloned().unwrap_or(json!({})),
+            })
+            .collect();
+
+        Ok(ProviderInfo {
+            name: self.name.clone(),
+            version,
+            tools,
+        })
+    }
+
+    fn call_tool(&self, name: &str, arguments: Value) -> ProviderResult<Value> {
+        self.json_rpc(
+            "tools/call",
+            Some(json!({
+                "name": name,
+                "arguments": arguments,
+            })),
+        )
+    }
+
+    fn shutdown(&self) {
+        let _ = self.json_rpc("shutdown", None);
+    }
+}
+
+pub fn normalize_mcp_endpoint(raw: &str) -> String {
+    let trimmed = raw.trim().trim_end_matches('/');
+    if trimmed.ends_with("/mcp") {
+        trimmed.to_string()
+    } else {
+        format!("{trimmed}/mcp")
+    }
+}
+
 pub type BoxedProvider = Arc<dyn McpProvider + 'static>;
 
 pub struct McpProviderRegistry {
@@ -369,9 +530,7 @@ pub mod mock {
 
         fn call_tool(&self, _name: &str, _arguments: Value) -> ProviderResult<Value> {
             self.call_count.fetch_add(1, Ordering::SeqCst);
-            self.call_result
-                .as_ref()
-                .map_err(|e| e.clone()).cloned()
+            self.call_result.as_ref().map_err(|e| e.clone()).cloned()
         }
 
         fn shutdown(&self) {}
@@ -382,6 +541,10 @@ pub mod mock {
 mod tests {
     use super::mock::MockProvider;
     use super::*;
+    use std::io::Read;
+    use std::net::{TcpListener, TcpStream};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::thread;
 
     #[test]
     fn test_mock_provider_initialize_ok() {
@@ -410,6 +573,155 @@ mod tests {
                 .load(std::sync::atomic::Ordering::SeqCst),
             1
         );
+    }
+
+    #[test]
+    fn test_normalize_mcp_endpoint_appends_mcp_once() {
+        assert_eq!(
+            normalize_mcp_endpoint("https://metadata.example.com"),
+            "https://metadata.example.com/mcp"
+        );
+        assert_eq!(
+            normalize_mcp_endpoint("https://metadata.example.com/mcp"),
+            "https://metadata.example.com/mcp"
+        );
+        assert_eq!(
+            normalize_mcp_endpoint("https://metadata.example.com/"),
+            "https://metadata.example.com/mcp"
+        );
+    }
+
+    #[test]
+    fn test_http_mcp_provider_against_local_reference_server() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local reference MCP server");
+        let endpoint = format!("http://{}/mcp", listener.local_addr().unwrap());
+        let request_count = Arc::new(AtomicUsize::new(0));
+        let request_count_for_server = Arc::clone(&request_count);
+
+        let server = thread::spawn(move || {
+            for stream in listener.incoming() {
+                let mut stream = stream.expect("accept local MCP request");
+                handle_reference_mcp_connection(&mut stream, &request_count_for_server);
+                if request_count_for_server.load(Ordering::SeqCst) >= 4 {
+                    break;
+                }
+            }
+        });
+
+        let provider =
+            HttpMcpProvider::new("reference", endpoint, Some("unit-token".to_string())).unwrap();
+        let info = provider.initialize().expect("initialize should succeed");
+        assert_eq!(info.version, "0.0.1-reference");
+        assert_eq!(info.tools[0].name, "search_metadata");
+
+        let result = provider
+            .call_tool("search_metadata", json!({"query": "orders"}))
+            .expect("tools/call should succeed");
+        assert_eq!(result["content"][0]["text"], "orders");
+
+        server.join().expect("reference MCP server should exit");
+        assert_eq!(request_count.load(Ordering::SeqCst), 4);
+    }
+
+    fn handle_reference_mcp_connection(stream: &mut TcpStream, request_count: &AtomicUsize) {
+        loop {
+            let Some((header, body)) = read_http_request(stream) else {
+                break;
+            };
+            assert!(
+                header
+                    .lines()
+                    .any(|line| line.eq_ignore_ascii_case("authorization: bearer unit-token")),
+                "reference server should receive bearer auth"
+            );
+            let request: Value = serde_json::from_slice(&body).expect("valid json-rpc request");
+            let method = request["method"].as_str().unwrap_or("");
+            let id = request.get("id").cloned().unwrap_or(Value::Null);
+            let current = request_count.fetch_add(1, Ordering::SeqCst) + 1;
+
+            let result = match method {
+                "initialize" => json!({
+                    "protocolVersion": "2024-11-05",
+                    "serverInfo": {
+                        "name": "reference-http-mcp",
+                        "version": "0.0.1-reference"
+                    }
+                }),
+                "notifications/initialized" => json!({}),
+                "tools/list" => json!({
+                    "tools": [{
+                        "name": "search_metadata",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "query": { "type": "string" }
+                            },
+                            "required": ["query"]
+                        }
+                    }]
+                }),
+                "tools/call" => {
+                    assert_eq!(
+                        request["params"]["name"], "search_metadata",
+                        "provider should pass the remote tool name"
+                    );
+                    assert_eq!(
+                        request["params"]["arguments"]["query"], "orders",
+                        "provider should pass tool arguments"
+                    );
+                    json!({"content": [{"type": "text", "text": "orders"}]})
+                }
+                other => panic!("unexpected json-rpc method: {other}"),
+            };
+            write_http_json(
+                stream,
+                &json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": result,
+                }),
+            );
+
+            if current >= 4 {
+                break;
+            }
+        }
+    }
+
+    fn read_http_request(stream: &mut TcpStream) -> Option<(String, Vec<u8>)> {
+        let mut header = Vec::new();
+        let mut buf = [0u8; 1];
+        while !header.ends_with(b"\r\n\r\n") {
+            if stream.read_exact(&mut buf).is_err() {
+                return None;
+            }
+            header.push(buf[0]);
+        }
+        let header = String::from_utf8(header).expect("http header should be utf8");
+        let content_length = header
+            .lines()
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.eq_ignore_ascii_case("content-length")
+                    .then(|| value.trim().parse::<usize>().ok())
+                    .flatten()
+            })
+            .expect("content-length header");
+        let mut body = vec![0u8; content_length];
+        stream.read_exact(&mut body).expect("read http body");
+        Some((header, body))
+    }
+
+    fn write_http_json(stream: &mut TcpStream, body: &Value) {
+        let body = serde_json::to_vec(body).expect("serialize response body");
+        write!(
+            stream,
+            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: keep-alive\r\n\r\n",
+            body.len()
+        )
+        .expect("write response header");
+        stream.write_all(&body).expect("write response body");
+        stream.flush().expect("flush response");
     }
 
     #[test]

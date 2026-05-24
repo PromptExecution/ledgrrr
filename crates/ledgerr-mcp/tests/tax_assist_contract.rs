@@ -33,16 +33,20 @@ fn seed_tax_ontology(
                 OntologyEntityInput {
                     kind: OntologyEntityKind::Document,
                     attrs: doc_attrs,
+                    custom_kind: None,
                 },
                 OntologyEntityInput {
                     kind: OntologyEntityKind::Transaction,
                     attrs: tx_attrs,
+                    custom_kind: None,
                 },
                 OntologyEntityInput {
                     kind: OntologyEntityKind::TaxCategory,
                     attrs: tax_attrs,
+                    custom_kind: None,
                 },
             ],
+            schema_store_path: None,
         })
         .expect("seed entities");
 

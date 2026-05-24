@@ -15,6 +15,10 @@ pub type OntologyEntityKind = ArtifactKind;
 pub struct OntologyEntityInput {
     pub kind: OntologyEntityKind,
     pub attrs: BTreeMap<String, String>,
+    /// If set, overrides `kind` for custom (non-built-in) entity types.
+    /// Only used when `kind` cannot represent the desired type.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_kind: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -30,6 +34,9 @@ pub struct OntologyEntity {
     pub id: String,
     pub kind: OntologyEntityKind,
     pub attrs: BTreeMap<String, String>,
+    /// If set, this entity uses a custom (non-built-in) kind name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_kind: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,6 +58,8 @@ pub struct OntologyStore {
 pub struct OntologyUpsertEntitiesRequest {
     pub ontology_path: std::path::PathBuf,
     pub entities: Vec<OntologyEntityInput>,
+    /// Optional path to a schema store JSON file for kind validation.
+    pub schema_store_path: Option<std::path::PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -137,15 +146,39 @@ impl OntologyStore {
     pub fn upsert_entities(
         &mut self,
         entities: Vec<OntologyEntityInput>,
+        schema_store: Option<&crate::schema::SchemaStore>,
     ) -> Result<OntologyUpsertEntitiesResponse, ToolError> {
         let mut inserted_count = 0usize;
         let mut entity_ids = Vec::with_capacity(entities.len());
 
+        for input in &entities {
+            // Determine the kind name to use (custom or built-in).
+            let kind_name = input
+                .custom_kind
+                .as_deref()
+                .unwrap_or_else(|| input.kind.canonical_name());
+
+            // If a SchemaStore is provided, validate that the kind is known.
+            if let Some(store) = schema_store {
+                if !store.is_known_kind(kind_name) {
+                    return Err(ToolError::InvalidInput(format!(
+                        "unknown entity kind '{kind_name}'. Use ledgerr_schema with register_kind action first."
+                    )));
+                }
+            }
+        }
+
         for input in entities {
+            // Determine the kind name to use (custom or built-in).
+            let kind_name = input
+                .custom_kind
+                .clone()
+                .unwrap_or_else(|| input.kind.canonical_name().to_string());
+
             let id = if let Some(user_id) = input.attrs.get("id") {
                 user_id.clone()
             } else {
-                entity_content_hash(input.kind, &input.attrs)
+                entity_content_hash_str(&kind_name, &input.attrs)
             };
             entity_ids.push(id.clone());
             if self.entities.iter().any(|existing| existing.id == id) {
@@ -156,6 +189,7 @@ impl OntologyStore {
                 id,
                 kind: input.kind,
                 attrs: input.attrs,
+                custom_kind: input.custom_kind,
             });
             inserted_count += 1;
         }
@@ -166,6 +200,17 @@ impl OntologyStore {
             inserted_count,
             entity_ids,
         })
+    }
+
+    /// Upsert entities with schema validation against a SchemaStore.
+    /// Custom kind entities are validated against the store; built-in kinds pass through.
+    /// Delegates to upsert_entities(entities, Some(schema_store)).
+    pub fn upsert_entities_with_schema(
+        &mut self,
+        entities: Vec<OntologyEntityInput>,
+        schema_store: &crate::schema::SchemaStore,
+    ) -> Result<OntologyUpsertEntitiesResponse, ToolError> {
+        self.upsert_entities(entities, Some(schema_store))
     }
 
     pub fn upsert_edges(
@@ -272,8 +317,17 @@ impl OntologyStore {
     }
 
     fn sort_deterministic(&mut self) {
-        self.entities
-            .sort_by(|a, b| (a.kind, &a.id).cmp(&(b.kind, &b.id)));
+        self.entities.sort_by(|a, b| {
+            let a_kind = a
+                .custom_kind
+                .as_deref()
+                .unwrap_or_else(|| a.kind.canonical_name());
+            let b_kind = b
+                .custom_kind
+                .as_deref()
+                .unwrap_or_else(|| b.kind.canonical_name());
+            (a_kind, &a.id).cmp(&(b_kind, &b.id))
+        });
         self.edges.sort_by(|a, b| {
             (&a.relation, &a.from, &a.to, &a.id).cmp(&(&b.relation, &b.from, &b.to, &b.id))
         });
@@ -282,6 +336,19 @@ impl OntologyStore {
 
 pub fn entity_content_hash(kind: OntologyEntityKind, attrs: &BTreeMap<String, String>) -> String {
     artifact_content_hash(kind, attrs)
+}
+
+/// Compute a deterministic content hash for an entity given its kind name as a string.
+/// Works for both built-in ArtifactKind names and custom kind names.
+pub fn entity_content_hash_str(kind_name: &str, attrs: &BTreeMap<String, String>) -> String {
+    let mut canonical = format!("entity|{kind_name}");
+    for (key, value) in attrs {
+        canonical.push('|');
+        canonical.push_str(key);
+        canonical.push('=');
+        canonical.push_str(value);
+    }
+    content_hash(&canonical)
 }
 
 pub fn edge_content_hash(

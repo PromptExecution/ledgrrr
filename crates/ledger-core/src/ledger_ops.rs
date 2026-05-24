@@ -970,6 +970,7 @@ impl LedgerOperation for CheckTaxDeadlineOp {
 }
 
 /// Ingest a PDF statement file via the external Python sidecar.
+///
 /// Spawns the sidecar subprocess (`reqif-opa-mcp ingest --file <path> --output ndjson`),
 /// reads NDJSON transaction candidates from stdout, runs the Rhai classification waterfall
 /// on each, and persists results to the workbook. Blake3 content-hash IDs ensure
@@ -1233,7 +1234,8 @@ impl LedgerOperation for PdfIngestOp {
             },
             duration_ms: 0,
             row_errors,
-        })    }
+        })
+    }
 }
 
 /// Gate classified transactions through AGT compliance before workbook commit.
@@ -1242,6 +1244,7 @@ impl LedgerOperation for PdfIngestOp {
 /// whether transactions should proceed to the workbook or be flagged for review.
 #[cfg(feature = "cedar-policy")]
 pub struct CedarGateOp;
+
 #[cfg(feature = "cedar-policy")]
 impl LedgerOperation for CedarGateOp {
     fn id(&self) -> &str {
@@ -1318,7 +1321,8 @@ impl LedgerOperation for CedarGateOp {
     fn execute(&self, ctx: &OperationContext) -> Result<OperationResult, LedgerOpError> {
         Ok(OperationResult::success(
             "cedar-gate",
-            ctx.classified_transactions.len(),        ))
+            ctx.classified_transactions.len(),
+        ))
     }
 }
 

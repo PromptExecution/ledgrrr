@@ -4,7 +4,7 @@ This file is generated from `crates/ledgerr-mcp/src/contract.rs`.
 
 Rust code is the only source of truth for the published MCP surface. If this file drifts from the contract module, tests should fail.
 
-The default catalog is intentionally small: 10 top-level `ledgerr_*` tools. Each tool uses a required `action` field so the major capability families stay visible while related operations are grouped under one top-level command.
+The default catalog is intentionally small: 12 top-level `ledgerr_*` tools. Each tool uses a required `action` field so the major capability families stay visible while related operations are grouped under one top-level command.
 
 ## Published MCP Tools
 
@@ -20,6 +20,8 @@ The default catalog is intentionally small: 10 top-level `ledgerr_*` tools. Each
 | `ledgerr_xero` | Xero accounting integration: contacts, accounts, bank accounts, entity linking | `get_auth_url`, `exchange_code`, `fetch_contacts`, `search_contacts`, `fetch_accounts`, `fetch_bank_accounts`, `fetch_invoices`, `link_entity`, `sync_catalog` |
 | `ledgerr_focus` | FOCUS (FinOps Cost Usage Spec) v1.3 cost/usage records, FocusDelta comparison, experiment scoring | `append_focus_record`, `query_focus_summary`, `compute_focus_delta`, `experiment_score` |
 | `ledgerr_evidence` | evidence traceability: provenance gaps, transaction lineage, review badges, graph summary and node queries | `provenance_gaps`, `trace_tx`, `summary`, `list_nodes`, `node_detail` |
+| `ledgerr_schema` | runtime schema extensibility: register, list, remove, and inspect custom entity kinds | `list_kinds`, `register_kind`, `remove_kind`, `get_kind` |
+| `ledgerr_manifest` | returns the full canonical viz-manifest: mapping of type IDs to their canonical Rhai DSL source strings | `get_manifest` |
 
 The concrete parser, action enums, field aliases, and JSON Schemas all live in [crates/ledgerr-mcp/src/contract.rs](../crates/ledgerr-mcp/src/contract.rs).
 
@@ -35,7 +37,7 @@ Canonical trait:
 [TurboLedgerTools in crates/ledgerr-mcp/src/lib.rs](../crates/ledgerr-mcp/src/lib.rs#L289)
 
 Important distinction:
-- The MCP surface is the 8-tool catalog defined in Rust.
+- The MCP surface is the published `ledgerr_*` catalog defined in Rust.
 - The internal service trait remains more granular and implementation-oriented.
 
 API layering:

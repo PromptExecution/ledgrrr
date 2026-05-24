@@ -23,19 +23,17 @@ use serde_json::{json, Value};
 
 use crate::{
     contract::{
-        self, AuditArgs, DocumentsArgs, EvidenceArgs, OntologyArgs, ReconciliationArgs, ReviewArgs,
-        TaxArgs, WorkflowArgs,
-        BatchClassifyRequest, BatchResolveFlagsRequest, ApplyMappingBulkRequest,
-        BatchItemStatus,
+        self, ApplyMappingBulkRequest, AuditArgs, BatchClassifyRequest, BatchItemStatus,
+        BatchResolveFlagsRequest, DocumentsArgs, EvidenceArgs, OntologyArgs, ReconciliationArgs,
+        ReviewArgs, TaxArgs, WorkflowArgs,
     },
-        FetchQueueRequest,
-        QueueItemType, QueueStatus,
     ClassifyIngestedRequest, ClassifyTransactionRequest, DocumentInventoryRequest,
-    DocumentQueueStatusRequest, EventHistoryFilter, ExportCpaWorkbookRequest, FlagStatusRequest,
-    GetRawContextRequest, GetScheduleSummaryRequest, HsmResumeRequest, HsmStatusRequest,
-    HsmTransitionRequest, IngestPdfRequest, IngestStatementRowsRequest, ListAccountsRequest,
-    OntologyExportSnapshotRequest, OntologyQueryPathRequest, OntologyUpsertEdgesRequest,
-    OntologyUpsertEntitiesRequest, QueryAuditLogRequest, QueryFlagsRequest, QueryTransactionsRequest,
+    DocumentQueueStatusRequest, EventHistoryFilter, ExportCpaWorkbookRequest, FetchQueueRequest,
+    FlagStatusRequest, GetRawContextRequest, GetScheduleSummaryRequest, HsmResumeRequest,
+    HsmStatusRequest, HsmTransitionRequest, IngestPdfRequest, IngestStatementRowsRequest,
+    ListAccountsRequest, OntologyExportSnapshotRequest, OntologyQueryPathRequest,
+    OntologyUpsertEdgesRequest, OntologyUpsertEntitiesRequest, QueryAuditLogRequest,
+    QueryFlagsRequest, QueryTransactionsRequest, QueueItemType, QueueStatus,
     ReconcileExcelClassificationRequest, ReconciliationStageRequest, ReplayLifecycleRequest,
     RunRhaiRuleRequest, SampleTxRequest, ScheduleKindRequest, TaxAmbiguityReviewRequest,
     TaxAssistRequest, TaxEvidenceChainRequest, ToolError, TurboLedgerService, TurboLedgerTools,
@@ -73,8 +71,8 @@ fn external_tool_descriptors() -> Vec<Value> {
 
 // Public re-exports are always available (they're just constants).
 pub use crate::contract::{
-    AUDIT_TOOL, DOCUMENTS_TOOL, EVIDENCE_TOOL, FOCUS_TOOL, ONTOLOGY_TOOL, RECONCILIATION_TOOL,
-    REVIEW_TOOL, TAX_TOOL, WORKFLOW_TOOL, XERO_TOOL,
+    AUDIT_TOOL, DOCUMENTS_TOOL, EVIDENCE_TOOL, FOCUS_TOOL, MANIFEST_TOOL, ONTOLOGY_TOOL,
+    RECONCILIATION_TOOL, REVIEW_TOOL, SCHEMA_TOOL, TAX_TOOL, WORKFLOW_TOOL, XERO_TOOL,
 };
 
 // ── Default dispatch ──────────────────────────────────────────────────────────
@@ -210,6 +208,22 @@ pub fn handle_focus_tool(arguments: &Value) -> Value {
     }
 }
 
+/// Handler for `ledgerr_manifest` — returns the full canonical viz-manifest.
+pub fn handle_manifest_tool(_arguments: &Value) -> Value {
+    let map = ledger_core::iso_objects::canonical_viz_dsl_map();
+    let entries: Vec<Value> = map
+        .into_iter()
+        .map(|(type_id, source)| json!({ "type_id": type_id, "rhai_dsl": source }))
+        .collect();
+    json!({
+        "content": [text_content(json!({
+            "manifest": entries,
+            "count": entries.len(),
+        }))],
+        "isError": false,
+    })
+}
+
 /// Hardcoded list of published tool names (always available).
 const BUILTIN_TOOL_NAMES: &[&str] = &[
     DOCUMENTS_TOOL,
@@ -222,6 +236,8 @@ const BUILTIN_TOOL_NAMES: &[&str] = &[
     XERO_TOOL,
     FOCUS_TOOL,
     EVIDENCE_TOOL,
+    SCHEMA_TOOL,
+    MANIFEST_TOOL,
 ];
 
 fn builtin_tool_input_schema(name: &str) -> Value {
@@ -295,16 +311,7 @@ pub fn tool_names_for(features: &[&str]) -> Vec<String> {
 
     let want_core = features.is_empty() || features.contains(&"core");
     if want_core {
-        tools.push(DOCUMENTS_TOOL.to_string());
-        tools.push(REVIEW_TOOL.to_string());
-        tools.push(RECONCILIATION_TOOL.to_string());
-        tools.push(WORKFLOW_TOOL.to_string());
-        tools.push(AUDIT_TOOL.to_string());
-        tools.push(TAX_TOOL.to_string());
-        tools.push(ONTOLOGY_TOOL.to_string());
-        tools.push(XERO_TOOL.to_string());
-        tools.push(EVIDENCE_TOOL.to_string());
-        tools.push(FOCUS_TOOL.to_string());
+        tools.extend(BUILTIN_TOOL_NAMES.iter().map(|s| s.to_string()));
     }
     if features.contains(&"classification") {
         tools.push(REVIEW_TOOL.to_string());
@@ -908,7 +915,11 @@ pub fn handle_review_tool(service: &TurboLedgerService, arguments: &Value) -> Va
                 "note": note,
             }),
         ),
-        ReviewArgs::QueryTransactions { filters, sort, pagination } => {
+        ReviewArgs::QueryTransactions {
+            filters,
+            sort,
+            pagination,
+        } => {
             match service.query_transactions(QueryTransactionsRequest {
                 filters,
                 sort,
@@ -924,24 +935,15 @@ pub fn handle_review_tool(service: &TurboLedgerService, arguments: &Value) -> Va
                 Err(err) => error_envelope(&err),
             }
         }
-        ReviewArgs::BatchClassify {
-            request,
-        } => handle_batch_classify(
-            service,
-            &json!({ "request": request }),
-        ),
-        ReviewArgs::BatchResolveFlags {
-            request,
-        } => handle_bulk_resolve_flags(
-            service,
-            &json!({ "request": request }),
-        ),
-        ReviewArgs::ApplyMappingBulk {
-            request,
-        } => handle_apply_mapping_bulk(
-            service,
-            &json!({ "request": request }),
-        ),
+        ReviewArgs::BatchClassify { request } => {
+            handle_batch_classify(service, &json!({ "request": request }))
+        }
+        ReviewArgs::BatchResolveFlags { request } => {
+            handle_bulk_resolve_flags(service, &json!({ "request": request }))
+        }
+        ReviewArgs::ApplyMappingBulk { request } => {
+            handle_apply_mapping_bulk(service, &json!({ "request": request }))
+        }
         ReviewArgs::FetchQueue { request } => handle_fetch_queue(
             service,
             &serde_json::json!({ "item_types": request.item_types, "statuses": request.statuses, "updated_after": request.updated_after, "limit": request.limit, "offset": request.offset }),
@@ -1167,11 +1169,13 @@ pub fn handle_ontology_tool(service: &TurboLedgerService, arguments: &Value) -> 
         ),
         OntologyArgs::UpsertEntities {
             ontology_path,
+            schema_store_path,
             entities,
         } => handle_ontology_upsert_entities(
             service,
             &json!({
                 "ontology_path": ontology_path,
+                "schema_store_path": schema_store_path,
                 "entities": entities,
             }),
         ),
@@ -1185,6 +1189,102 @@ pub fn handle_ontology_tool(service: &TurboLedgerService, arguments: &Value) -> 
                 "edges": edges,
             }),
         ),
+    }
+}
+
+#[cfg(feature = "legacy")]
+pub fn handle_schema_tool(_service: &TurboLedgerService, arguments: &Value) -> Value {
+    let request = match contract::parse_schema(arguments) {
+        Ok(request) => request,
+        Err(err) => return error_envelope(&err),
+    };
+
+    match request {
+        contract::SchemaArgs::ListKinds { schema_path } => {
+            match crate::schema::SchemaStore::load(&schema_path) {
+                Ok(store) => {
+                    let kinds = store.list_kinds();
+                    json!({
+                        "content": [text_content(json!(kinds))],
+                        "isError": false
+                    })
+                }
+                Err(err) => error_envelope(&err),
+            }
+        }
+        contract::SchemaArgs::RegisterKind {
+            schema_path,
+            name,
+            description,
+            attrs_schema,
+        } => {
+            let mut store = match crate::schema::SchemaStore::load(&schema_path) {
+                Ok(s) => s,
+                Err(err) => return error_envelope(&err),
+            };
+            match store.register_kind(&name, &description, attrs_schema) {
+                Ok(()) => {
+                    if let Err(err) = store.persist(&schema_path) {
+                        return error_envelope(&err);
+                    }
+                    json!({
+                        "content": [text_content(json!({
+                            "status": "ok",
+                            "kind": name,
+                            "message": format!("registered custom kind '{}'", name)
+                        }))],
+                        "isError": false
+                    })
+                }
+                Err(err) => error_envelope(&err),
+            }
+        }
+        contract::SchemaArgs::RemoveKind { schema_path, name } => {
+            let mut store = match crate::schema::SchemaStore::load(&schema_path) {
+                Ok(s) => s,
+                Err(err) => return error_envelope(&err),
+            };
+            match store.remove_kind(&name) {
+                Ok(()) => {
+                    if let Err(err) = store.persist(&schema_path) {
+                        return error_envelope(&err);
+                    }
+                    json!({
+                        "content": [text_content(json!({
+                            "status": "ok",
+                            "message": format!("removed custom kind '{}'", name)
+                        }))],
+                        "isError": false
+                    })
+                }
+                Err(err) => error_envelope(&err),
+            }
+        }
+        contract::SchemaArgs::GetKind { schema_path, name } => {
+            match crate::schema::SchemaStore::load(&schema_path) {
+                Ok(store) => match store.get_kind(&name) {
+                    Some(crate::schema::KindInfo::BuiltIn(n)) => {
+                        json!({
+                            "content": [text_content(json!({
+                                "name": n,
+                                "category": "built_in"
+                            }))],
+                            "isError": false
+                        })
+                    }
+                    Some(crate::schema::KindInfo::Custom(custom)) => {
+                        json!({
+                            "content": [text_content(json!(custom))],
+                            "isError": false
+                        })
+                    }
+                    None => {
+                        error_envelope(&ToolError::InvalidInput(format!("unknown kind '{}'", name)))
+                    }
+                },
+                Err(err) => error_envelope(&err),
+            }
+        }
     }
 }
 
@@ -1906,36 +2006,49 @@ pub fn handle_reconcile_excel_classification(
 pub fn handle_batch_classify(service: &TurboLedgerService, arguments: &Value) -> Value {
     let request_obj = match arguments.get("request") {
         Some(req) => req,
-        None => return error_envelope(&ToolError::InvalidInput("missing 'request' field".to_string())),
+        None => {
+            return error_envelope(&ToolError::InvalidInput(
+                "missing 'request' field".to_string(),
+            ))
+        }
     };
-    
+
     let request = match serde_json::from_value::<BatchClassifyRequest>(request_obj.clone()) {
         Ok(req) => req,
-        Err(err) => return error_envelope(&ToolError::InvalidInput(format!("invalid BatchClassifyRequest: {}", err))),
+        Err(err) => {
+            return error_envelope(&ToolError::InvalidInput(format!(
+                "invalid BatchClassifyRequest: {}",
+                err
+            )))
+        }
     };
 
     match service.batch_classify(request) {
         Ok(response) => {
-            let items_json: Vec<Value> = response.items
+            let items_json: Vec<Value> = response
+                .items
                 .into_iter()
                 .map(|item| {
-                    let audit_entries_json: Vec<Value> = item.audit_entries
+                    let audit_entries_json: Vec<Value> = item
+                        .audit_entries
                         .into_iter()
-                        .map(|e| json!({
-                            "timestamp": e.timestamp,
-                            "actor": e.actor,
-                            "tx_id": e.tx_id,
-                            "field": e.field,
-                            "old_value": e.old_value,
-                            "new_value": e.new_value,
-                            "note": e.note,
-                        }))
+                        .map(|e| {
+                            json!({
+                                "timestamp": e.timestamp,
+                                "actor": e.actor,
+                                "tx_id": e.tx_id,
+                                "field": e.field,
+                                "old_value": e.old_value,
+                                "new_value": e.new_value,
+                                "note": e.note,
+                            })
+                        })
                         .collect();
-                    
+
                     {
                         let mut obj = serde_json::Map::new();
                         obj.insert("tx_id".to_string(), json!(item.tx_id));
-                        
+
                         match item.status {
                             BatchItemStatus::Succeeded => {
                                 obj.insert("status".to_string(), json!("succeeded"));
@@ -1949,13 +2062,13 @@ pub fn handle_batch_classify(service: &TurboLedgerService, arguments: &Value) ->
                                 obj.insert("reason".to_string(), json!(reason));
                             }
                         }
-                        
+
                         obj.insert("audit_entries".to_string(), json!(audit_entries_json));
                         json!(obj)
                     }
                 })
                 .collect();
-            
+
             json!({
                 "content": [text_content(json!({
                     "summary": {
@@ -1977,36 +2090,49 @@ pub fn handle_batch_classify(service: &TurboLedgerService, arguments: &Value) ->
 pub fn handle_bulk_resolve_flags(service: &TurboLedgerService, arguments: &Value) -> Value {
     let request_obj = match arguments.get("request") {
         Some(req) => req,
-        None => return error_envelope(&ToolError::InvalidInput("missing 'request' field".to_string())),
+        None => {
+            return error_envelope(&ToolError::InvalidInput(
+                "missing 'request' field".to_string(),
+            ))
+        }
     };
-    
+
     let request = match serde_json::from_value::<BatchResolveFlagsRequest>(request_obj.clone()) {
         Ok(req) => req,
-        Err(err) => return error_envelope(&ToolError::InvalidInput(format!("invalid BatchResolveFlagsRequest: {}", err))),
+        Err(err) => {
+            return error_envelope(&ToolError::InvalidInput(format!(
+                "invalid BatchResolveFlagsRequest: {}",
+                err
+            )))
+        }
     };
 
     match service.bulk_resolve_flags(request) {
         Ok(response) => {
-            let items_json: Vec<Value> = response.items
+            let items_json: Vec<Value> = response
+                .items
                 .into_iter()
                 .map(|item| {
-                    let audit_entries_json: Vec<Value> = item.audit_entries
+                    let audit_entries_json: Vec<Value> = item
+                        .audit_entries
                         .into_iter()
-                        .map(|e| json!({
-                            "timestamp": e.timestamp,
-                            "actor": e.actor,
-                            "tx_id": e.tx_id,
-                            "field": e.field,
-                            "old_value": e.old_value,
-                            "new_value": e.new_value,
-                            "note": e.note,
-                        }))
+                        .map(|e| {
+                            json!({
+                                "timestamp": e.timestamp,
+                                "actor": e.actor,
+                                "tx_id": e.tx_id,
+                                "field": e.field,
+                                "old_value": e.old_value,
+                                "new_value": e.new_value,
+                                "note": e.note,
+                            })
+                        })
                         .collect();
-                    
+
                     {
                         let mut obj = serde_json::Map::new();
                         obj.insert("tx_id".to_string(), json!(item.tx_id));
-                        
+
                         match item.status {
                             BatchItemStatus::Succeeded => {
                                 obj.insert("status".to_string(), json!("succeeded"));
@@ -2020,13 +2146,13 @@ pub fn handle_bulk_resolve_flags(service: &TurboLedgerService, arguments: &Value
                                 obj.insert("reason".to_string(), json!(reason));
                             }
                         }
-                        
+
                         obj.insert("audit_entries".to_string(), json!(audit_entries_json));
                         json!(obj)
                     }
                 })
                 .collect();
-            
+
             json!({
                 "content": [text_content(json!({
                     "summary": {
@@ -2048,36 +2174,49 @@ pub fn handle_bulk_resolve_flags(service: &TurboLedgerService, arguments: &Value
 pub fn handle_apply_mapping_bulk(service: &TurboLedgerService, arguments: &Value) -> Value {
     let request_obj = match arguments.get("request") {
         Some(req) => req,
-        None => return error_envelope(&ToolError::InvalidInput("missing 'request' field".to_string())),
+        None => {
+            return error_envelope(&ToolError::InvalidInput(
+                "missing 'request' field".to_string(),
+            ))
+        }
     };
-    
+
     let request = match serde_json::from_value::<ApplyMappingBulkRequest>(request_obj.clone()) {
         Ok(req) => req,
-        Err(err) => return error_envelope(&ToolError::InvalidInput(format!("invalid ApplyMappingBulkRequest: {}", err))),
+        Err(err) => {
+            return error_envelope(&ToolError::InvalidInput(format!(
+                "invalid ApplyMappingBulkRequest: {}",
+                err
+            )))
+        }
     };
 
     match service.apply_mapping_bulk(request) {
         Ok(response) => {
-            let items_json: Vec<Value> = response.items
+            let items_json: Vec<Value> = response
+                .items
                 .into_iter()
                 .map(|item| {
-                    let audit_entries_json: Vec<Value> = item.audit_entries
+                    let audit_entries_json: Vec<Value> = item
+                        .audit_entries
                         .into_iter()
-                        .map(|e| json!({
-                            "timestamp": e.timestamp,
-                            "actor": e.actor,
-                            "tx_id": e.tx_id,
-                            "field": e.field,
-                            "old_value": e.old_value,
-                            "new_value": e.new_value,
-                            "note": e.note,
-                        }))
+                        .map(|e| {
+                            json!({
+                                "timestamp": e.timestamp,
+                                "actor": e.actor,
+                                "tx_id": e.tx_id,
+                                "field": e.field,
+                                "old_value": e.old_value,
+                                "new_value": e.new_value,
+                                "note": e.note,
+                            })
+                        })
                         .collect();
-                    
+
                     {
                         let mut obj = serde_json::Map::new();
                         obj.insert("tx_id".to_string(), json!(item.tx_id));
-                        
+
                         match item.status {
                             BatchItemStatus::Succeeded => {
                                 obj.insert("status".to_string(), json!("succeeded"));
@@ -2091,13 +2230,13 @@ pub fn handle_apply_mapping_bulk(service: &TurboLedgerService, arguments: &Value
                                 obj.insert("reason".to_string(), json!(reason));
                             }
                         }
-                        
+
                         obj.insert("audit_entries".to_string(), json!(audit_entries_json));
                         json!(obj)
                     }
                 })
                 .collect();
-            
+
             json!({
                 "content": [text_content(json!({
                     "classification_summary": {
@@ -2181,11 +2320,8 @@ fn parse_fetch_queue_request(arguments: &Value) -> Result<FetchQueueRequest, Too
         .get("limit")
         .and_then(Value::as_u64)
         .unwrap_or(100) as usize;
-    let offset = arguments
-        .get("offset")
-        .and_then(Value::as_u64)
-        .unwrap_or(0) as usize;
-    
+    let offset = arguments.get("offset").and_then(Value::as_u64).unwrap_or(0) as usize;
+
     Ok(FetchQueueRequest {
         item_types,
         statuses,
@@ -2196,16 +2332,21 @@ fn parse_fetch_queue_request(arguments: &Value) -> Result<FetchQueueRequest, Too
 }
 
 /// Parse optional queue item types array
-fn parse_optional_queue_item_types(value: Option<&Value>) -> Result<Option<Vec<QueueItemType>>, ToolError> {
+fn parse_optional_queue_item_types(
+    value: Option<&Value>,
+) -> Result<Option<Vec<QueueItemType>>, ToolError> {
     match value {
         None => Ok(None),
         Some(v) => {
-            let items = v.as_array()
-                .ok_or_else(|| ToolError::InvalidInput("item_types must be an array".to_string()))?;
-            let result = items.iter()
+            let items = v.as_array().ok_or_else(|| {
+                ToolError::InvalidInput("item_types must be an array".to_string())
+            })?;
+            let result = items
+                .iter()
                 .map(|item| {
-                    let s = item.as_str()
-                        .ok_or_else(|| ToolError::InvalidInput("item_types must contain strings".to_string()))?;
+                    let s = item.as_str().ok_or_else(|| {
+                        ToolError::InvalidInput("item_types must contain strings".to_string())
+                    })?;
                     match s {
                         "flag" => Ok(QueueItemType::Flag),
                         "ambiguity" => Ok(QueueItemType::Ambiguity),
@@ -2222,16 +2363,21 @@ fn parse_optional_queue_item_types(value: Option<&Value>) -> Result<Option<Vec<Q
 }
 
 /// Parse optional queue statuses array
-fn parse_optional_queue_statuses(value: Option<&Value>) -> Result<Option<Vec<QueueStatus>>, ToolError> {
+fn parse_optional_queue_statuses(
+    value: Option<&Value>,
+) -> Result<Option<Vec<QueueStatus>>, ToolError> {
     match value {
         None => Ok(None),
         Some(v) => {
-            let items = v.as_array()
+            let items = v
+                .as_array()
                 .ok_or_else(|| ToolError::InvalidInput("statuses must be an array".to_string()))?;
-            let result = items.iter()
+            let result = items
+                .iter()
                 .map(|item| {
-                    let s = item.as_str()
-                        .ok_or_else(|| ToolError::InvalidInput("statuses must contain strings".to_string()))?;
+                    let s = item.as_str().ok_or_else(|| {
+                        ToolError::InvalidInput("statuses must contain strings".to_string())
+                    })?;
                     match s {
                         "open" => Ok(QueueStatus::Open),
                         "in_progress" => Ok(QueueStatus::InProgress),
@@ -2256,21 +2402,25 @@ pub fn handle_fetch_queue(service: &TurboLedgerService, arguments: &Value) -> Va
 
     match service.fetch_work_queue(request) {
         Ok(response) => {
-            let items = response.items.into_iter().map(|item| {
-                json!({
-                    "id": item.id,
-                    "item_type": item.item_type,
-                    "severity": item.severity,
-                    "created_at": item.created_at,
-                    "status": item.status,
-                    "provenance": item.provenance,
-                    "related_tx_ids": item.related_tx_ids,
-                    "summary": item.summary,
-                    "tx_id": item.tx_id,
-                    "document_ref": item.document_ref,
-                    "metadata": item.metadata,
+            let items = response
+                .items
+                .into_iter()
+                .map(|item| {
+                    json!({
+                        "id": item.id,
+                        "item_type": item.item_type,
+                        "severity": item.severity,
+                        "created_at": item.created_at,
+                        "status": item.status,
+                        "provenance": item.provenance,
+                        "related_tx_ids": item.related_tx_ids,
+                        "summary": item.summary,
+                        "tx_id": item.tx_id,
+                        "document_ref": item.document_ref,
+                        "metadata": item.metadata,
+                    })
                 })
-            }).collect::<Vec<_>>();
+                .collect::<Vec<_>>();
 
             json!({
                 "content": [text_content(json!({
@@ -2768,15 +2918,32 @@ fn parse_ontology_upsert_entities_request(
             }
             if let Some(obj) = e.get("properties").and_then(Value::as_object) {
                 for (k, v) in obj {
-                    attrs.insert(k.clone(), v.to_string());
+                    let value = v
+                        .as_str()
+                        .map(str::to_string)
+                        .unwrap_or_else(|| v.to_string());
+                    attrs.insert(k.clone(), value);
                 }
             }
-            Ok::<crate::OntologyEntityInput, ToolError>(crate::OntologyEntityInput { kind, attrs })
+            let custom_kind = e
+                .get("custom_kind")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            Ok::<crate::OntologyEntityInput, ToolError>(crate::OntologyEntityInput {
+                kind,
+                attrs,
+                custom_kind,
+            })
         })
         .collect::<Result<Vec<_>, _>>()?;
+    let schema_store_path = arguments
+        .get("schema_store_path")
+        .and_then(Value::as_str)
+        .map(PathBuf::from);
     Ok(OntologyUpsertEntitiesRequest {
         ontology_path,
         entities,
+        schema_store_path,
     })
 }
 
