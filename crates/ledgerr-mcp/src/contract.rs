@@ -8,7 +8,7 @@
 //! - Drift between parser, schema, and docs is a bug and should fail tests.
 //!
 //! Hidden compatibility aliases may continue to parse legacy shapes elsewhere,
-//! but the advertised 10-tool catalog must stay defined here.
+//! but the advertised tool catalog must stay defined here.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -20,8 +20,8 @@ use schemars::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::ToolError;
 use crate::AuditEntryResponse;
+use crate::ToolError;
 
 pub const DOCUMENTS_TOOL: &str = "ledgerr_documents";
 pub const REVIEW_TOOL: &str = "ledgerr_review";
@@ -35,6 +35,8 @@ pub const FOCUS_TOOL: &str = "ledgerr_focus";
 pub const EVIDENCE_TOOL: &str = "ledgerr_evidence";
 pub const CALENDAR_TOOL: &str = "list_calendar_events";
 pub const SHAPE_TOOL: &str = "get_document_shape";
+pub const SCHEMA_TOOL: &str = "ledgerr_schema";
+pub const MANIFEST_TOOL: &str = "ledgerr_manifest";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolContractSpec {
@@ -56,9 +58,11 @@ pub const TOOL_REGISTRY: &[&str] = &[
     EVIDENCE_TOOL,
     CALENDAR_TOOL,
     SHAPE_TOOL,
+    SCHEMA_TOOL,
+    MANIFEST_TOOL,
 ];
 
-pub const PUBLISHED_TOOLS: [ToolContractSpec; 10] = [
+pub const PUBLISHED_TOOLS: [ToolContractSpec; 12] = [
     ToolContractSpec {
         name: DOCUMENTS_TOOL,
         purpose: "document intake (PDF, image, CSV), tagging, filesystem metadata sync",
@@ -165,6 +169,21 @@ pub const PUBLISHED_TOOLS: [ToolContractSpec; 10] = [
             "list_nodes",
             "node_detail",
         ],
+    },
+    ToolContractSpec {
+        name: SCHEMA_TOOL,
+        purpose: "runtime schema extensibility: register, list, remove, and inspect custom entity kinds",
+        actions: &[
+            "list_kinds",
+            "register_kind",
+            "remove_kind",
+            "get_kind",
+        ],
+    },
+    ToolContractSpec {
+        name: MANIFEST_TOOL,
+        purpose: "returns the full canonical viz-manifest: mapping of type IDs to their canonical Rhai DSL source strings",
+        actions: &["get_manifest"],
     },
 ];
 
@@ -360,6 +379,8 @@ pub enum OntologyEntityKindInput {
 #[serde(deny_unknown_fields)]
 pub struct OntologyEntityInput {
     pub kind: OntologyEntityKindInput,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_kind: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -631,6 +652,8 @@ pub enum OntologyArgs {
     },
     UpsertEntities {
         ontology_path: PathBuf,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        schema_store_path: Option<PathBuf>,
         entities: Vec<OntologyEntityInput>,
     },
     UpsertEdges {
@@ -747,9 +770,7 @@ pub enum EvidenceArgs {
     #[serde(rename = "provenance_gaps")]
     ProvenanceGaps,
     #[serde(rename = "trace_tx")]
-    TraceTx {
-        tx_id: String,
-    },
+    TraceTx { tx_id: String },
     #[serde(rename = "summary")]
     Summary,
     #[serde(rename = "list_nodes")]
@@ -758,12 +779,51 @@ pub enum EvidenceArgs {
         node_type: Option<String>,
     },
     #[serde(rename = "node_detail")]
-    NodeDetail {
-        node_id: String,
-    },
+    NodeDetail { node_id: String },
 }
 
 pub fn parse_evidence(arguments: &Value) -> Result<EvidenceArgs, ToolError> {
+    parse_args(arguments)
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "action", deny_unknown_fields)]
+pub enum SchemaArgs {
+    #[serde(rename = "list_kinds")]
+    ListKinds {
+        /// Path to the schema store JSON file.
+        schema_path: PathBuf,
+    },
+    #[serde(rename = "register_kind")]
+    RegisterKind {
+        /// Path to the schema store JSON file.
+        schema_path: PathBuf,
+        /// Name for the new custom kind (must not already exist as built-in or custom).
+        name: String,
+        /// Optional human-readable description.
+        #[serde(default)]
+        description: String,
+        /// Optional key-value map for attribute type hints (e.g. {"amount": "decimal"}).
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        attrs_schema: BTreeMap<String, String>,
+    },
+    #[serde(rename = "remove_kind")]
+    RemoveKind {
+        /// Path to the schema store JSON file.
+        schema_path: PathBuf,
+        /// Name of the custom kind to remove.
+        name: String,
+    },
+    #[serde(rename = "get_kind")]
+    GetKind {
+        /// Path to the schema store JSON file.
+        schema_path: PathBuf,
+        /// Name of the kind to inspect (built-in or custom).
+        name: String,
+    },
+}
+
+pub fn parse_schema(arguments: &Value) -> Result<SchemaArgs, ToolError> {
     parse_args(arguments)
 }
 
@@ -787,6 +847,7 @@ pub fn tool_input_schema(name: &str) -> Value {
         XERO_TOOL => root_schema_to_value(schema_for!(XeroArgs)),
         FOCUS_TOOL => root_schema_to_value(schema_for!(FocusArgs)),
         EVIDENCE_TOOL => root_schema_to_value(schema_for!(EvidenceArgs)),
+        SCHEMA_TOOL => root_schema_to_value(schema_for!(SchemaArgs)),
         _ => json!({ "type": "object" }),
     }
 }
@@ -952,7 +1013,7 @@ The server still accepts older `l3dg3rr_*` and proxy-style call names as hidden 
     doc.push_str(
         "## Internal Service API\n\n\
 Canonical trait:\n[TurboLedgerTools in crates/ledgerr-mcp/src/lib.rs](../crates/ledgerr-mcp/src/lib.rs#L289)\n\n\
-Important distinction:\n- The MCP surface is the 8-tool catalog defined in Rust.\n- The internal service trait remains more granular and implementation-oriented.\n\n\
+Important distinction:\n- The MCP surface is the published `ledgerr_*` catalog defined in Rust.\n- The internal service trait remains more granular and implementation-oriented.\n\n\
 API layering:\n1. `ledgerr-mcp-server` (stdio transport)\n2. `contract` (published tool families, action enums, generated schema/doc artifacts)\n3. `mcp_adapter` (dispatch + envelope shaping)\n4. `TurboLedgerService` (domain logic, guardrails, state/event/HSM ops)\n5. `ledger-core` (ingest, filename validation, classification primitives)\n\n",
     );
     doc.push_str("## Example Flow\n\n");
@@ -995,7 +1056,7 @@ pub fn generated_agent_runbook_markdown() -> String {
 This file is generated from `crates/ledgerr-mcp/src/contract.rs`.\n\n\
 Agent workflows must use `initialize`, `notifications/initialized`, `tools/list`, and `tools/call` over stdio.\n\n\
 ## Runtime Model\n\n\
-The default published surface is the 8-tool catalog:\n\n{}\n\
+The default published surface is the `ledgerr_*` catalog generated from `PUBLISHED_TOOLS`:\n\n{}\n\
 Each tool requires an `action` argument.\n\n\
 ## Bootstrap\n\n\
 From repo root:\n\n```bash\ncargo build -p ledgerr-mcp --bin ledgerr-mcp-server\n```\n\n\
@@ -1354,7 +1415,6 @@ pub enum BatchItemStatus {
     },
 }
 
-
 /// ============================================================================
 /// WORK QUEUE CONTRACT (Unified work items from multiple sources)
 /// ============================================================================
@@ -1376,7 +1436,9 @@ pub enum QueueItemType {
 }
 
 /// Severity level of a work queue item
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum QueueSeverity {
     /// Resolved or informational items
@@ -1488,4 +1550,3 @@ pub struct FetchQueueResponse {
     /// Limit used in query
     pub limit: u32,
 }
-

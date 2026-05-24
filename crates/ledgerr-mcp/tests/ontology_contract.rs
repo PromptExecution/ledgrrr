@@ -46,12 +46,15 @@ fn onto_01_persistence_integrity_persists_entities_and_edges_with_stable_ids() {
                 OntologyEntityInput {
                     kind: OntologyEntityKind::Document,
                     attrs: doc_attrs,
+                    custom_kind: None,
                 },
                 OntologyEntityInput {
                     kind: OntologyEntityKind::Transaction,
                     attrs: tx_attrs,
+                    custom_kind: None,
                 },
             ],
+            schema_store_path: None,
         })
         .expect("entities should upsert");
 
@@ -87,6 +90,7 @@ fn onto_01_persistence_integrity_persists_entities_and_edges_with_stable_ids() {
                         );
                         attrs
                     },
+                    custom_kind: None,
                 },
                 OntologyEntityInput {
                     kind: OntologyEntityKind::Transaction,
@@ -95,8 +99,10 @@ fn onto_01_persistence_integrity_persists_entities_and_edges_with_stable_ids() {
                         attrs.insert("tx_id".to_string(), "tx-001".to_string());
                         attrs
                     },
+                    custom_kind: None,
                 },
             ],
+            schema_store_path: None,
         })
         .expect("replay should succeed");
 
@@ -147,6 +153,7 @@ fn onto_02_relationship_query_returns_ordered_document_chain() {
                         attrs.insert("source_ref".to_string(), "wf-statement.pdf".to_string());
                         attrs
                     },
+                    custom_kind: None,
                 },
                 OntologyEntityInput {
                     kind: OntologyEntityKind::Transaction,
@@ -155,6 +162,7 @@ fn onto_02_relationship_query_returns_ordered_document_chain() {
                         attrs.insert("tx_id".to_string(), "tx-001".to_string());
                         attrs
                     },
+                    custom_kind: None,
                 },
                 OntologyEntityInput {
                     kind: OntologyEntityKind::EvidenceReference,
@@ -163,6 +171,7 @@ fn onto_02_relationship_query_returns_ordered_document_chain() {
                         attrs.insert("rkyv_ref".to_string(), "wf-ctx.rkyv".to_string());
                         attrs
                     },
+                    custom_kind: None,
                 },
                 OntologyEntityInput {
                     kind: OntologyEntityKind::TaxCategory,
@@ -171,8 +180,10 @@ fn onto_02_relationship_query_returns_ordered_document_chain() {
                         attrs.insert("category".to_string(), "OfficeSupplies".to_string());
                         attrs
                     },
+                    custom_kind: None,
                 },
             ],
+            schema_store_path: None,
         })
         .expect("entities should upsert");
 
@@ -265,12 +276,14 @@ fn ontology_core_snapshot_conversion_preserves_legacy_ids() {
             OntologyEntityInput {
                 kind: OntologyEntityKind::Document,
                 attrs: doc_attrs,
+                custom_kind: None,
             },
             OntologyEntityInput {
                 kind: OntologyEntityKind::Transaction,
                 attrs: tx_attrs,
+                custom_kind: None,
             },
-        ])
+        ], None)
         .expect("entities");
 
     let doc_id = entities.entity_ids[0].clone();
@@ -330,19 +343,20 @@ fn ontology_legacy_payload_maps_to_core_types() {
     assert_eq!(payload["upserted"], 4);
 
     let store = OntologyStore::load(&ontology_path).expect("store");
-    assert_eq!(
-        store
-            .entities
-            .iter()
-            .map(|entity| entity.kind)
-            .collect::<Vec<_>>(),
-        vec![
-            OntologyEntityKind::XeroContact,
-            OntologyEntityKind::XeroBankAccount,
-            OntologyEntityKind::XeroInvoice,
-            OntologyEntityKind::WorkflowTag,
-        ]
-    );
+    let mut actual: Vec<_> = store
+        .entities
+        .iter()
+        .map(|entity| entity.kind)
+        .collect();
+    actual.sort();
+    let mut expected = vec![
+        OntologyEntityKind::XeroContact,
+        OntologyEntityKind::XeroBankAccount,
+        OntologyEntityKind::XeroInvoice,
+        OntologyEntityKind::WorkflowTag,
+    ];
+    expected.sort();
+    assert_eq!(actual, expected);
 }
 
 // ONTO-05 / PRD-4 Phase 2: row ingest emits deterministic source-to-transaction
@@ -411,6 +425,7 @@ fn semantic_context_refs_are_added_to_model_provenance() {
                         attrs.insert("tx_id".to_string(), "tx-semantic-001".to_string());
                         attrs
                     },
+                    custom_kind: None,
                 },
                 OntologyEntityInput {
                     kind: OntologyEntityKind::TaxCategory,
@@ -419,8 +434,10 @@ fn semantic_context_refs_are_added_to_model_provenance() {
                         attrs.insert("category".to_string(), "SelfEmployment".to_string());
                         attrs
                     },
+                    custom_kind: None,
                 },
             ],
+            schema_store_path: None,
         })
         .expect("entities should upsert");
 

@@ -1,0 +1,37 @@
+name: OpenMetadata MCP Surface
+
+on:
+  push:
+    branches: [main, milestone/**, feature/**, feat/**]
+  pull_request:
+
+jobs:
+  deterministic-surfaces:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Restore cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo
+            target/
+          key: ${{ runner.os }}-openmetadata-mcp-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-openmetadata-mcp-
+
+      - name: HTTP MCP reference transport
+        run: cargo test -p ledgerr-mcp-core test_http_mcp_provider_against_local_reference_server
+
+      - name: OpenMetadata ontology import mapper
+        run: cargo test -p ledgerr-mcp --test openmetadata_ontology
+
+      - name: Env-gated live OpenMetadata provider smoke
+        run: cargo test -p ledgerr-mcp --test mcp_provider_smoke live_openmetadata_provider_lists_prefixed_tools_when_configured -- --nocapture

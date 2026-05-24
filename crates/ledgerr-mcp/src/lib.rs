@@ -1,8 +1,8 @@
+use blake3;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Mutex;
-use blake3;
 
 use ledger_core::classify::{ClassificationEngine, FlagStatus, SampleTransaction};
 use ledger_core::document::{DocType, DocumentRecord, DocumentStatus, XeroLink};
@@ -14,8 +14,8 @@ use ledger_core::tags::{parse_tags, Tag};
 use ledger_core::workbook::REQUIRED_SHEETS;
 use rust_decimal::Decimal;
 use rust_xlsxwriter::Workbook;
-use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "llm")]
 use ledgerr_llm::{LlmClient, LlmConfig};
@@ -33,16 +33,26 @@ pub mod gate;
 pub mod hsm;
 pub mod mcp_adapter;
 pub mod ontology;
+pub mod openmetadata;
 pub mod plugin_info;
 #[cfg(feature = "b00t")]
 pub mod provider;
 #[cfg(feature = "b00t")]
 pub mod providers;
 pub mod reconciliation;
+pub mod schema;
 pub mod shape_tool;
 pub mod tax_assist;
 pub mod xero_service;
 pub use calendar_tool::{list_calendar_events, CalendarEventRow, ListCalendarEventsRequest};
+pub use contract::{
+    AmountRange, ApplyMappingBulkRequest, ApplyMappingBulkResponse, BatchClassifyRequest,
+    BatchClassifyResponse, BatchItemResult, BatchItemStatus, BatchMode, BatchResolveFlagsRequest,
+    BatchSummary, BulkResolveFlagsResponse, DateRange, FetchQueueRequest, FetchQueueResponse,
+    FlagResolution, PaginationSpec, QueueItem, QueueItemType, QueueProvenance, QueueSeverity,
+    QueueStatus, SimilarityMatchType, SortDirection, SortField, SortSpec, TransactionFilters,
+    TransactionRow as TransactionRowResponse,
+};
 pub use events::{
     AppendEventResult, EventHistoryFilter, EventHistoryResponse, InMemoryLifecycleEventStore,
     LifecycleEvent, LifecycleEventStore, ReplayProjection,
@@ -60,22 +70,12 @@ pub use reconciliation::{
     commit_stage, reconcile_stage, validate_stage, ReconciliationDiagnostic,
     ReconciliationStageRequest, ReconciliationStageResponse,
 };
+pub use schema::{CustomKind, KindInfo, SchemaKinds, SchemaStore};
 pub use shape_tool::{get_document_shape, GetDocumentShapeRequest};
 pub use tax_assist::{
     TaxAmbiguityRecord, TaxAmbiguityReviewRequest, TaxAmbiguityReviewResponse, TaxAssistRequest,
     TaxAssistResponse, TaxAssistSummary, TaxEvidenceChainRequest, TaxEvidenceChainResponse,
     TaxEvidenceCurrentState, TaxEvidenceEvent, TaxEvidenceRow, TaxEvidenceSource,
-};
-pub use contract::{
-    TransactionFilters, DateRange, AmountRange, SortDirection, SortField, SortSpec,
-    PaginationSpec, TransactionRow as TransactionRowResponse,
-    BatchClassifyRequest, BatchClassifyResponse,
-    BatchResolveFlagsRequest, BulkResolveFlagsResponse,
-    ApplyMappingBulkRequest, ApplyMappingBulkResponse,
-    BatchMode, FlagResolution, SimilarityMatchType,
-    BatchSummary, BatchItemResult, BatchItemStatus,
-    FetchQueueRequest, FetchQueueResponse,
-    QueueItem, QueueItemType, QueueSeverity, QueueStatus, QueueProvenance,
 };
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccountSummary {
@@ -414,7 +414,10 @@ pub trait TurboLedgerTools {
         request: ClassifyIngestedRequest,
     ) -> Result<ClassifyIngestedResponse, ToolError>;
     fn query_flags(&self, request: QueryFlagsRequest) -> Result<QueryFlagsResponse, ToolError>;
-    fn query_transactions(&self, request: QueryTransactionsRequest) -> Result<QueryTransactionsResponse, ToolError>;
+    fn query_transactions(
+        &self,
+        request: QueryTransactionsRequest,
+    ) -> Result<QueryTransactionsResponse, ToolError>;
     fn classify_transaction(
         &self,
         request: ClassifyTransactionRequest,
@@ -447,10 +450,8 @@ pub trait TurboLedgerTools {
         &self,
         request: ApplyMappingBulkRequest,
     ) -> Result<ApplyMappingBulkResponse, ToolError>;
-    fn fetch_work_queue(
-        &self,
-        request: FetchQueueRequest,
-    ) -> Result<FetchQueueResponse, ToolError>;
+    fn fetch_work_queue(&self, request: FetchQueueRequest)
+        -> Result<FetchQueueResponse, ToolError>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -521,8 +522,16 @@ fn apply_transaction_filters<'a>(
     tx_rows: &'a BTreeMap<String, TransactionInput>,
     classifications: &'a BTreeMap<String, StoredClassification>,
     filters: &TransactionFilters,
-) -> Result<Vec<(String, &'a TransactionInput, Option<&'a StoredClassification>)>, ToolError> {
-    let mut results: Vec<_> = tx_rows.iter()
+) -> Result<
+    Vec<(
+        String,
+        &'a TransactionInput,
+        Option<&'a StoredClassification>,
+    )>,
+    ToolError,
+> {
+    let mut results: Vec<_> = tx_rows
+        .iter()
         .filter_map(|(tx_id, tx)| {
             // Join with classification data
             let classification = classifications.get(tx_id);
@@ -536,14 +545,14 @@ fn apply_transaction_filters<'a>(
     }
 
     if let Some(ref date_range) = filters.date_range {
-        results.retain(|(_, tx, _)| {
-            tx.date >= date_range.start && tx.date <= date_range.end
-        });
+        results.retain(|(_, tx, _)| tx.date >= date_range.start && tx.date <= date_range.end);
     }
 
     if let Some(ref category) = filters.category {
         results.retain(|(_, _, classification)| {
-            classification.map_or(false, |c| c.category.to_lowercase() == category.to_lowercase())
+            classification.map_or(false, |c| {
+                c.category.to_lowercase() == category.to_lowercase()
+            })
         });
     }
 
@@ -560,14 +569,14 @@ fn apply_transaction_filters<'a>(
 
     if let Some(ref source_ref) = filters.source_ref {
         results.retain(|(_, tx, _)| {
-            tx.source_ref.to_lowercase().contains(&source_ref.to_lowercase())
+            tx.source_ref
+                .to_lowercase()
+                .contains(&source_ref.to_lowercase())
         });
     }
 
     if let Some(ref desc) = filters.description_contains {
-        results.retain(|(_, tx, _)| {
-            tx.description.to_lowercase().contains(&desc.to_lowercase())
-        });
+        results.retain(|(_, tx, _)| tx.description.to_lowercase().contains(&desc.to_lowercase()));
     }
 
     Ok(results)
@@ -575,37 +584,59 @@ fn apply_transaction_filters<'a>(
 
 /// Apply sorting to a set of transactions
 fn apply_transaction_sort<'a>(
-    mut transactions: Vec<(String, &'a TransactionInput, Option<&'a StoredClassification>)>,
+    mut transactions: Vec<(
+        String,
+        &'a TransactionInput,
+        Option<&'a StoredClassification>,
+    )>,
     sort_spec: &Option<SortSpec>,
-) -> Vec<(String, &'a TransactionInput, Option<&'a StoredClassification>)> {
+) -> Vec<(
+    String,
+    &'a TransactionInput,
+    Option<&'a StoredClassification>,
+)> {
     let sort_spec = sort_spec.as_ref().map_or(
-        &SortSpec { 
-            field: SortField::Date, 
-            direction: SortDirection::Desc 
+        &SortSpec {
+            field: SortField::Date,
+            direction: SortDirection::Desc,
         },
-        |s| s
+        |s| s,
     );
-    
-    transactions.sort_by(|a, b| match sort_spec.field {
-        SortField::Date => {
-            let ord = a.1.date.cmp(&b.1.date);
-            if sort_spec.direction == SortDirection::Desc { ord.reverse() } else { ord }
+
+    transactions.sort_by(|a, b| {
+        match sort_spec.field {
+            SortField::Date => {
+                let ord = a.1.date.cmp(&b.1.date);
+                if sort_spec.direction == SortDirection::Desc {
+                    ord.reverse()
+                } else {
+                    ord
+                }
+            }
+            SortField::Amount => {
+                let a_amt = Decimal::from_str(&a.1.amount).unwrap_or(Decimal::ZERO);
+                let b_amt = Decimal::from_str(&b.1.amount).unwrap_or(Decimal::ZERO);
+                let ord = a_amt.cmp(&b_amt);
+                if sort_spec.direction == SortDirection::Desc {
+                    ord.reverse()
+                } else {
+                    ord
+                }
+            }
+            SortField::Description => {
+                let ord = a.1.description.cmp(&b.1.description);
+                if sort_spec.direction == SortDirection::Desc {
+                    ord.reverse()
+                } else {
+                    ord
+                }
+            }
         }
-        SortField::Amount => {
-            let a_amt = Decimal::from_str(&a.1.amount).unwrap_or(Decimal::ZERO);
-            let b_amt = Decimal::from_str(&b.1.amount).unwrap_or(Decimal::ZERO);
-            let ord = a_amt.cmp(&b_amt);
-            if sort_spec.direction == SortDirection::Desc { ord.reverse() } else { ord }
-        }
-        SortField::Description => {
-            let ord = a.1.description.cmp(&b.1.description);
-            if sort_spec.direction == SortDirection::Desc { ord.reverse() } else { ord }
-        }
-    }.then_with(|| a.0.cmp(&b.0)));
-    
+        .then_with(|| a.0.cmp(&b.0))
+    });
+
     transactions
 }
-
 
 impl TurboLedgerService {
     pub fn from_manifest_str(src: &str) -> Result<Self, ToolError> {
@@ -746,7 +777,11 @@ impl TurboLedgerService {
         request: OntologyUpsertEntitiesRequest,
     ) -> Result<OntologyUpsertEntitiesResponse, ToolError> {
         let mut store = OntologyStore::load(&request.ontology_path)?;
-        let response = store.upsert_entities(request.entities)?;
+        let mut schema_store = None;
+        if let Some(ref schema_path) = request.schema_store_path {
+            schema_store = Some(crate::schema::SchemaStore::load(schema_path)?);
+        }
+        let response = store.upsert_entities(request.entities, schema_store.as_ref())?;
         store.persist(&request.ontology_path)?;
         Ok(response)
     }
@@ -1329,7 +1364,7 @@ fn flag_to_queue_item(flag: &FlagRecordResponse) -> QueueItem {
         FlagStatusRequest::Resolved => QueueSeverity::Low,
     };
     let created_at = "1970-01-01T00:00:00Z".to_string(); // No timestamp in FlagRecordResponse
-    
+
     QueueItem {
         id: id.to_string(),
         item_type: QueueItemType::Flag,
@@ -1348,11 +1383,10 @@ fn flag_to_queue_item(flag: &FlagRecordResponse) -> QueueItem {
     }
 }
 
-
 /// Convert a lifecycle event (manual change) to a queue item
 fn manual_change_to_queue_item(event: &LifecycleEvent) -> QueueItem {
     let id = format!("manual:{}", event.event_id);
-    
+
     QueueItem {
         id,
         item_type: QueueItemType::ManualChange,
@@ -1367,8 +1401,6 @@ fn manual_change_to_queue_item(event: &LifecycleEvent) -> QueueItem {
         metadata: BTreeMap::new(),
     }
 }
-
-
 
 impl TurboLedgerTools for TurboLedgerService {
     fn list_accounts(&self) -> Result<Vec<AccountSummary>, ToolError> {
@@ -1761,7 +1793,10 @@ impl TurboLedgerTools for TurboLedgerService {
         })
     }
 
-    fn query_transactions(&self, request: QueryTransactionsRequest) -> Result<QueryTransactionsResponse, ToolError> {
+    fn query_transactions(
+        &self,
+        request: QueryTransactionsRequest,
+    ) -> Result<QueryTransactionsResponse, ToolError> {
         // Lock the classification state
         let classification = self
             .classification_state
@@ -1769,7 +1804,11 @@ impl TurboLedgerTools for TurboLedgerService {
             .map_err(|_| ToolError::Internal("classification lock poisoned".to_string()))?;
 
         // Apply filters
-        let mut filtered = apply_transaction_filters(&classification.tx_rows, &classification.classifications, &request.filters)?;
+        let mut filtered = apply_transaction_filters(
+            &classification.tx_rows,
+            &classification.classifications,
+            &request.filters,
+        )?;
 
         // Get total count before pagination
         let total_count = filtered.len();
@@ -1791,7 +1830,8 @@ impl TurboLedgerTools for TurboLedgerService {
         };
 
         // Build response rows
-        let transactions: Vec<TransactionRowResponse> = paginated.into_iter()
+        let transactions: Vec<TransactionRowResponse> = paginated
+            .into_iter()
             .map(|(tx_id, tx, classification)| TransactionRowResponse {
                 tx_id: tx_id.clone(),
                 account_id: tx.account_id.clone(),
@@ -2242,10 +2282,12 @@ impl TurboLedgerTools for TurboLedgerService {
                     failed += 1;
                     items.push(BatchItemResult {
                         tx_id: tx_id.clone(),
-                        status: BatchItemStatus::Failed { error: e.to_string() },
+                        status: BatchItemStatus::Failed {
+                            error: e.to_string(),
+                        },
                         audit_entries: vec![],
                     });
-                    
+
                     if batch_mode == BatchMode::AllOrNothing {
                         break;
                     }
@@ -2365,7 +2407,6 @@ impl TurboLedgerTools for TurboLedgerService {
 
         drop(classification);
 
-
         // TODO: Build transient index for O(n) lookup (deferred optimization)
         // For now, O(n²) search through all transactions
 
@@ -2382,26 +2423,33 @@ impl TurboLedgerTools for TurboLedgerService {
                 }
 
                 // Check similarity based on match_fields
-                let is_similar = request.match_fields.iter().any(|field| {
-                    match field.as_str() {
+                let is_similar = request
+                    .match_fields
+                    .iter()
+                    .any(|field| match field.as_str() {
                         "description" => match request.similarity_type {
-                            SimilarityMatchType::Exact => row.description.to_lowercase()
-                                == source_category.to_lowercase(),
-                            SimilarityMatchType::Substring => row.description
+                            SimilarityMatchType::Exact => {
+                                row.description.to_lowercase() == source_category.to_lowercase()
+                            }
+                            SimilarityMatchType::Substring => row
+                                .description
                                 .to_lowercase()
                                 .contains(&source_category.to_lowercase()),
-                            SimilarityMatchType::Prefix => row.description.to_lowercase()
+                            SimilarityMatchType::Prefix => row
+                                .description
+                                .to_lowercase()
                                 .starts_with(&source_category.to_lowercase()),
                         },
-                        "category" => row.description.to_lowercase() == source_category.to_lowercase(),
+                        "category" => {
+                            row.description.to_lowercase() == source_category.to_lowercase()
+                        }
                         "amount" => {
                             let amt1 = Decimal::from_str(&row.amount).unwrap();
                             let amt2 = rust_decimal::Decimal::ZERO;
                             amt1 == amt2
                         }
                         _ => false,
-                    }
-                });
+                    });
 
                 if is_similar {
                     matches.push(tx_id.clone());
@@ -2462,14 +2510,20 @@ impl TurboLedgerTools for TurboLedgerService {
         &self,
         request: FetchQueueRequest,
     ) -> Result<FetchQueueResponse, ToolError> {
-        let classification = self.classification_state.lock()
+        let classification = self
+            .classification_state
+            .lock()
             .map_err(|_| ToolError::Internal("classification lock poisoned".to_string()))?;
-        
+
         // Phase 1: Gather data from all sources
         let mut items = Vec::new();
-        
+
         // 1. Query flags (open + resolved across known transaction years)
-        if request.item_types.as_ref().map_or(true, |v| v.is_empty() || v.contains(&QueueItemType::Flag)) {
+        if request
+            .item_types
+            .as_ref()
+            .map_or(true, |v| v.is_empty() || v.contains(&QueueItemType::Flag))
+        {
             let years: BTreeSet<i32> = classification
                 .tx_rows
                 .values()
@@ -2478,9 +2532,7 @@ impl TurboLedgerTools for TurboLedgerService {
                 .collect();
 
             for year in years {
-                let open_flags = classification
-                    .engine
-                    .query_flags(year, FlagStatus::Open);
+                let open_flags = classification.engine.query_flags(year, FlagStatus::Open);
                 for flag in open_flags {
                     let flag_resp = FlagRecordResponse {
                         tx_id: flag.tx_id,
@@ -2509,13 +2561,17 @@ impl TurboLedgerTools for TurboLedgerService {
                 }
             }
         }
-        
+
         drop(classification);
-        
+
         // 2. Query tax ambiguities: classified transactions with confidence < 60%.
         // These are genuinely uncertain classifications that need operator review,
         // distinct from review flags which may be high-confidence but policy-triggered.
-        if request.item_types.as_ref().map_or(false, |v| v.contains(&QueueItemType::Ambiguity)) {
+        if request
+            .item_types
+            .as_ref()
+            .map_or(false, |v| v.contains(&QueueItemType::Ambiguity))
+        {
             let classification = self
                 .classification_state
                 .lock()
@@ -2548,12 +2604,16 @@ impl TurboLedgerTools for TurboLedgerService {
                 }
             }
         }
-        
+
         // 3. Query manual changes from audit log (if item_types includes ManualChange)
-        if request.item_types.as_ref().map_or(true, |v| v.is_empty() || v.contains(&QueueItemType::ManualChange)) {
-            let lifecycle = self.lifecycle_events.lock()
+        if request.item_types.as_ref().map_or(true, |v| {
+            v.is_empty() || v.contains(&QueueItemType::ManualChange)
+        }) {
+            let lifecycle = self
+                .lifecycle_events
+                .lock()
                 .map_err(|_| ToolError::Internal("events lock poisoned".to_string()))?;
-            
+
             // Get all events (filtering by time_end would require changes to EventHistoryFilter)
             let filter = EventHistoryFilter {
                 tx_id: None,
@@ -2561,25 +2621,34 @@ impl TurboLedgerTools for TurboLedgerService {
                 time_start: None,
                 time_end: None,
             };
-            let events = lifecycle.list_events(filter).map_err(|_| {
-                ToolError::Internal("Failed to query event history".to_string())
-            })?.events;
-            
+            let events = lifecycle
+                .list_events(filter)
+                .map_err(|_| ToolError::Internal("Failed to query event history".to_string()))?
+                .events;
+
             for event in events {
                 // Filter for manual changes (non-agent adjustments/classifications)
-                let actor = event.payload.get("actor")
+                let actor = event
+                    .payload
+                    .get("actor")
                     .cloned()
                     .unwrap_or("unknown".to_string());
-                if actor != "agent" && (event.event_type == "adjustment" || event.event_type == "classification") {
+                if actor != "agent"
+                    && (event.event_type == "adjustment" || event.event_type == "classification")
+                {
                     items.push(manual_change_to_queue_item(&event));
                 }
             }
         }
-        
+
         // 4. Query reconciliation blockers: documents stuck in Processing state.
         // A document that entered Processing but never reached Indexed is a blocker —
         // it prevents downstream reconciliation from completing.
-        if request.item_types.as_ref().map_or(false, |v| v.contains(&QueueItemType::Blocker)) {
+        if request
+            .item_types
+            .as_ref()
+            .map_or(false, |v| v.contains(&QueueItemType::Blocker))
+        {
             let registry = self
                 .document_registry
                 .lock()
@@ -2599,10 +2668,7 @@ impl TurboLedgerTools for TurboLedgerService {
                         status: QueueStatus::Open,
                         provenance: QueueProvenance::DocumentTool,
                         related_tx_ids: vec![],
-                        summary: format!(
-                            "Document stuck in processing: {}",
-                            record.file_name
-                        ),
+                        summary: format!("Document stuck in processing: {}", record.file_name),
                         tx_id: None,
                         document_ref: Some(record.file_name.clone()),
                         metadata: BTreeMap::new(),
@@ -2613,7 +2679,11 @@ impl TurboLedgerTools for TurboLedgerService {
 
         // 5. Query document issues: documents with an Error status in the registry.
         // These are failed ingests or processing failures that the operator must resolve.
-        if request.item_types.as_ref().map_or(false, |v| v.contains(&QueueItemType::DocumentIssue)) {
+        if request
+            .item_types
+            .as_ref()
+            .map_or(false, |v| v.contains(&QueueItemType::DocumentIssue))
+        {
             let registry = self
                 .document_registry
                 .lock()
@@ -2633,10 +2703,7 @@ impl TurboLedgerTools for TurboLedgerService {
                         status: QueueStatus::Open,
                         provenance: QueueProvenance::DocumentTool,
                         related_tx_ids: vec![],
-                        summary: format!(
-                            "Document ingest error: {} — {}",
-                            record.file_name, msg
-                        ),
+                        summary: format!("Document ingest error: {} — {}", record.file_name, msg),
                         tx_id: None,
                         document_ref: Some(record.file_name.clone()),
                         metadata: BTreeMap::new(),
@@ -2644,33 +2711,29 @@ impl TurboLedgerTools for TurboLedgerService {
                 }
             }
         }
-        
+
         // Apply status filter
         if let Some(ref statuses) = request.statuses {
             if !statuses.is_empty() {
                 items.retain(|item| statuses.contains(&item.status));
             }
         }
-        
+
         // Apply updated_after filter
         if let Some(ref after) = request.updated_after {
             items.retain(|item| item.created_at.as_str() > after.as_str());
         }
-        
+
         // Phase 2: Sort by default (created_at descending)
         items.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-        
+
         // Phase 3: Paginate
         let total_count = items.len() as u64;
         let limit = request.limit;
         let offset = request.offset as usize;
-        
-        let paginated: Vec<QueueItem> = items
-            .into_iter()
-            .skip(offset)
-            .take(limit)
-            .collect();
-        
+
+        let paginated: Vec<QueueItem> = items.into_iter().skip(offset).take(limit).collect();
+
         Ok(FetchQueueResponse {
             items: paginated,
             total_count,
@@ -3135,16 +3198,21 @@ fn emit_ingest_ontology_edges(
         tx_attrs.insert("description".to_string(), row.description.clone());
 
         let entity_ids = store
-            .upsert_entities(vec![
-                OntologyEntityInput {
-                    kind: OntologyEntityKind::Document,
-                    attrs: doc_attrs,
-                },
-                OntologyEntityInput {
-                    kind: OntologyEntityKind::Transaction,
-                    attrs: tx_attrs,
-                },
-            ])?
+            .upsert_entities(
+                vec![
+                    OntologyEntityInput {
+                        kind: OntologyEntityKind::Document,
+                        attrs: doc_attrs,
+                        custom_kind: None,
+                    },
+                    OntologyEntityInput {
+                        kind: OntologyEntityKind::Transaction,
+                        attrs: tx_attrs,
+                        custom_kind: None,
+                    },
+                ],
+                None,
+            )?
             .entity_ids;
 
         let mut provenance = BTreeMap::new();
@@ -3827,7 +3895,14 @@ impl TurboLedgerService {
             attrs.insert("xero_id".into(), xero_id.clone());
             attrs.insert("display_name".into(), display_name.clone());
             attrs.insert("local_id".into(), local_id.clone());
-            let _ = store.upsert_entities(vec![OntologyEntityInput { kind, attrs }]);
+            let _ = store.upsert_entities(
+                vec![OntologyEntityInput {
+                    kind,
+                    attrs,
+                    custom_kind: None,
+                }],
+                None,
+            );
             let _ = store.persist(&ont_path);
         }
 
