@@ -2,7 +2,6 @@
 authors = ["l3dg3rr"]
 description = "l3dg3rr ledger, ontology and visualization toolkit"
 language = "en"
-multilingual = false
 src = "src"
 text-direction = "ltr"
 title = "l3dg3rr Ledger Documentation"
