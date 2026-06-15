@@ -13,6 +13,34 @@ var PANELS=[
 var activePanel=0;
 var DASH_PANEL_INDEX=PANELS.findIndex(function(p){return p.id==='dash'});
 var VIZ_PANEL_INDEX=PANELS.findIndex(function(p){return p.id==='viz'});
+// ?autorun=<ms> URL param → auto-switch to Dashboard after N ms idle (default 10000)
+var AUTORUN_MS=parseInt(new URLSearchParams(location.search).get('autorun')||'10000',10);
+var _autorunTimer=null;
+
+function startAutorun(){
+  clearAutorun();
+  if(AUTORUN_MS<=0)return;
+  var remaining=AUTORUN_MS;
+  function tick(){
+    remaining-=1000;
+    var sb=document.getElementById('status-bar');
+    if(remaining>0){
+      if(sb&&!sb.dataset.userText)sb.textContent='⏱ Auto-loading dashboard in '+(remaining/1000)+'s…';
+      _autorunTimer=setTimeout(tick,1000);
+    }else{
+      _autorunTimer=null;
+      if(sb&&!sb.dataset.userText)sb.textContent='';
+      if(DASH_PANEL_INDEX!==-1){showPanel(DASH_PANEL_INDEX);refreshDashboard();}
+    }
+  }
+  _autorunTimer=setTimeout(tick,1000);
+}
+
+function clearAutorun(){
+  if(_autorunTimer){clearTimeout(_autorunTimer);_autorunTimer=null;}
+  var sb=document.getElementById('status-bar');
+  if(sb&&sb.textContent.indexOf('⏱')===0)sb.textContent='';
+}
 var _vizInitialized=false;
 var _vizAllElements=[];
 var _vizActiveGraph='type'; // 'type' | 'pipeline'
@@ -50,7 +78,7 @@ function buildUI(){
     PANELS.forEach(function(p,i){
       var btn=document.createElement('button');btn.className='nav-item';btn.dataset.panelIndex=i;
       btn.innerHTML='<span class="mark">'+p.icon+'</span><span class="label">'+p.label+'</span>';
-      (function(idx){btn.addEventListener('click',function(){showPanel(idx);});})(i);
+      (function(idx){btn.addEventListener('click',function(){clearAutorun();showPanel(idx);});})(i);
       nav.appendChild(btn);
       var div=document.createElement('div');div.id='panel-'+p.id;
       div.className='panel card'+(i===0?'':' hidden');
@@ -160,6 +188,7 @@ function applySettings(p){
 
 document.addEventListener('DOMContentLoaded',function(){
   buildUI();
+  startAutorun();
 
   // Populate initial state from backend
   invoke('get_initial_state').then(function(s){
@@ -206,6 +235,7 @@ document.addEventListener('DOMContentLoaded',function(){
   // Chat: send message
   var sendBtn=document.getElementById('send-btn');
   if(sendBtn)sendBtn.addEventListener('click',function(){
+    clearAutorun();
     invoke('send_message',{
       draft:document.getElementById('draft-input')?.value||'',
       endpoint:document.getElementById('input-endpoint')?.value||'',
@@ -216,6 +246,10 @@ document.addEventListener('DOMContentLoaded',function(){
       setTextSafe(document.getElementById('status-bar'),'Send failed: '+(e&&e.message||e||'unknown'));
     });
   });
+
+  // Typing in chat textarea cancels autorun
+  var draftInput=document.getElementById('draft-input');
+  if(draftInput)draftInput.addEventListener('input',clearAutorun);
 
   // Chat: load Rhai prompt seed
   var rhaiBtn=document.getElementById('rhai-btn');
