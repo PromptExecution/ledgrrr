@@ -2,7 +2,9 @@
 authors = ["l3dg3rr"]
 description = "l3dg3rr ledger, ontology and visualization toolkit"
 language = "en"
+multilingual = false
 src = "src"
+text-direction = "ltr"
 title = "l3dg3rr Ledger Documentation"
 
 [preprocessor.rhai-mermaid]
@@ -10,6 +12,7 @@ command = "mdbook-rhai-mermaid"
 before = ["mermaid"]
 
 [preprocessor.mermaid]
+command = "mdbook-mermaid"
 optional = true
 after = ["rhai-mermaid"]
 
