@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use crate::ToolError;
 use serde::{Deserialize, Serialize};
 
-const EVENT_TYPES: &[&str] = &["ingest", "classification", "reconciliation", "adjustment"];
+const EVENT_TYPES: &[&str] = &["ingest", "classification", "reconciliation", "adjustment", "b00t_cost", "b00t_delegate"];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LifecycleEvent {

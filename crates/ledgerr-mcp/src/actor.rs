@@ -911,6 +911,18 @@ impl ServiceActor {
                 };
                 let _ = reply_tx.send(result);
             }
+            #[cfg(feature = "b00t")]
+            GateMessage::BootDatumDelegate {
+                agent_id: _,
+                datum_id: _,
+                task_id: _,
+                estimated_cost_usd: _,
+                reply_tx,
+            } => {
+                let _ = reply_tx.send(Err(ToolError::Internal(
+                    "BootDatumDelegate handler not yet implemented".to_string(),
+                )));
+            }
         }
     }
 }

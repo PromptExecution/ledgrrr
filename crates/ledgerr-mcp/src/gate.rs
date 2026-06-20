@@ -23,6 +23,21 @@ use crate::{
 
 use ledger_core::filename::StatementFilename;
 
+/// Authorization response for b00t datum delegation requests.
+#[derive(Debug, Clone)]
+pub struct DelegateAuthority {
+    pub authorized: bool,
+    pub datum_id: String,
+    pub agent_id: String,
+    pub task_id: String,
+    /// Remaining budget after this authorization (USD).
+    pub budget_remaining_usd: rust_decimal::Decimal,
+    /// Opaque token b00t uses to resume after a pause.
+    pub resume_token: String,
+    /// If !authorized, human-readable reason.
+    pub denial_reason: Option<String>,
+}
+
 /// Tool/action mapping for AGT policy enforcement.
 pub struct ToolActionMapping {
     pub tool_name: &'static str,
@@ -95,6 +110,8 @@ impl ToolActionMapping {
             GateMessage::XeroLinkEntity { .. } => Some(("ledgerr_xero", "link_entity")),
             #[cfg(feature = "xero")]
             GateMessage::XeroSyncCatalog { .. } => Some(("ledgerr_xero", "sync_catalog")),
+            #[cfg(feature = "b00t")]
+            GateMessage::BootDatumDelegate { .. } => Some(("ledgerr_b00t", "delegate_datum")),
             GateMessage::Shutdown => None,
         }
     }
@@ -335,6 +352,15 @@ pub enum GateMessage {
         agent_id: String,
         ontology_path: PathBuf,
         reply_tx: Sender<Result<serde_json::Value, ToolError>>,
+    },
+    #[cfg(feature = "b00t")]
+    BootDatumDelegate {
+        agent_id: String,
+        datum_id: String,
+        task_id: String,
+        /// Caller's estimate of cost — ledgrrr validates against budget.
+        estimated_cost_usd: rust_decimal::Decimal,
+        reply_tx: crossbeam::channel::Sender<Result<DelegateAuthority, ToolError>>,
     },
     Shutdown,
 }

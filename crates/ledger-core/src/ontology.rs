@@ -22,6 +22,7 @@ pub enum ArtifactKind {
     ValidationIssue,
     DocumentChunk,
     ClassificationOutcome,
+    BootDatum,
 }
 
 impl ArtifactKind {
@@ -44,6 +45,7 @@ impl ArtifactKind {
             Self::ValidationIssue => "validation_issue",
             Self::DocumentChunk => "document_chunk",
             Self::ClassificationOutcome => "classification_outcome",
+            Self::BootDatum => "boot_datum",
         }
     }
 }
@@ -67,6 +69,7 @@ pub enum RelationKind {
     TaggedAs,
     References,
     RelatedTo,
+    DelegatedTo,
 }
 
 impl RelationKind {
@@ -88,6 +91,7 @@ impl RelationKind {
             Self::TaggedAs => "tagged_as",
             Self::References => "references",
             Self::RelatedTo => "related_to",
+            Self::DelegatedTo => "delegated_to",
         }
     }
 }
@@ -113,6 +117,7 @@ impl std::str::FromStr for RelationKind {
             "tagged_as" => Ok(Self::TaggedAs),
             "references" => Ok(Self::References),
             "related_to" => Ok(Self::RelatedTo),
+            "delegated_to" => Ok(Self::DelegatedTo),
             _ => Err(()),
         }
     }
