@@ -913,15 +913,68 @@ impl ServiceActor {
             }
             #[cfg(feature = "b00t")]
             GateMessage::BootDatumDelegate {
-                agent_id: _,
-                datum_id: _,
-                task_id: _,
-                estimated_cost_usd: _,
+                agent_id,
+                datum_id,
+                task_id,
+                estimated_cost_usd,
                 reply_tx,
             } => {
-                let _ = reply_tx.send(Err(ToolError::Internal(
-                    "BootDatumDelegate handler not yet implemented".to_string(),
-                )));
+                use std::collections::BTreeMap;
+                use crate::gate::DelegateAuthority;
+                use rust_decimal::prelude::FromPrimitive;
+
+                // Record delegation request as lifecycle event
+                let mut payload = BTreeMap::new();
+                payload.insert("agent_id".to_string(), agent_id.clone());
+                payload.insert("datum_id".to_string(), datum_id.clone());
+                payload.insert("task_id".to_string(), task_id.clone());
+                payload.insert(
+                    "estimated_cost_usd".to_string(),
+                    estimated_cost_usd.to_string(),
+                );
+                let event_result = self
+                    .service
+                    .append_b00t_delegate_event(payload);
+
+                let result = match event_result {
+                    Err(e) => Err(e),
+                    Ok(_) => {
+                        // Simple budget gate: allow up to $10 per request, $100 total headroom.
+                        // Real policy lives in ledgrrr AGT — this is the default allow-with-record.
+                        let budget_remaining = rust_decimal::Decimal::from_f64(100.0)
+                            .unwrap_or(rust_decimal::Decimal::ZERO)
+                            .saturating_sub(estimated_cost_usd);
+                        let authorized = estimated_cost_usd
+                            <= rust_decimal::Decimal::from_f64(10.0)
+                                .unwrap_or(rust_decimal::Decimal::ZERO);
+                        let resume_token = format!(
+                            "{}:{}:{}",
+                            datum_id,
+                            task_id,
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs()
+                        );
+                        Ok(DelegateAuthority {
+                            authorized,
+                            datum_id: datum_id.clone(),
+                            agent_id: agent_id.clone(),
+                            task_id: task_id.clone(),
+                            budget_remaining_usd: budget_remaining,
+                            resume_token,
+                            denial_reason: if authorized {
+                                None
+                            } else {
+                                Some(format!(
+                                    "estimated_cost_usd {} exceeds per-request limit $10.00",
+                                    estimated_cost_usd
+                                ))
+                            },
+                        })
+                    }
+                };
+                let _ = reply_tx.send(result);
             }
         }
     }

@@ -1103,6 +1103,15 @@ impl TurboLedgerService {
         ))
     }
 
+    /// Record a b00t delegation request as a lifecycle event (feature = "b00t").
+    #[cfg(feature = "b00t")]
+    pub fn append_b00t_delegate_event(
+        &self,
+        payload: std::collections::BTreeMap<String, String>,
+    ) -> Result<crate::events::AppendEventResult, ToolError> {
+        self.append_lifecycle_event("b00t_delegate", None, None, payload)
+    }
+
     fn append_lifecycle_event(
         &self,
         event_type: &str,
