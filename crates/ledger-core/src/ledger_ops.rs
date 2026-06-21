@@ -970,8 +970,6 @@ impl LedgerOperation for CheckTaxDeadlineOp {
 }
 
 /// Ingest a PDF statement file via the external Python sidecar.
-///
-<<<<<<< Updated upstream
 /// Spawns the sidecar subprocess (`reqif-opa-mcp ingest --file <path> --output ndjson`),
 /// reads NDJSON transaction candidates from stdout, runs the Rhai classification waterfall
 /// on each, and persists results to the workbook. Blake3 content-hash IDs ensure
@@ -980,23 +978,6 @@ impl LedgerOperation for CheckTaxDeadlineOp {
 /// # Subprocess
 /// Requires `reqif-opa-mcp` on `PATH`. The intended long-term replacement is
 /// `docling convert <path>` once docling's NDJSON output shape is stabilised.
-=======
-/// ## Stability
-/// **Future scope (phase-2).** This struct and its `LedgerOperation` implementation
-/// are defined for forward architecture only. `execute()` returns
-/// [`LedgerOpError::NotImplemented`]. The skeleton body documents the intended
-/// logic for when implementation begins.
-///
-/// ## FutureScope
-/// Dependency: [reqif-opa-mcp](https://github.com/PromptExecution/reqif-opa-mcp)
-/// (Python CLI). Implementation requires:
-///   1. Spawn subprocess: `reqif-opa-mcp ingest --file <path> --output ndjson`
-///   2. Parse NDJSON stdout into `ReqIfCandidate` rows
-///   3. Classify each candidate through `RuleRegistry::classify_waterfall`
-///   4. Emit `ClassificationOutcome` rows via `ExportWorkbookOp`
-///   5. Handle subprocess failure via `LedgerOpError::ExternalProcessFailed`
-///   6. Idempotency via Blake3 content-hash dedup on re-ingest
->>>>>>> Stashed changes
 pub struct PdfIngestOp {
     pub input_path: PathBuf,
     pub rule_dir: PathBuf,
@@ -1009,11 +990,7 @@ impl LedgerOperation for PdfIngestOp {
     }
 
     fn description(&self) -> &str {
-<<<<<<< Updated upstream
         "Ingest a PDF statement file via the reqif-opa-mcp Python sidecar"
-=======
-        "Ingest a PDF statement file via the reqif-opa-mcp Python sidecar (future/phase-2 — not yet implemented)"
->>>>>>> Stashed changes
     }
 
     fn is_idempotent(&self) -> bool {
@@ -1022,7 +999,6 @@ impl LedgerOperation for PdfIngestOp {
     }
 
     fn execute(&self, _ctx: &OperationContext) -> Result<OperationResult, LedgerOpError> {
-<<<<<<< Updated upstream
         use crate::classify::ClassificationEngine;
         use crate::document::DocType;
         use crate::ingest::TransactionInput;
@@ -1257,43 +1233,15 @@ impl LedgerOperation for PdfIngestOp {
             },
             duration_ms: 0,
             row_errors,
-        })
-=======
-        Err(LedgerOpError::NotImplemented(
-            "PdfIngestOp: not yet implemented (future/phase-2 — see FutureScope in doc comment)"
-                .to_string(),
-        ))
->>>>>>> Stashed changes
-    }
+        })    }
 }
 
 /// Gate classified transactions through AGT compliance before workbook commit.
 ///
-<<<<<<< Updated upstream
 /// Replaces OpaGateOp. Uses `LedgrrAgtGateway::compliance_report()` to determine
 /// whether transactions should proceed to the workbook or be flagged for review.
 #[cfg(feature = "cedar-policy")]
 pub struct CedarGateOp;
-=======
-/// ## Stability
-/// **Future scope (phase-3).** This struct and its `LedgerOperation` implementation
-/// are defined for forward architecture only. `execute()` returns
-/// [`LedgerOpError::NotImplemented`]. The skeleton body documents the intended
-/// logic for when implementation begins.
-///
-/// ## FutureScope
-/// Infrastructure prerequisite: OPA server (`opa run --server`). Requires:
-///   1. POST each `ClassificationOutcome` to `http://localhost:8181/v1/data/ledger/allow`
-///      with body `{ "input": { "category": "...", "confidence": 0.9, "review": false } }`
-///   2. If OPA returns `{ "result": false }` → move tx to `FLAGS.open` with reason "opa_gate_rejected"
-///   3. If OPA is unreachable → `tracing::warn!` and fall through (do not hard-fail pipeline)
-///   4. OPA policy source in `opa/policies/ledger_classify.rego`
-///   5. Configurable policy bundle path via `OperationContext.opa_bundle_path` (already available)
-pub struct OpaGateOp {
-    pub policy_bundle_path: Option<PathBuf>,
-}
->>>>>>> Stashed changes
-
 #[cfg(feature = "cedar-policy")]
 impl LedgerOperation for CedarGateOp {
     fn id(&self) -> &str {
@@ -1301,7 +1249,6 @@ impl LedgerOperation for CedarGateOp {
     }
 
     fn description(&self) -> &str {
-<<<<<<< Updated upstream
         "Gate classified transactions through AGT compliance before workbook commit"
     }
 
@@ -1371,17 +1318,7 @@ impl LedgerOperation for CedarGateOp {
     fn execute(&self, ctx: &OperationContext) -> Result<OperationResult, LedgerOpError> {
         Ok(OperationResult::success(
             "cedar-gate",
-            ctx.classified_transactions.len(),
-=======
-        "Run classified transactions through OPA policy gate before workbook commit (future/phase-3 — not yet implemented)"
-    }
-
-    fn execute(&self, _ctx: &OperationContext) -> Result<OperationResult, LedgerOpError> {
-        Err(LedgerOpError::NotImplemented(
-            "OpaGateOp: not yet implemented (future/phase-3 — see FutureScope in doc comment)"
-                .to_string(),
->>>>>>> Stashed changes
-        ))
+            ctx.classified_transactions.len(),        ))
     }
 }
 
