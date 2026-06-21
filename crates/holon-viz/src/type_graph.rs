@@ -9,7 +9,7 @@ use crate::cytoscape::{
 };
 
 /// A Rust type node suitable for type relationship visualization.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct TypeNode {
     /// Stable type identifier, usually a fully-qualified Rust path.
     pub id: String,
@@ -30,7 +30,7 @@ pub struct TypeNode {
 
 /// Supported relationship kinds between Rust types.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, specta::Type,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[serde(rename_all = "snake_case")]
 pub enum TypeRelationshipKind {
@@ -74,7 +74,7 @@ impl TypeRelationshipKind {
 
 /// A directed relationship between two type nodes.
 #[derive(
-    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, specta::Type,
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 pub struct TypeRelationship {
     pub source: String,
@@ -101,7 +101,7 @@ impl TypeRelationship {
 }
 
 /// Serializable Rust type relationship graph.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TypeRelationshipGraph {
     pub nodes: Vec<TypeNode>,
     pub relationships: Vec<TypeRelationship>,

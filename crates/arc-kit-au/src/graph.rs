@@ -255,10 +255,9 @@ impl Default for EvidenceGraph {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::node::{Classification, SourceDoc, Transaction};
+    use crate::node::{SourceDoc, Transaction};
     use chrono::TimeZone;
     use chrono::Utc;
-    use rust_decimal::Decimal;
 
     fn test_doc() -> SourceDoc {
         SourceDoc {

@@ -891,6 +891,18 @@ impl LedgerOperation for GenerateAuditTrailOp {
 }
 
 /// Check a tax deadline and emit an advisory issue if it is approaching.
+///
+/// ## Current behavior
+/// Returns `OperationResult::success` with 0 items processed. No calendar
+/// lookup is performed yet — the `BusinessCalendar` field in `OperationContext`
+/// is read but not queried.
+///
+/// ## FutureScope
+/// When `BusinessCalendar` integration is complete, this op will:
+///   1. Look up `self.deadline_id` in `ctx.calendar`
+///   2. Compute next due date via `BusinessCalendar::next_due`
+///   3. If `today + warn_days_before >= due_date` → emit an advisory issue
+///   4. Return result with issue text if approaching
 pub struct CheckTaxDeadlineOp {
     pub deadline_id: String,
     pub warn_days_before: u32,
@@ -958,7 +970,6 @@ impl LedgerOperation for CheckTaxDeadlineOp {
 }
 
 /// Ingest a PDF statement file via the external Python sidecar.
-///
 /// Spawns the sidecar subprocess (`reqif-opa-mcp ingest --file <path> --output ndjson`),
 /// reads NDJSON transaction candidates from stdout, runs the Rhai classification waterfall
 /// on each, and persists results to the workbook. Blake3 content-hash IDs ensure
@@ -1222,8 +1233,7 @@ impl LedgerOperation for PdfIngestOp {
             },
             duration_ms: 0,
             row_errors,
-        })
-    }
+        })    }
 }
 
 /// Gate classified transactions through AGT compliance before workbook commit.
@@ -1232,7 +1242,6 @@ impl LedgerOperation for PdfIngestOp {
 /// whether transactions should proceed to the workbook or be flagged for review.
 #[cfg(feature = "cedar-policy")]
 pub struct CedarGateOp;
-
 #[cfg(feature = "cedar-policy")]
 impl LedgerOperation for CedarGateOp {
     fn id(&self) -> &str {
@@ -1309,8 +1318,7 @@ impl LedgerOperation for CedarGateOp {
     fn execute(&self, ctx: &OperationContext) -> Result<OperationResult, LedgerOpError> {
         Ok(OperationResult::success(
             "cedar-gate",
-            ctx.classified_transactions.len(),
-        ))
+            ctx.classified_transactions.len(),        ))
     }
 }
 

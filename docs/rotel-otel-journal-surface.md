@@ -1,9 +1,17 @@
 # Rotel OTel Journal Surface
 
 l3dg3rr owns typed telemetry semantics before data reaches a collector.
-Rotel is the embedded OpenTelemetry collector boundary; the Rust core models
+Rotel is the OpenTelemetry collector boundary; the Rust core models
 OTel object-shape polyfills, classifies log shapes, and emits deterministic
 journal artifacts that justify metric triggers.
+
+There are two layers:
+
+1. **`rotel-visual` service** (port `ROTEL_PORT`, default `4318`) — the real
+   OTLP ingestion, log classification, ring buffer, and WebSocket dashboard.
+2. **Host proxy** (port `15115`) — the ledgerr-host internal gateway forwards
+   OTLP signal requests to `rotel-visual` for real classification instead of
+   stubbing.
 
 ## Contract
 
@@ -20,20 +28,34 @@ journal artifacts that justify metric triggers.
 
 ## Internal Listener
 
-The l3dg3rr host service exposes the embedded Rotel surface on the same
-internal OpenAI-compatible model gateway listener:
+The ledgerr-host internal gateway (port `15115`) proxies OTLP signal requests
+to the `rotel-visual` service (port `ROTEL_PORT`, default `4318`):
 
 ```text
 GET  http://127.0.0.1:15115/rotel/health
 GET  http://127.0.0.1:15115/rotel/export-plan
-POST http://127.0.0.1:15115/v1/logs
-POST http://127.0.0.1:15115/v1/metrics
-POST http://127.0.0.1:15115/v1/traces
+POST http://127.0.0.1:15115/v1/logs       → forwarded to rotel-visual
+POST http://127.0.0.1:15115/v1/metrics    → forwarded to rotel-visual
+POST http://127.0.0.1:15115/v1/traces     → forwarded to rotel-visual
 ```
 
-The `/v1/*` OTLP paths accept JSON payloads and return an explicit
-`rotel-embedded` acceptance artifact. The gateway still owns OpenAI chat at
-`/v1/chat/completions`; Rotel hosting is additive on the internal listener.
+The rotel-visual service also exposes its own endpoints directly:
+
+```text
+GET  http://127.0.0.1:{ROTEL_PORT}/health
+GET  http://127.0.0.1:{ROTEL_PORT}/metrics
+GET  http://127.0.0.1:{ROTEL_PORT}/
+WS   ws://127.0.0.1:{ROTEL_PORT}/ws/telemetry
+POST http://127.0.0.1:{ROTEL_PORT}/v1/logs
+POST http://127.0.0.1:{ROTEL_PORT}/v1/metrics
+POST http://127.0.0.1:{ROTEL_PORT}/v1/traces
+POST http://127.0.0.1:{ROTEL_PORT}/rotel/evaluate
+```
+
+The `/v1/*` OTLP paths accept JSON payloads and return the rotel-visual
+classification artifact. The gateway still owns OpenAI chat at
+`/v1/chat/completions` on port `15115`; Rotel proxying is additive on the
+internal listener.
 
 ## Example Rule
 

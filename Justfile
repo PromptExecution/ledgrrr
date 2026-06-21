@@ -664,3 +664,11 @@ wrkflw-full-test emulation="secure-emulation":
     @echo ""
     @echo "=== Step 2: Run docgen pipeline ==="
     wrkflw run --runtime {{emulation}} .github/workflows/wrkflw-docgen.yml
+
+# Verify all env vars in source code are documented in .env.example
+env-docs-check:
+    bash scripts/check-env-docs.sh
+
+# Timed b00t maintenance probe for version/task/focus/audit surfaces.
+b00t-maintenance-check budget="":
+    bash scripts/check-b00t-maintenance.sh {{ if budget == "" { "" } else { "--budget " + budget } }}

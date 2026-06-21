@@ -18,7 +18,7 @@
       },
       "environmentVariables": [
         {
-          "name": "LEDGER_WORKBOOK_PATH",
+          "name": "LEDGERR_WORKBOOK_PATH",
           "description": "Path to the Excel workbook (default: tax-ledger.xlsx in CWD)",
           "isRequired": false,
           "format": "string",

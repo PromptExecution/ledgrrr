@@ -105,7 +105,6 @@ pub fn tool_descriptors() -> Vec<Value> {
 pub fn handle_focus_tool(arguments: &Value) -> Value {
     use crate::contract::parse_focus;
     use crate::focus_tool::{self, FocusToolInput, FocusToolRecord};
-    use std::io::Write;
 
     let request = match parse_focus(arguments) {
         Ok(r) => r,
@@ -133,48 +132,15 @@ pub fn handle_focus_tool(arguments: &Value) -> Value {
             };
             let input = FocusToolInput {
                 action: "append_focus_record".into(),
-                records: vec![record.clone()],
+                records: vec![record],
                 experiment_id: experiment_id.clone(),
                 personality: None,
             };
             match focus_tool::handle_focus_tool(input) {
-                Ok(output) => {
-                    // Persist the appended record (not the tool output) to JSONL.
-                    // Path defaults to temp dir; override with FOCUS_SIDECAR_PATH env var.
-                    // TODO: derive path from manifest/workbook path when available in context.
-                    let sidecar_path = std::env::var("FOCUS_SIDECAR_PATH")
-                        .map(std::path::PathBuf::from)
-                        .unwrap_or_else(|_| std::env::temp_dir().join("focus_records.jsonl"));
-                    match serde_json::to_string(&record) {
-                        Ok(serialized) => {
-                            match std::fs::OpenOptions::new()
-                                .create(true)
-                                .append(true)
-                                .open(&sidecar_path)
-                            {
-                                Ok(mut f) => {
-                                    if let Err(e) = writeln!(f, "{serialized}") {
-                                        tracing::warn!(
-                                            path = %sidecar_path.display(),
-                                            err = %e,
-                                            "focus_records JSONL write failed"
-                                        );
-                                    }
-                                }
-                                Err(e) => tracing::warn!(
-                                    path = %sidecar_path.display(),
-                                    err = %e,
-                                    "focus_records JSONL open failed"
-                                ),
-                            }
-                        }
-                        Err(e) => tracing::warn!(err = %e, "focus record serialization failed"),
-                    }
-                    json!({
-                        "content": [text_content(json!(output))],
-                        "isError": false
-                    })
-                }
+                Ok(output) => json!({
+                    "content": [text_content(json!(output))],
+                    "isError": false
+                }),
                 Err(err) => error_envelope(&ToolError::Internal(err)),
             }
         }
