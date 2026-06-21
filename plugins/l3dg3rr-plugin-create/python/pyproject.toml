@@ -7,7 +7,7 @@ name = "l3dg3rr-mcp-launcher"
 version = "0.1.0"
 description = "Launcher for l3dg3rr ledgerr-mcp server runtime profiles"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.14"
 authors = [
   { name = "PromptExecution", email = "brianh@promptexecution.com" }
 ]

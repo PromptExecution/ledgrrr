@@ -4541,7 +4541,6 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
- "specta",
  "tempfile",
  "thiserror 2.0.18",
  "tracing",
@@ -4549,7 +4548,7 @@ dependencies = [
 
 [[package]]
 name = "holon-viz-wasm"
-version = "1.8.1"
+version = "1.9.0"
 dependencies = [
  "holon-viz",
  "js-sys",
