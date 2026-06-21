@@ -1,0 +1,6 @@
+# Kani verification toolchain — separate from rust-toolchain.toml (stable channel).
+# Kani requires a nightly that matches its internal LLVM/MIR version.
+# Update by running: cargo kani --version and cross-referencing kani-verifier release notes.
+[toolchain]
+channel = "nightly-2025-01-15"
+components = ["rustc", "cargo", "rust-src"]

@@ -16,23 +16,26 @@ use ledgerr_host::internal_openai::{
 use ledgerr_host::settings::ChatSettings;
 
 use super::state::AppState;
+use holon_viz::{CytoscapeGraph, TypeRelationshipGraph};
 
 // ── Test harness config ───────────────────────────────────────────────────────
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, Clone, specta::Type)]
 pub struct TestHarnessConfig {
-    pub kill_delay_ms: u64,
+    pub kill_delay_ms: u32,
     pub screenshot_path: String,
     pub pkg_version: String,
     pub build_number: String,
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_cargo_pkg_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn write_dom_dump(dump: String) -> String {
     let path = std::env::temp_dir().join("host-tauri-dom-dump.txt");
     match std::fs::write(&path, &dump) {
@@ -42,6 +45,7 @@ pub fn write_dom_dump(dump: String) -> String {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_test_harness_config() -> TestHarnessConfig {
     let _ = std::fs::write(
         std::env::temp_dir().join("host-tauri-ipc-alive.txt"),
@@ -56,15 +60,13 @@ pub fn get_test_harness_config() -> TestHarnessConfig {
             .ok()
             .unwrap_or_default(),
         pkg_version: env!("CARGO_PKG_VERSION").to_string(),
-        build_number: std::env::var("TAURI_BUILD_NUMBER")
-            .ok()
-            .unwrap_or_default(),
+        build_number: std::env::var("TAURI_BUILD_NUMBER").ok().unwrap_or_default(),
     }
 }
 
 // ── Shared payload types ──────────────────────────────────────────────────────
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, Clone, specta::Type)]
 pub struct InitialState {
     pub version_text: String,
     pub status_text: String,
@@ -79,7 +81,7 @@ pub struct InitialState {
     pub docs_status_text: String,
 }
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, Clone, specta::Type)]
 pub struct ChatSettingsPayload {
     pub endpoint_text: String,
     pub model_text: String,
@@ -88,7 +90,7 @@ pub struct ChatSettingsPayload {
     pub status_text: String,
 }
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, Clone, specta::Type)]
 pub struct RhaiPromptPayload {
     pub system_prompt: String,
     /// Non-empty when the caller should switch to this model (e.g. DEFAULT_RHAI_RULE_MODEL)
@@ -98,7 +100,7 @@ pub struct RhaiPromptPayload {
     pub status: String,
 }
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, Clone, specta::Type)]
 pub struct ChatUpdateEvent {
     pub transcript_text: String,
     pub review_log_text: Option<String>,
@@ -138,6 +140,7 @@ pub fn ensure_internal_endpoint(
 // ── Commands ──────────────────────────────────────────────────────────────────
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_initial_state(state: tauri::State<'_, AppState>) -> Result<InitialState, String> {
     let mut settings = state.store.load().map_err(|e| e.to_string())?;
 
@@ -165,6 +168,7 @@ pub fn get_initial_state(state: tauri::State<'_, AppState>) -> Result<InitialSta
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn save_settings(
     endpoint: String,
     model: String,
@@ -190,6 +194,7 @@ pub fn save_settings(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn send_message(
     window: tauri::Window,
     draft: String,
@@ -362,6 +367,7 @@ pub async fn send_message(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn load_rhai_rule_prompt(
     current_model: String,
     current_system_prompt: String,
@@ -397,6 +403,7 @@ pub fn load_rhai_rule_prompt(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn use_internal_phi(
     system_prompt: String,
     state: tauri::State<'_, AppState>,
@@ -415,6 +422,7 @@ pub fn use_internal_phi(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn use_foundry_local(system_prompt: String) -> Result<ChatSettingsPayload, String> {
     let chat = foundry_local_chat_settings(system_prompt)?;
     let rig_status = foundry_local_status();
@@ -431,6 +439,7 @@ pub fn use_foundry_local(system_prompt: String) -> Result<ChatSettingsPayload, S
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn use_cloud_model(system_prompt: String) -> Result<ChatSettingsPayload, String> {
     let chat = cloud_chat_settings(system_prompt);
 
@@ -446,6 +455,7 @@ pub fn use_cloud_model(system_prompt: String) -> Result<ChatSettingsPayload, Str
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn open_docs_playbook(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
@@ -483,12 +493,13 @@ pub fn open_docs_playbook(
 
 // ── Evidence dashboard ────────────────────────────────────────────────────────
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, Clone, specta::Type)]
 pub struct EvidenceDashboardPayload {
     pub today_queue: ledgerr_host::evidence::TodayQueue,
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_evidence_dashboard(
     state: tauri::State<'_, AppState>,
 ) -> Result<EvidenceDashboardPayload, String> {
@@ -502,13 +513,14 @@ pub fn get_evidence_dashboard(
     Ok(EvidenceDashboardPayload { today_queue })
 }
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, Clone, specta::Type)]
 pub struct ProvenancePayload {
     pub badge: String,
     pub css_class: String,
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_tx_provenance(
     tx_id: String,
     state: tauri::State<'_, AppState>,
@@ -522,4 +534,122 @@ pub fn get_tx_provenance(
         badge: badge.label().to_string(),
         css_class: badge.css_class().to_string(),
     })
+}
+
+/// Return the Cytoscape.js-compatible graph for the holonic pipeline.
+///
+/// The frontend Viz panel calls this once on activation. `tauri-specta` generates
+/// typed TypeScript bindings from the `CytoscapeGraph` return type.
+#[tauri::command]
+#[specta::specta]
+pub fn get_holon_viz_graph() -> Result<CytoscapeGraph, String> {
+    use holon_viz::{Holon, HolonKind};
+    use std::collections::HashMap;
+
+    let holons = vec![
+        Holon {
+            id: "pipeline".into(),
+            label: "Tax Ledger Pipeline".into(),
+            kind: HolonKind::CapsuleGroup,
+            parent_id: None,
+            children: vec![
+                "ingest".into(),
+                "classify".into(),
+                "reconcile".into(),
+                "attest".into(),
+            ],
+            metadata: HashMap::new(),
+        },
+        Holon {
+            id: "ingest".into(),
+            label: "Ingest PDFs".into(),
+            kind: HolonKind::SysmlBlock,
+            parent_id: Some("pipeline".into()),
+            children: vec!["docling".into(), "blake3-id".into()],
+            metadata: HashMap::new(),
+        },
+        Holon {
+            id: "classify".into(),
+            label: "Classify Transactions".into(),
+            kind: HolonKind::SysmlBlock,
+            parent_id: Some("pipeline".into()),
+            children: vec!["rhai-rules".into(), "flag-queue".into()],
+            metadata: HashMap::new(),
+        },
+        Holon {
+            id: "reconcile".into(),
+            label: "Reconcile & Export".into(),
+            kind: HolonKind::SysmlBlock,
+            parent_id: Some("pipeline".into()),
+            children: vec!["excel-workbook".into()],
+            metadata: HashMap::new(),
+        },
+        Holon {
+            id: "attest".into(),
+            label: "Attest (CPA)".into(),
+            kind: HolonKind::SysmlBlock,
+            parent_id: Some("pipeline".into()),
+            children: vec!["audit-log".into()],
+            metadata: HashMap::new(),
+        },
+        Holon {
+            id: "docling".into(),
+            label: "Docling OCR".into(),
+            kind: HolonKind::ProcessNode,
+            parent_id: Some("ingest".into()),
+            children: vec![],
+            metadata: HashMap::new(),
+        },
+        Holon {
+            id: "blake3-id".into(),
+            label: "Blake3 Content ID".into(),
+            kind: HolonKind::ProcessNode,
+            parent_id: Some("ingest".into()),
+            children: vec![],
+            metadata: HashMap::new(),
+        },
+        Holon {
+            id: "rhai-rules".into(),
+            label: "Rhai Rule Engine".into(),
+            kind: HolonKind::ProcessNode,
+            parent_id: Some("classify".into()),
+            children: vec![],
+            metadata: HashMap::new(),
+        },
+        Holon {
+            id: "flag-queue".into(),
+            label: "Flag Queue".into(),
+            kind: HolonKind::ProcessNode,
+            parent_id: Some("classify".into()),
+            children: vec![],
+            metadata: HashMap::new(),
+        },
+        Holon {
+            id: "excel-workbook".into(),
+            label: "Excel Workbook".into(),
+            kind: HolonKind::OwlClass,
+            parent_id: Some("reconcile".into()),
+            children: vec![],
+            metadata: HashMap::new(),
+        },
+        Holon {
+            id: "audit-log".into(),
+            label: "Immutable Audit Log".into(),
+            kind: HolonKind::AuditEvent,
+            parent_id: Some("attest".into()),
+            children: vec![],
+            metadata: HashMap::new(),
+        },
+    ];
+
+    Ok(CytoscapeGraph::from_holons(&holons))
+}
+
+/// Return the Rust type relationship graph for the Viz panel.
+///
+/// Delegates to [`TypeRelationshipGraph::seed()`] in `holon-viz`.
+#[tauri::command]
+#[specta::specta]
+pub fn get_type_graph() -> Result<CytoscapeGraph, String> {
+    Ok(TypeRelationshipGraph::seed().to_cytoscape())
 }

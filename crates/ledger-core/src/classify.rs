@@ -3,6 +3,7 @@ use std::path::Path;
 use crate::ingest::{deterministic_tx_id, TransactionInput};
 use rhai::{Dynamic, Engine, EvalAltResult, Map, Scope, AST};
 use serde::{Deserialize, Serialize};
+use strum::{Display, EnumString};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClassificationError {
@@ -32,6 +33,35 @@ pub struct ClassificationOutcome {
     pub needs_review: bool,
     pub reason: String,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, Display, Serialize, Deserialize, strum::VariantArray)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum TaxCategory {
+    OfficeSupplies,
+    Travel,
+    MealsAndEntertainment,
+    SoftwareAndSubscriptions,
+    ProfessionalServices,
+    RentAndUtilities,
+    MarketingAndAdvertising,
+    Insurance,
+    Payroll,
+    Other,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, Display, Serialize, Deserialize, strum::VariantArray)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum Flag {
+    UnusualAmount,
+    MissingReceipt,
+    UnclearDescription,
+    PotentialPersonal,
+    ReviewRequired,
+}
+
+pub use crate::workbook::MutationRecord;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClassifiedTransaction {
@@ -173,6 +203,61 @@ impl ClassificationEngine {
             category,
             confidence,
         });
+    }
+
+    /// Transition a flag from Open to Resolved. Returns `true` if the flag was found and updated.
+    pub fn resolve_flag(&mut self, tx_id: &str) -> bool {
+        if let Some(flag) = self
+            .flags
+            .iter_mut()
+            .find(|f| f.tx_id == tx_id && f.status == FlagStatus::Open)
+        {
+            flag.status = FlagStatus::Resolved;
+            true
+        } else {
+            false
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_flag_transitions_open_to_resolved() {
+        let mut engine = ClassificationEngine::default();
+        engine.record_review_flag(
+            "tx-abc".to_string(),
+            "2024-06-01",
+            "needs review".to_string(),
+            "Other".to_string(),
+            0.5,
+        );
+        assert_eq!(engine.query_flags(2024, FlagStatus::Open).len(), 1);
+        assert!(engine.resolve_flag("tx-abc"));
+        assert_eq!(engine.query_flags(2024, FlagStatus::Open).len(), 0);
+        assert_eq!(engine.query_flags(2024, FlagStatus::Resolved).len(), 1);
+    }
+
+    #[test]
+    fn resolve_flag_returns_false_when_not_found() {
+        let mut engine = ClassificationEngine::default();
+        assert!(!engine.resolve_flag("no-such-tx"));
+    }
+
+    #[test]
+    fn resolve_flag_ignores_already_resolved() {
+        let mut engine = ClassificationEngine::default();
+        engine.record_review_flag(
+            "tx-xyz".to_string(),
+            "2024-03-15",
+            "check".to_string(),
+            "Income".to_string(),
+            0.7,
+        );
+        assert!(engine.resolve_flag("tx-xyz"));
+        assert!(!engine.resolve_flag("tx-xyz"), "second resolve should return false");
     }
 }
 

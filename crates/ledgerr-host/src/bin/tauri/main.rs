@@ -38,20 +38,22 @@ fn main() {
         eprintln!("[telemetry] TAURI_TEST_KILL_DELAY={delay}");
         let _ = std::fs::write(
             std::env::temp_dir().join("host-tauri-kill-delay.txt"),
-            format!("TAURI_TEST_KILL_DELAY={delay}\npid={}\n", std::process::id()),
+            format!(
+                "TAURI_TEST_KILL_DELAY={delay}\npid={}\n",
+                std::process::id()
+            ),
         );
     }
     if let Ok(shots) = std::env::var("TAURI_TEST_SCREENSHOT_PATH") {
         eprintln!("[telemetry] TAURI_TEST_SCREENSHOT_PATH={shots}");
     }
 
-    use std::sync::{Arc, Mutex};
     use ledgerr_host::chat::{ChatTurn, ReviewLog};
     use ledgerr_host::evidence::EvidenceState;
     use ledgerr_host::internal_openai::InternalOpenAiHandle;
     use ledgerr_host::settings::{default_settings_path, SettingsStore};
-    use tauri::Manager;
     use state::AppState;
+    use std::sync::{Arc, Mutex};
 
     let store = Arc::new(SettingsStore::new(default_settings_path()));
     let history: Arc<Mutex<Vec<ChatTurn>>> = Arc::new(Mutex::new(Vec::new()));
@@ -74,8 +76,36 @@ fn main() {
         .and_then(|v| v.parse::<u16>().ok())
         .unwrap_or(0);
     if cdp_port > 0 {
-        eprintln!("[cdp] port={cdp_port} (launcher must set WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS)");
+        eprintln!(
+            "[cdp] port={cdp_port} (launcher must set WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS)"
+        );
     }
+
+    use specta_typescript::Typescript;
+    use tauri_specta::{collect_commands, Builder as SpectaBuilder};
+
+    let specta_builder = SpectaBuilder::<tauri::Wry>::new().commands(collect_commands![
+        commands::get_initial_state,
+        commands::save_settings,
+        commands::send_message,
+        commands::load_rhai_rule_prompt,
+        commands::use_internal_phi,
+        commands::use_foundry_local,
+        commands::use_cloud_model,
+        commands::open_docs_playbook,
+        commands::get_evidence_dashboard,
+        commands::get_tx_provenance,
+        commands::get_test_harness_config,
+        commands::write_dom_dump,
+        commands::get_cargo_pkg_version,
+        commands::get_holon_viz_graph,
+        commands::get_type_graph,
+    ]);
+
+    #[cfg(debug_assertions)]
+    specta_builder
+        .export(Typescript::default(), "../ui/bindings.ts")
+        .expect("Failed to export TS bindings");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -87,33 +117,24 @@ fn main() {
             );
             let build = env!("TAURI_BUILD_NUMBER");
             let title = format!("ledgrrr v{}+b{}", env!("CARGO_PKG_VERSION"), build);
-            let w = tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("index.html".into()))
-                .title(&title)
-                .inner_size(1100.0, 760.0)
-                .center()
-                .resizable(true)
-                .decorations(true)
-                .visible(true)
-                .build()
-                .expect("failed to build main window");
+            let w = tauri::WebviewWindowBuilder::new(
+                app,
+                "main",
+                tauri::WebviewUrl::App("index.html".into()),
+            )
+            .title(&title)
+            .inner_size(1400.0, 900.0)
+            .min_inner_size(1100.0, 760.0)
+            .center()
+            .resizable(true)
+            .decorations(true)
+            .visible(true)
+            .build()
+            .expect("failed to build main window");
             let _: std::result::Result<(), _> = w.set_title(&title);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
-            commands::get_initial_state,
-            commands::save_settings,
-            commands::send_message,
-            commands::load_rhai_rule_prompt,
-            commands::use_internal_phi,
-            commands::use_foundry_local,
-            commands::use_cloud_model,
-            commands::open_docs_playbook,
-            commands::get_evidence_dashboard,
-            commands::get_tx_provenance,
-            commands::get_test_harness_config,
-            commands::write_dom_dump,
-            commands::get_cargo_pkg_version,
-        ])
+        .invoke_handler(specta_builder.invoke_handler())
         .build(tauri::generate_context!())
         .unwrap_or_else(|e| {
             eprintln!("[build error] {e}");

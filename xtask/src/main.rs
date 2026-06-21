@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
+mod kerm;
 mod viz_manifest;
 
 use clap::{Parser, Subcommand};
@@ -92,6 +93,15 @@ enum Commands {
     ExportVizManifest {
         /// Output path (default: ui/docs/public/viz-manifest.json)
         #[arg(long, default_value = "ui/docs/public/viz-manifest.json")]
+        output: PathBuf,
+    },
+    /// Regenerate holon-viz seed from types/domain.kerm
+    GenerateKermArtifacts {
+        /// Path to domain.kerm (default: types/domain.kerm)
+        #[arg(long, default_value = "types/domain.kerm")]
+        kerm: PathBuf,
+        /// Output path for generated Rust (default: crates/holon-viz/src/gen.rs)
+        #[arg(long, default_value = "crates/holon-viz/src/gen.rs")]
         output: PathBuf,
     },
 }
@@ -202,6 +212,17 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::ExportVizManifest { output } => {
             viz_manifest::export_viz_manifest(&output)?;
+        }
+        Commands::GenerateKermArtifacts { kerm, output } => {
+            let domain = kerm::load(&kerm)?;
+            let code = kerm::codegen(&domain);
+            fs::write(&output, &code)?;
+            println!(
+                "generated: {} ({} types, {} rels)",
+                output.display(),
+                domain.types.len(),
+                domain.rel.len(),
+            );
         }
     }
     Ok(())

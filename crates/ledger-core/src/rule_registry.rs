@@ -6,10 +6,12 @@
 //! mirror types for the `reqif-opa-mcp` Python sidecar's JSON output.
 //!
 //! ## Status
-//! - `RuleRegistry::load_from_dir` — implemented for transaction `.rhai` rules
+//! - `RuleRegistry::load_from_dir` — implemented; builds lexical-similarity index eagerly
 //! - `RuleRegistry::select_rules_deterministic` — implemented keyword fallback
-//! - `RuleRegistry::classify_waterfall` — implemented first-match waterfall
-//! - `SemanticRuleSelector` — planned (requires embedding infrastructure)
+//! - `RuleRegistry::select_rules_semantic` — implemented (Jaccard/lexical); used by waterfall
+//! - `RuleRegistry::classify_waterfall` — implemented; routes through semantic selector
+//! - `SemanticRuleSelector` — implemented with lexical similarity; upgrade path to vector
+//!   embeddings (`fastembed-rs` / `candle` / ONNX) is wired at the trait boundary
 //!
 //! ## External Dependency
 //! The Python sidecar at <https://github.com/PromptExecution/reqif-opa-mcp> produces
@@ -56,8 +58,78 @@ fn semantic_candidate_id(source_kind: &str, source_ref: &str, text: &str) -> Str
     blake3::hash(canonical.as_bytes()).to_hex().to_string()
 }
 
+/// Replaces German and French diacritics with their ASCII equivalents so that
+/// compound words like "Auslandüberweisung" survive as a single token instead
+/// of being split at the ü boundary.
+fn normalize_unicode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 4);
+    for c in s.chars() {
+        match c {
+            'ä' | 'Ä' => out.push_str("ae"),
+            'ö' | 'Ö' => out.push_str("oe"),
+            'ü' | 'Ü' => out.push_str("ue"),
+            'ß' => out.push_str("ss"),
+            'é' | 'è' | 'ê' | 'ë' | 'É' | 'È' | 'Ê' | 'Ë' => out.push('e'),
+            'à' | 'â' | 'á' | 'ã' | 'À' | 'Â' | 'Á' => out.push('a'),
+            'î' | 'ï' | 'í' | 'ì' | 'Î' | 'Ï' | 'Í' => out.push('i'),
+            'ô' | 'ó' | 'ò' | 'Ô' | 'Ó' | 'Ò' => out.push('o'),
+            'û' | 'ú' | 'ù' | 'Û' | 'Ú' | 'Ù' => out.push('u'),
+            'ñ' | 'Ñ' => out.push('n'),
+            'ç' | 'Ç' => out.push('c'),
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// Expands a query token set with English financial-domain synonyms for
+/// German and French terms found in expat transaction descriptions.
+///
+/// Matching is by substring so compound words like "auslandueberweisung"
+/// expand via both sub-terms ("ausland" → foreign, "ueberweisung" → transfer).
+/// Applied only to the QUERY side in `select_rules_semantic`; the rule index
+/// stays in English.
+fn expand_financial_tokens(tokens: &BTreeSet<String>) -> BTreeSet<String> {
+    const GLOSSARY: &[(&str, &[&str])] = &[
+        // German → English
+        ("ausland",      &["foreign", "international", "abroad", "overseas"]),
+        ("ueberweisung", &["transfer", "wire", "remittance"]),
+        ("zahlung",      &["payment", "transfer"]),
+        ("gehalt",       &["salary", "income", "wage", "employment"]),
+        ("arbeitgeber",  &["employer", "employment", "income", "wage"]),
+        ("arbeitnehmer", &["employee", "employment"]),
+        ("einkommen",    &["income", "earnings"]),
+        ("kapital",      &["capital", "investment"]),
+        ("dividende",    &["dividend", "income"]),
+        ("miete",        &["rent", "rental"]),
+        ("freiberuf",    &["freelance", "contractor", "selfemployment"]),
+        ("selbstaendig", &["selfemployment", "freelance", "contractor"]),
+        ("krypto",       &["crypto", "cryptocurrency"]),
+        ("zinsen",       &["interest", "income"]),
+        ("erstattung",   &["refund", "reimbursement"]),
+        // French → English
+        ("virement",     &["transfer", "wire", "remittance"]),
+        ("etranger",     &["foreign", "international"]),
+        ("salaire",      &["salary", "income", "employment"]),
+        ("revenu",       &["income", "revenue", "earnings"]),
+        ("loyer",        &["rent", "rental"]),
+    ];
+    let mut expanded = tokens.clone();
+    for token in tokens.iter() {
+        for (pattern, synonyms) in GLOSSARY {
+            if token.contains(pattern) {
+                for &syn in *synonyms {
+                    expanded.insert(syn.to_string());
+                }
+            }
+        }
+    }
+    expanded
+}
+
 fn semantic_tokens(text: &str) -> BTreeSet<String> {
-    text.split(|c: char| !c.is_ascii_alphanumeric())
+    normalize_unicode(text)
+        .split(|c: char| !c.is_ascii_alphanumeric())
         .filter_map(|token| {
             let token = token.trim().to_ascii_lowercase();
             (token.len() >= 3).then_some(token)
@@ -170,29 +242,33 @@ pub enum RuleRegistryError {
 // ============================================================================
 
 /// Selects applicable Rhai rule files for a given transaction based on
-/// vector similarity to `ReqIfCandidate` embeddings.
+/// lexical similarity to rule file content and `ReqIfCandidate` metadata.
 ///
-/// # Why this is `unimplemented!()` now
-/// This trait requires an embedding model to encode both transaction descriptions
-/// and `ReqIfCandidate` text into a shared vector space. The infrastructure for
-/// local embedding inference (e.g., `candle`, `fastembed-rs`, or an ONNX sidecar)
-/// is not yet wired. Until then, `RuleRegistry::select_rules_deterministic` provides
-/// a keyword-match fallback that covers the common cases without embeddings.
+/// # Current implementation
+/// `RuleRegistry` implements this trait using Jaccard similarity over tokenised
+/// rule text (filename + content / ReqIfCandidate fields). The index is built
+/// eagerly by `load_from_dir` so `classify_waterfall` can call
+/// `select_rules_semantic` immediately without a separate build step.
+///
+/// # Future: vector embeddings
+/// The intended upgrade path is local embedding inference (`fastembed-rs`,
+/// `candle`, or an ONNX sidecar) to replace Jaccard with cosine similarity in
+/// a shared embedding space. `build_embedding_index` and `select_rules_semantic`
+/// are kept as a trait so the production implementation can be swapped without
+/// changing call sites.
 pub trait SemanticRuleSelector {
-    /// Select rules applicable to a transaction using vector similarity search.
-    ///
-    /// Returns rule file paths sorted by cosine similarity to the transaction's
-    /// embedding, descending. At most `top_k` results are returned.
+    /// Select the `top_k` most relevant rules for a transaction using
+    /// lexical-similarity scoring. Falls back to `select_rules_deterministic`
+    /// when the index is empty or `top_k == 0`.
     ///
     /// # Prerequisites
-    /// - Embedding index must be pre-built via `build_embedding_index`.
-    /// - `ReqIfCandidate` objects must already be loaded into the registry.
+    /// - Index must be built via `build_embedding_index` (called automatically
+    ///   by `load_from_dir`).
     fn select_rules_semantic(&self, tx: &SampleTransaction, top_k: usize) -> Vec<PathBuf>;
 
-    /// Build or rebuild the embedding index from loaded `ReqIfCandidate` texts.
-    ///
-    /// Must be called after `load_from_dir` and before `select_rules_semantic`.
-    /// STUB: requires embedding infrastructure to implement.
+    /// Build or rebuild the lexical-similarity index from loaded rule files and
+    /// any paired `ReqIfCandidate` sidecars. Called automatically by
+    /// `load_from_dir`; re-call after hot-reloading rules from disk.
     fn build_embedding_index(&mut self) -> Result<(), RuleRegistryError>;
 }
 
@@ -271,11 +347,17 @@ impl RuleRegistry {
             })
             .collect();
 
-        Ok(Self {
+        let mut registry = Self {
             rule_paths,
             candidates,
             semantic_index: Vec::new(),
-        })
+        };
+        // Build the lexical-similarity index eagerly so classify_waterfall can use
+        // select_rules_semantic immediately. Errors are non-fatal: if a rule file
+        // cannot be read the index will be partial but the deterministic fallback
+        // inside select_rules_semantic covers the gap.
+        let _ = registry.build_embedding_index();
+        Ok(registry)
     }
 
     /// Select rules applicable to a transaction by keyword match (deterministic fallback).
@@ -368,9 +450,12 @@ impl RuleRegistry {
 
     /// Apply all rules in order, returning the first non-`Unclassified` result.
     ///
-    /// This is the production multi-rule pipeline (waterfall model). Rules are
-    /// executed in the order returned by `select_rules_deterministic`. Execution
-    /// stops as soon as one rule returns a `category` other than `"Unclassified"`.
+    /// This is the production multi-rule pipeline (waterfall model). When the
+    /// lexical-similarity index is populated (built by `load_from_dir`), rule
+    /// selection uses `select_rules_semantic` which scores candidates by Jaccard
+    /// similarity over tokenised rule text and falls back to the keyword-match
+    /// path when the index is empty. Execution stops as soon as one rule returns
+    /// a `category` other than `"Unclassified"`.
     ///
     /// If all rules return `"Unclassified"`, the final unclassified outcome is
     /// returned so fallback reason/review fields are preserved. Rule execution
@@ -381,7 +466,9 @@ impl RuleRegistry {
         engine: &mut ClassificationEngine,
         tx: &SampleTransaction,
     ) -> Result<ClassificationOutcome, ClassificationError> {
-        let selected = self.select_rules_deterministic(tx);
+        // Use semantic selection (lexical-similarity index) when available;
+        // select_rules_semantic falls back to deterministic when the index is empty.
+        let selected = self.select_rules_semantic(tx, self.rule_paths.len());
 
         let mut last_unclassified = None;
 
@@ -443,7 +530,11 @@ impl SemanticRuleSelector for RuleRegistry {
             return self.select_rules_deterministic(tx);
         }
 
-        let query = semantic_tokens(&format!("{} {}", tx.account_id, tx.description));
+        // Unicode-normalize then expand German/French financial terms to their
+        // English equivalents so "Auslandüberweisung" bridges to "foreign_income".
+        let base_tokens =
+            semantic_tokens(&format!("{} {}", tx.account_id, tx.description));
+        let query = expand_financial_tokens(&base_tokens);
         let mut scored = self
             .semantic_index
             .iter()
@@ -463,7 +554,9 @@ impl SemanticRuleSelector for RuleRegistry {
 
         let mut selected = Vec::new();
         let mut seen = std::collections::HashSet::new();
-        const MIN_LEXICAL_SIMILARITY: f64 = 0.05;
+        // Lowered from 0.05 to accommodate expanded (larger) query sets where
+        // cross-lingual expansion adds tokens that raise the union size.
+        const MIN_LEXICAL_SIMILARITY: f64 = 0.02;
         for (score, _id, path) in scored {
             if score < MIN_LEXICAL_SIMILARITY {
                 continue;
@@ -525,6 +618,24 @@ impl SemanticRuleSelector for RuleRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn make_rule(dir: &std::path::Path, name: &str, body: &str) -> PathBuf {
+        let path = dir.join(name);
+        fs::write(&path, body).unwrap();
+        path
+    }
+
+    fn sample_tx(account_id: &str, description: &str) -> SampleTransaction {
+        SampleTransaction {
+            tx_id: "test-tx".to_string(),
+            account_id: account_id.to_string(),
+            date: "2024-06-01".to_string(),
+            amount: "100.00".to_string(),
+            description: description.to_string(),
+        }
+    }
 
     #[test]
     fn semantic_candidate_ids_are_stable() {
@@ -535,5 +646,93 @@ mod tests {
         assert_eq!(first, second);
         assert_ne!(first, different);
         assert_eq!(first.len(), 64);
+    }
+
+    #[test]
+    fn load_from_dir_builds_semantic_index() {
+        let dir = TempDir::new().unwrap();
+        make_rule(
+            dir.path(),
+            "classify_schedule_c.rhai",
+            r#"fn classify(tx) { #{category: "Unclassified", confidence: 0.0, review: false, reason: ""} }"#,
+        );
+        let registry = RuleRegistry::load_from_dir(dir.path()).unwrap();
+        assert_eq!(registry.rule_count(), 1);
+        assert!(
+            !registry.semantic_candidates().is_empty(),
+            "semantic index must be built eagerly by load_from_dir"
+        );
+    }
+
+    #[test]
+    fn select_rules_semantic_returns_all_rules_for_unrelated_tx() {
+        let dir = TempDir::new().unwrap();
+        make_rule(
+            dir.path(),
+            "classify_schedule_c.rhai",
+            r#"fn classify(tx) { #{category: "Unclassified", confidence: 0.0, review: false, reason: ""} }"#,
+        );
+        make_rule(
+            dir.path(),
+            "classify_schedule_e.rhai",
+            r#"fn classify(tx) { #{category: "Unclassified", confidence: 0.0, review: false, reason: ""} }"#,
+        );
+        let registry = RuleRegistry::load_from_dir(dir.path()).unwrap();
+        let tx = sample_tx("unknown", "purchase at store");
+        let selected = registry.select_rules_semantic(&tx, 10);
+        assert_eq!(
+            selected.len(),
+            2,
+            "should return all rules when no strong match"
+        );
+    }
+
+    #[test]
+    fn classify_waterfall_uses_semantic_path() {
+        let dir = TempDir::new().unwrap();
+        // Rule that matches "invoice" in the description
+        make_rule(
+            dir.path(),
+            "classify_schedule_c.rhai",
+            r#"fn classify(tx) {
+                if tx.description.contains("invoice") {
+                    #{category: "ScheduleC", confidence: 0.9, review: false, reason: "invoice found"}
+                } else {
+                    #{category: "Unclassified", confidence: 0.0, review: false, reason: ""}
+                }
+            }"#,
+        );
+        make_rule(
+            dir.path(),
+            "classify_fallback.rhai",
+            r#"fn classify(tx) {
+                #{category: "Other", confidence: 0.5, review: false, reason: "fallback"}
+            }"#,
+        );
+
+        let registry = RuleRegistry::load_from_dir(dir.path()).unwrap();
+        let mut engine = ClassificationEngine::default();
+        let tx = sample_tx("ACME", "client invoice Q2");
+
+        let outcome = registry.classify_waterfall(&mut engine, &tx).unwrap();
+        assert_eq!(outcome.category, "ScheduleC");
+    }
+
+    #[test]
+    fn lexical_similarity_scores_intersection_over_union() {
+        let a: BTreeSet<String> = ["foo", "bar", "baz"].iter().map(|s| s.to_string()).collect();
+        let b: BTreeSet<String> = ["foo", "bar", "qux"].iter().map(|s| s.to_string()).collect();
+        let sim = lexical_similarity(&a, &b);
+        // intersection={foo,bar}=2, union={foo,bar,baz,qux}=4 → 0.5
+        assert!((sim - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn lexical_similarity_empty_sets_return_zero() {
+        let empty = BTreeSet::new();
+        let nonempty: BTreeSet<String> = ["foo"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(lexical_similarity(&empty, &nonempty), 0.0);
+        assert_eq!(lexical_similarity(&nonempty, &empty), 0.0);
+        assert_eq!(lexical_similarity(&empty, &empty), 0.0);
     }
 }

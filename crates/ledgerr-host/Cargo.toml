@@ -34,8 +34,10 @@ reqwest = { workspace = true }
 rig-core = "0.35.0"
 ledger-core = { workspace = true }
 arc-kit-au = { path = "../arc-kit-au" }
+holon-viz = { path = "../holon-viz" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+specta = { version = "=2.0.0-rc.25", features = ["derive"] }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 
@@ -52,6 +54,8 @@ tray-icon = { version = "0.22.0", default-features = false }
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
 tauri = { version = "2", features = ["tray-icon", "image-ico", "image-png"] }
 tauri-plugin-opener = "2"
+specta-typescript = "=0.0.12"
+tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

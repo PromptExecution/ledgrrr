@@ -5,16 +5,18 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+agentmesh = { workspace = true }
 arc-kit-au = { path = "../arc-kit-au" }
 blake3 = "1.8.3"
 chrono = { workspace = true }
-ledger-core = { version = "=1.8.1", path = "../ledger-core" }
+ledger-core = { version = "=1.9.0", path = "../ledger-core" }
 ledgerr-focus = { workspace = true }
 ledgerr-mcp-core = { workspace = true }
-ledgerr-xero = { version = "=1.8.1", path = "../ledgerr-xero", optional = true }
+ledgerr-xero = { version = "=1.9.0", path = "../ledgerr-xero", optional = true }
+msft-agent-gov-ledgrrr = { path = "../msft-agent-gov-ledgrrr" }
 crossbeam = "0.8"
 cfg-if = "1.0"
-ledgerr-llm = { version = "=1.8.1", path = "../ledgerr-llm", optional = true }
+ledgerr-llm = { version = "=1.9.0", path = "../ledgerr-llm", optional = true }
 rust_decimal = { version = "1.41.0", features = ["serde"] }
 rust_xlsxwriter = { workspace = true }
 schemars = { version = "0.8", features = ["derive"] }

@@ -1,0 +1,24 @@
+[package]
+name = "ledgerr-model-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Local MCP model server stub — configuration, lifecycle, and future MSI scaffolding"
+
+[[bin]]
+name = "model-server"
+path = "src/bin/model_server.rs"
+
+[features]
+default = []
+## Placeholder for WiX MSI installer scaffolding (Windows packaging, no-op until wired).
+msi-installer = []
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

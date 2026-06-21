@@ -44,7 +44,8 @@ ledgrrr is a **local agentic governance proxy**: a memory-safe, deterministicall
 
 **MBSE / SysML-v2 isometric expansion**:
 - Extend the `HasVisualization` trait system to support MBSE meta-type modeling.
-- Integration path: Papyrus EMF bridge or direct SysML-v2 `*.sysml` parser → `VisualizationSpec` emission.
+- Integration path: KerML textual notation as metamodel source of truth → codegen generating both Rust structs and TypeScript types simultaneously. Papyrus EMF bridge is an alternative ingestion path for existing SysML models.
+- Type architecture ruling: SysML v2 / KerML is the canonical type source. `specta`/`tauri-specta` (Rust-first type generation) is eliminated — it creates lock-in that conflicts with model-first architecture. `wasm-bindgen` for client-side graph operations is deferred until a concrete UX item requires it.
 - 3D workflow visualizations embedded in extensible domain types via the existing `ZLayer` stack (Document/Pipeline/Constraint/Legal/FormalProof/Attestation).
 - `SemanticType` enum gains `SysML` variant; `RhaiDsl` captures SysML block/port/flow definitions.
 - Output: operator can view a classified transaction as a SysML block diagram or an isometric pipeline diagram interchangeably.
@@ -528,3 +529,172 @@ Treat this as a standing operational gate, not a one-time migration task.
 > Profile not yet configured. Run `/gsd:profile-user` to generate your developer profile.
 > This section is managed by `generate-claude-profile` -- do not edit manually.
 <!-- GSD:profile-end -->
+### 2026-05-13: Context Exhaustion Post-Mortem — Delegation Failures
+
+#### What Went Wrong
+
+A long CI-gate + release session exhausted context without cutting a clean release. Root causes:
+
+**1. Inline CI polling instead of background agents**
+The coordinator polled `gh run view` in a loop directly in the main context, consuming thousands of tokens on raw JSON and step-by-step output. Every `gh run view --json jobs` call pulled multi-KB payloads that were parsed and printed inline.
+
+*Rule:* Any wait longer than one poll cycle must use `run_in_background: true` with an `until` loop, or delegate to a `general-purpose` subagent. Never poll CI inline more than twice in a single turn.
+
+**2. Long-running commands (cargo test, just release) run inline**
+`just release minor` runs `cargo test --all-features` which takes 12+ minutes. Running it synchronously blocks the main context for the entire duration.
+
+*Rule:* Any command that takes more than ~60 seconds must run with `run_in_background: true`. For release steps: delegate the entire release sequence (`just release minor`) to a `general-purpose` agent with the instruction to report pass/fail and the final git log.
+
+**3. Code exploration with grep/Read instead of codebase-memory-mcp**
+The coordinator used `grep -rn`, `cat`, `wc -l`, and `sed -n` to survey existing crates and find test failures. Each call returned raw source in context. The structural survey of `rotel-visual`, `iso.rs`, `visualize.rs`, `ontology.rs` alone consumed ~8K tokens that codebase-memory-mcp would have answered in ~200 tokens.
+
+*Rule:* NEVER use grep/Read/cat for structural queries (function defs, type shapes, callers, module structure). Use `codebase-memory-mcp` first. Use grep only for string literals and config values.
+
+**4. Scaffolding delegation without full agent isolation**
+New crate scaffolding (`holon-viz`, `ledgerr-model-server`) was delegated to `rust-craftsman` — good — but the coordinator then re-read the output inline (`ls`, `cargo check`) and loaded the results into context. The verification step should be inside the agent prompt itself.
+
+*Rule:* When delegating implementation to a subagent, include verification (`cargo check -p <crate>`) in the agent prompt. Trust the agent's completion report. Only inspect inline if the agent reports failure.
+
+**5. Test fix done inline instead of delegated**
+Diagnosing and fixing `collect_datum_files` + `test_query_transactions_applies_sorting` was done step by step in main context. Each `cargo test -p ... --all-features` run took 20-50s and dumped compiler output inline.
+
+*Rule:* Flaky or failing tests should be delegated to `rust-craftsman` with: (a) exact test name, (b) failure message, (c) file path and line number. The agent fixes and verifies. Report back.
+
+#### Correct Pattern for CI-Gate + Release Sessions
+
+```
+coordinator:
+  1. push branch → background (git push)
+  2. spawn general-purpose agent in background:
+       "poll gh run view <run_id> every 60s until conclusion != null.
+        report: conclusion, failing steps if any, run URL"
+  3. do other work (feature planning, scaffolding) in foreground
+  4. when agent reports CI green:
+       spawn general-purpose agent (foreground):
+         "on branch main: just release minor 2>&1
+          report: pass/fail, version tag created, git log --oneline -3"
+  5. switch to feature branch, continue work
+```
+
+Never hold CI polling or multi-minute compilations in the coordinator context.
+
+#### b00t Usage Rules
+
+- `b00t` is **alphaware** — treat as test scaffolding only. Never make it a production release gate.
+- Do NOT add `b00t` deps to release-critical paths (`ledgerr-mcp`, `ledger-core`, CI steps).
+- b00t will consume `holon-viz` downstream for visualization/test animation. Not the other way.
+- `_b00t_/datums` may not exist in all environments. Tests gated on `real_datums` feature must gracefully skip (return early) when the dir is absent — never `unwrap()`.
+
+#### Observer/Test Pattern for Viz UX (2026-05-13)
+
+Established design for testing the `holon-viz` Cytoscape.js rendering layer:
+
+```
+CytoscapeGraph (Rust) → HTML renderer → serve in Tauri WebView
+       ↓
+CDP screenshot (port 19222, scripts/tauri-cdp-test.ps1)
+       ↓
+scripts/tauri-vision-analyze.py --image <png>  (Florence-2-base via uv)
+       ↓
+VizObservation { caption, nodes_detected, edges_detected }
+       ↓
+assert!(observation.matches(&expected_holon_spec))
+```
+
+Two test tiers:
+- **Fast (no vision):** headless Cytoscape JSON round-trip via `chromiumoxide` — verify topology from serialized graph, not pixels. Inner loop.
+- **Slow (vision):** Florence-2-base screenshot analysis via CDP. Outer loop, requires Tauri host running. Triggered by `TAURI_TEST_SCREENSHOT_PATH` env var.
+
+Florence-2 script: `scripts/tauri-vision-analyze.py`. Uses `uv run` — no Python env setup required.
+
+#### Release Gate Status (2026-05-13)
+
+- v1.9.0 blocked by flaky `test_query_transactions_applies_sorting` + `test_query_transactions_deterministic_ordering` in `ledgerr-mcp/tests/query_transactions_tests.rs`. These pass in isolation but fail under full parallel `--all-features` run. Likely non-deterministic sort under concurrent ingest. Fix: add deterministic tie-break (e.g., tx_id as secondary sort key) in `TurboLedgerService::query_transactions`.
+- Feature branch `feat/holonic-viz-sysml-owl2-cytoscape` is ahead of main with `holon-viz` + `ledgerr-model-server` scaffolded and compiling.
+
+---
+
+### 2026-05-09: PRD-10 Financial Pipeline Adversarial Agent Loop Session
+
+#### Non-Obvious Lessons Learned
+
+**Adversarial agent loop effectiveness:** The 3-round AgentA ↔ AgentB bouncer pattern caught 7 critical issues in Gap 1 before production, validating all acceptance criteria independently. This pattern scales well for complex multi-gap PRs and should be reused for future complex work.
+
+**b00t task tracking visibility:** `b00t-mcp_b00t_task_*` commands provide excellent workflow transparency. Seeing `[pending] → [done]` progression for each gap with task IDs gives operators clear visibility into sub-agent coordination without noisy chat transcripts.
+
+**Git workflow challenges:** Complex merge-base histories (feat/dashboard → main → feat/prd10) caused repeated GitHub GraphQL ancestry errors when creating PRs. Lessons: Always use explicit commit SHAs (`--base <SHA> --head <SHA>`) with `git log --graph` to verify ancestry before PR creation. Avoid assuming GitHub PR creation works on first try with branch names; use `git log --oneline --graph` to find valid merge-base commits.
+
+**ServiceHandle.send() closure pattern:** Current signature `F: FnOnce(Sender<Result<R, ToolError>>) -> GateMessage` makes agent_id propagation awkward. Future AGENTS.md updates should document requiring explicit `agent_id: String` parameter in method signatures for type safety, or changing to a struct-based approach that passes agent_id explicitly.
+
+**Code discovery rule (mandatory):** ALWAYS use `codebase-memory-mcp` tools (`search_graph`, `trace_path`, `get_code_snippet`, `get_architecture`, `query_graph`) for structural code queries. Rationale: grep -r burns 10-30s CPU budget per call, misses cross-crate relationships, pulls irrelevant context. codebase-memory-mcp resolves in 1-3s with structural labels and relationship edges vs. grep -r taking 10+ minutes.
+
+**codebase-memory-mcp defect handling:** When graph tools are missing, return blank/partial `query_graph` rows, or close transport, treat it as suite work rather than a one-off agent workaround. First try the MCP path, capture the failing call/result, use the narrowest fallback needed to keep moving, and link/update downstream tracking at https://github.com/PromptExecution/ledgrrr/issues/97 because `PromptExecution/codebase-memory-mcp-b00t-ir0n-ledg3rr` currently has GitHub Issues disabled.
+
+**AGENTS.md as persistent operator manual:** This file is intentionally operational rather than reactive. Stable guidance here improves future agent quality by avoiding noise in transcripts and focusing on durable patterns.
+
+### 2026-05-13 (PM): Coordinator Protocol — Retrospective Improvements
+
+The following rules were obvious in retrospect but were not enforced during the 2026-05-13 Tauri Cytoscape integration session. The coordinator exhausted operator context twice in the same day by doing implementation work inline instead of delegating. These rules are now mandatory.
+
+#### Rule: Explore-Before-Build (mandatory)
+
+Before writing or editing any file in an unfamiliar crate/module, spawn an `Explore` agent to answer: "What files exist? What is the entry point? What patterns are already established?" Cost: ~1 tool call. Skipping this cost the session 3 operator corrections and a context burn.
+
+#### Rule: Coordinator Writes Prompts, Not Code
+
+The coordinator's only permitted file operations are:
+- Writing sub-agent prompt text (in the Agent tool)
+- Reading output files to verify agent work
+- Writing memory files to `/home/wendy/.claude/projects/.../memory/`
+
+Every `Edit` or `Write` call in the coordinator for implementation (Rust, JS, PS, Justfile) is a delegation failure. If you catch yourself writing implementation inline: stop, write the agent prompt instead.
+
+#### Rule: Architecture-First for Cross-Crate Work
+
+When a task spans more than one crate or file type (e.g., Rust command + JS frontend + PowerShell + Justfile), the mandatory sequence is:
+1. Explore agent: read all relevant files, identify patterns
+2. Plan agent (optional): design the integration
+3. Parallel implementation agents: one per layer (rust-craftsman for Rust, general-purpose for JS/PS/Justfile)
+4. Coordinator: verify diffs only
+
+#### Rule: Correction Cost Accounting
+
+Each operator correction = 1 context burn unit. Two corrections in one task = spawn a new agent instead of continuing inline. The cost of spawning is always lower than the cost of continued inline iteration under correction.
+
+#### Pattern: VZ Panel Integration (reference implementation)
+
+The 2026-05-13 Tauri Cytoscape integration is the canonical example of what NOT to do (all inline) and what TO do (the correct sequence would have been):
+1. Explore: read `crates/ledgerr-host/src/bin/tauri/`, `ui/main.js`, `Justfile` wsl2-pwsh-* recipes
+2. rust-craftsman: add `holon-viz` dep + `get_holon_viz_graph` command to `commands.rs` + register in `main.rs`
+3. general-purpose: patch `ui/main.js` PANELS + `initVizPanel()` + `index.html` CDN
+4. general-purpose: write `scripts/test-holon-viz.ps1` + Justfile recipes
+5. Coordinator: `cargo check -p ledgerr-host` to verify, commit
+
+#### b00t Surface: `hive` — Correct Usage
+
+The `hive` surface declares `"pattern": "parallel-subagents", "isolation": "worktree"`. This means: for any task with ≥2 independent implementation concerns, spawn ≥2 agents simultaneously. Single-agent sequential execution of multi-concern tasks violates the declared operator surface.
+
+---
+
+### Viz Layer — Type Architecture Ruling (2026-05-13)
+
+**Four MECE layers — do not collapse them:**
+
+| Layer | Owner | Change Rate | Notes |
+|-------|-------|-------------|-------|
+| Metamodel | SysML v2 / KerML | Slow | Source of truth for what types exist |
+| Contract | Rust structs (generated from metamodel) | Medium | Generated, not hand-authored long-term |
+| Transport | Tauri invoke() boundary | Low | Hand-authored TS interface now; codegen later |
+| Render | Cytoscape.js / JS | Fast | Consumes transport layer JSON |
+
+**Approved — use for transport layer:**
+- `specta` + `tauri-specta`: `#[derive(specta::Type)]` on Cytoscape types in `holon-viz`; `#[specta::specta]` on commands; `Builder` exports `ui/bindings.ts` on debug builds. Operator approved 2026-05-13 PM-3.
+
+**Deferred — add only when a P1 UX item requires it:**
+- `wasm-bindgen` / `holon-viz-wasm` crate: client-side graph filtering. No current PRD item requires it. Do not add speculatively.
+
+**Do First (current sprint):**
+- Hand-authored `ui/types.ts`: `VizNode`, `VizEdge`, `CytoscapeGraph` interfaces. ~20 lines. Zero tooling commitment. Unblocks `TypeGraphCommand`.
+
+**Scheduled:**
+- KerML metamodel for domain types → `xtask` codegen generating Rust structs + TS types from one source. Invest after metamodel is stable.

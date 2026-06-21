@@ -1,8 +1,9 @@
 # Introduction
 
-```admonish info
-**l3dg3rr** is designed for US expats who need to reconcile complex financial histories across multiple jurisdictions (US, AU, UK) without compromising privacy.
-```
+<div class="admonition info">
+<div class="admonition-title">Info</div>
+<p><strong>l3dg3rr</strong> is designed for US expats who need to reconcile complex financial histories across multiple jurisdictions (US, AU, UK) without compromising privacy.</p>
+</div>
 
 `l3dg3rr` is a local-first financial document intelligence system
  for retroactive U.S. expat tax preparation. It ingests raw statements, classifies transactions with editable rules, verifies hard constraints, and exports an accountant-usable Excel workbook with audit history.
@@ -53,3 +54,16 @@ The visualization chapters document the live mdBook diagram system. They are imp
 - [Workbook & Audit](./workbook-audit.md)
 - [Theory of Operation](./theory.md)
 - [Graph Data Model](./graph.md)
+
+<!-- mdbook-admonish smoke-test: remove once verified rendering works -->
+```admonish note title="Local-first by design"
+All processing runs on your machine — no private financial data leaves the host.
+```
+
+```admonish warning
+PDF ingestion rewrites the workbook in-place. Back up `tax-ledger.xlsx` before running a full re-ingest.
+```
+
+```admonish tip title="CPA handoff"
+Export the workbook after every classification pass so your accountant always has the latest reconciled state.
+```

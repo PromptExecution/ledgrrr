@@ -32,7 +32,7 @@ pub const FOUNDRY_LOCAL_DEFAULT_CHAT_URL: &str = "http://localhost:5272/v1/chat/
 ///
 /// This label is shown in the host UI instead of the technical backend name.
 /// Each label maps to a readiness state and a setup path.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum ModelProviderLabel {
     /// Private local inference. Works immediately. May use a deterministic stub if no GGUF is configured.
@@ -79,7 +79,7 @@ impl ModelProviderLabel {
 }
 
 /// Readiness state for a model provider.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderReadiness {
     /// Provider can send requests now.
@@ -106,7 +106,7 @@ impl std::fmt::Display for ProviderReadiness {
 /// Combined provider info for the host UI.
 ///
 /// Returned by `provider_status()` to populate the model-mode selector.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct ProviderInfo {
     pub label: ModelProviderLabel,
     pub display_name: String,

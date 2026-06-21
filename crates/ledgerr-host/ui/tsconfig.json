@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2021",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["cytoscape"],
+    "baseUrl": ".",
+    "paths": {
+      "@ledgrrr/types": ["./src/types.ts"]
+    }
+  },
+  "include": ["*.ts", "src/**/*.ts"]
+}

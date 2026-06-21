@@ -141,6 +141,15 @@ Do not make direct repo edits outside a GSD workflow unless the user explicitly 
 <!-- GSD:profile-start -->
 ## Developer Profile
 
-> Profile not yet configured. Run `/gsd:profile-user` to generate your developer profile.
 > This section is managed by `generate-claude-profile` -- do not edit manually.
+
+| Dimension | Value |
+|-----------|-------|
+| **Role** | Orchestrator/director — directs agents, reviews output, makes final calls. Does not implement. |
+| **Domain expertise** | Rust/systems, AI/agent systems |
+| **Relies on agents for** | Tax/accounting domain details, TypeScript/JS, DevOps specifics |
+| **Top frustrations** | Under-delegation (coordinator does inline implementation) and context exhaustion (both equally) |
+| **Review style** | Narrative summary — explain what changed and why; does not need raw diff narration |
+| **Session style** | Marathon — push through until a phase is complete |
+| **Definition of done** | Demo'd live in Tauri app (CDP test passing), not just green tests + commit |
 <!-- GSD:profile-end -->

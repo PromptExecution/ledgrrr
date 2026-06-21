@@ -123,6 +123,7 @@ See [Capability Map](book/src/capability-map.md) for the full component table.
 | Live Rhai docs editor | Implemented | synchronized isometric and Mermaid views |
 | Xero capability family | In flight | supervised MCP capability, not raw credential exposure |
 | Tauri desktop host | Active | primary operator host (replaces legacy Slint surface) |
+| VZ panel — Cytoscape.js + dagre layout | Active | hierarchical type/trait graph in Tauri sidebar; dagre TB layout; CDP observable on port 19222 |
 | Slint desktop host | Legacy | fallback window, settings, local endpoint, notifications |
 | Evidence traceability (arc-kit-au) | Implemented | petgraph-backed provenance graph with deterministic node identity |
 | Docling extraction bridge | Missing | planned local extraction sidecar |
