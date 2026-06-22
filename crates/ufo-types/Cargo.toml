@@ -1,0 +1,15 @@
+[package]
+name = "ufo-types"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "UFO ontology stereotypes, Satisfies trait, and ISO standard types for the tax-lawyer platform"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+schemars = { version = "0.8", features = ["derive"] }
+
+[dev-dependencies]
+serde_json.workspace = true
