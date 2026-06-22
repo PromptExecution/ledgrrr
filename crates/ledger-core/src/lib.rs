@@ -35,3 +35,4 @@ pub use render::GraphRenderer;
 
 #[cfg(test)]
 mod integration_tests;
+pub use ufo_types::{Satisfies, SatisfiesResult, Lei, Currency};
