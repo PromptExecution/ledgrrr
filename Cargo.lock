@@ -5739,6 +5739,7 @@ dependencies = [
  "toml 0.8.2",
  "tracing",
  "trybuild",
+ "ufo-types",
  "xattr",
  "z3",
 ]
@@ -5843,6 +5844,7 @@ dependencies = [
 name = "ledgerr-mcp-core"
 version = "1.9.0"
 dependencies = [
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -11972,6 +11974,16 @@ dependencies = [
  "memoffset",
  "tempfile",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "ufo-types"
+version = "1.9.0"
+dependencies = [
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
