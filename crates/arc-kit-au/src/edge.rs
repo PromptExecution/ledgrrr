@@ -26,6 +26,10 @@ pub enum EdgeType {
     ValidatedAs,
     /// Transaction/tool was executed by an agent
     ExecutedBy,
+    /// Entity satisfies the named constraint (UFO Relator arc).
+    SatisfiesConstraint,
+    /// Activity/expenditure is registered under the cited legislation section.
+    RegisteredUnder,
 }
 
 impl EdgeType {
@@ -39,6 +43,8 @@ impl EdgeType {
             Self::ExportedTo => "exported_to",
             Self::ValidatedAs => "validated_as",
             Self::ExecutedBy => "executed_by",
+            Self::SatisfiesConstraint => "satisfies_constraint",
+            Self::RegisteredUnder => "registered_under",
         }
     }
 }

@@ -74,6 +74,10 @@ pub enum NodeType {
     WorkbookRow,
     /// Validation issue from the Rhai engine or pipeline check
     ValidationIssue,
+    /// R&D activity registered under s.355-100 ITAA 1997.
+    RndActivity,
+    /// ATO tax offset claim or estimate.
+    TaxOffset,
     /// Unknown or unrecognized type
     Unknown,
 }
@@ -89,6 +93,8 @@ impl NodeType {
             Self::OperatorApproval => "approval",
             Self::WorkbookRow => "wb",
             Self::ValidationIssue => "vi",
+            Self::RndActivity => "rnd",
+            Self::TaxOffset => "tax",
             Self::Unknown => "unknown",
         }
     }
