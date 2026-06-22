@@ -120,12 +120,12 @@ impl TypeRelationshipGraph {
         CytoscapeGraph::from(self)
     }
 
-    /// Canonical seed graph derived from `HasVisualization` impls in `ledger-core`.
+    /// Canonical seed graph loaded from the `VizDomain` manifest in `domain.rs`.
     ///
-    /// Nodes annotated with `z_layer`/`semantic_type` correspond to the 21 types that
-    /// implement `HasVisualization` in `crates/ledger-core/src/iso_objects.rs`.
+    /// Nodes are auto-derived via `#[derive(HolonEmit)]` — do not edit `gen.rs` by hand.
+    /// Add new types as variants to `VizDomain` and add relationships to `gen::manifest_loader`.
     pub fn seed() -> Self {
-        crate::gen::generated_seed()
+        crate::gen::manifest_loader()
     }
 }
 
@@ -182,6 +182,8 @@ impl From<TypeRelationshipGraph> for CytoscapeGraph {
     }
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 pub(crate) fn type_node(id: &str, label: &str, kind: &str) -> TypeNode {
     TypeNode {
         id: id.to_string(),
@@ -193,6 +195,8 @@ pub(crate) fn type_node(id: &str, label: &str, kind: &str) -> TypeNode {
     }
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 pub(crate) fn typed_node(id: &str, label: &str, kind: &str, z_layer: &str, semantic_type: &str) -> TypeNode {
     TypeNode {
         id: id.to_string(),
@@ -337,6 +341,13 @@ mod tests {
             "legal::Z3Result",
             "pipeline::KasuariSolver",
             "attest::AttestationSpec",
+            // Tax domain types (HasVisualization impls added in gh#517)
+            "au_rd::AuRdActivity",
+            "au_rd::AuRdOffset",
+            "us_rdc::QreActivity",
+            "us_rdc::UsRdcCredit",
+            "crypto::CryptoTx",
+            "crypto::CryptoWallet",
         ];
 
         let missing: Vec<&str> = expected

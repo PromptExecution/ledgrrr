@@ -6,6 +6,7 @@ license.workspace = true
 description = "Holonic visualization engine — Cytoscape.js JSON, SysML-v2, OWL2/Turtle emission, and append-only process control"
 
 [dependencies]
+b00t-reflect.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 blake3.workspace = true
