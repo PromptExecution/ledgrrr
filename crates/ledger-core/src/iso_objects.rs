@@ -547,12 +547,5 @@ pub fn canonical_viz_dsl_map() -> std::collections::BTreeMap<String, String> {
     push!("Disposition", Disposition);
     push!("StageResult", StageResult<()>);
     push!("KasuariSolver", KasuariSolver);
-    // Tax domain
-    push!("AuRdActivity", AuRdActivity);
-    push!("AuRdOffset", AuRdOffset);
-    push!("QreActivity", QreActivity);
-    push!("UsRdcCredit", UsRdcCredit);
-    push!("CryptoTx", CryptoTx);
-    push!("CryptoWallet", CryptoWallet);
     map
 }
