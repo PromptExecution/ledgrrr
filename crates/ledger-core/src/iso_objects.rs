@@ -3,6 +3,9 @@
 
 use crate::iso::{HasVisualization, RhaiDsl, SemanticType, VisualizationSpec, ZLayer};
 
+use crate::au_rd::{AuRdActivity, AuRdOffset};
+use crate::us_rdc::{QreActivity, UsRdcCredit};
+use crate::crypto::{CryptoTx, CryptoWallet};
 use crate::constraints::{
     ConstraintEvaluation, InvoiceConstraintSolver, InvoiceVerification, VendorConstraintSet,
 };
@@ -361,6 +364,104 @@ let strength = solver.strength("required"); // Required | Strong | Medium | Weak
     }
 }
 
+
+// ============================================================================
+// TAX DOMAIN — AU R&D (z=2, Constraint layer)
+// ============================================================================
+
+impl HasVisualization for AuRdActivity {
+    fn viz_spec() -> VisualizationSpec {
+        VisualizationSpec {
+            semantic_type: SemanticType::Constraint,
+            z_layer: ZLayer::Constraint,
+            rhai_dsl: RhaiDsl::new(
+                r#"let eligible = activity.satisfies(AuRdEligibility);
+if eligible.confidence >= 0.9 { route_to_offset(activity) }
+else { flag("low_rd_confidence") }"#,
+            ),
+            description: "ITAA 1997 s.355-100 R&D activity — systematic hypothesis + technical uncertainty check",
+        }
+    }
+}
+
+impl HasVisualization for AuRdOffset {
+    fn viz_spec() -> VisualizationSpec {
+        VisualizationSpec {
+            semantic_type: SemanticType::Result,
+            z_layer: ZLayer::Constraint,
+            rhai_dsl: RhaiDsl::new(
+                r#"let offset = rd_offset.calculate(eligible_expenditure, rate);
+emit_offset_claim(offset.amount, offset.tax_year);"#,
+            ),
+            description: "ITAA 1997 s.355-305 R&D offset — calculated tax offset from eligible expenditure",
+        }
+    }
+}
+
+// ============================================================================
+// TAX DOMAIN — US R&D Credit (z=2, Constraint layer)
+// ============================================================================
+
+impl HasVisualization for QreActivity {
+    fn viz_spec() -> VisualizationSpec {
+        VisualizationSpec {
+            semantic_type: SemanticType::Constraint,
+            z_layer: ZLayer::Constraint,
+            rhai_dsl: RhaiDsl::new(
+                r#"let qualified = qre.satisfies(UsRdcEligibility);
+if qualified.four_part_test_pass { route_to_credit(qre) }"#,
+            ),
+            description: "IRC §41 QRE — four-part test: permitted purpose, technological uncertainty, process of experimentation, qualified research",
+        }
+    }
+}
+
+impl HasVisualization for UsRdcCredit {
+    fn viz_spec() -> VisualizationSpec {
+        VisualizationSpec {
+            semantic_type: SemanticType::Result,
+            z_layer: ZLayer::Constraint,
+            rhai_dsl: RhaiDsl::new(
+                r#"let credit = rdc.calculate(qre_total, base_amount);
+emit_form6765(credit.regular_credit, credit.alt_simplified);"#,
+            ),
+            description: "IRC §41 R&D tax credit — regular (20% above base) or alternative simplified (14% of excess QREs)",
+        }
+    }
+}
+
+// ============================================================================
+// TAX DOMAIN — Crypto (z=1, Pipeline layer)
+// ============================================================================
+
+impl HasVisualization for CryptoTx {
+    fn viz_spec() -> VisualizationSpec {
+        VisualizationSpec {
+            semantic_type: SemanticType::Pipeline,
+            z_layer: ZLayer::Pipeline,
+            rhai_dsl: RhaiDsl::new(
+                r#"let gain = crypto_tx.realized_gain(cost_basis_method);
+classify_event(crypto_tx.event_type); // Disposal, Swap, Income, Transfer"#,
+            ),
+            description: "CGT event A1 / IRC §1001 disposal — realized gain/loss on crypto asset disposal or swap",
+        }
+    }
+}
+
+impl HasVisualization for CryptoWallet {
+    fn viz_spec() -> VisualizationSpec {
+        VisualizationSpec {
+            semantic_type: SemanticType::Pipeline,
+            z_layer: ZLayer::Pipeline,
+            rhai_dsl: RhaiDsl::new(
+                r#"let balance = wallet.current_balance(as_of_date);
+let lots = wallet.cost_basis_lots(method); // FIFO | HIFO | ACB"#,
+            ),
+            description: "Crypto wallet — tracks asset lots, cost basis methods, and balance history for tax event attribution",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -402,6 +503,13 @@ mod tests {
         check!(Disposition);
         check!(StageResult<()>);
         check!(KasuariSolver);
+        // Tax domain
+        check!(AuRdActivity);
+        check!(AuRdOffset);
+        check!(QreActivity);
+        check!(UsRdcCredit);
+        check!(CryptoTx);
+        check!(CryptoWallet);
     }
 }
 
@@ -439,5 +547,12 @@ pub fn canonical_viz_dsl_map() -> std::collections::BTreeMap<String, String> {
     push!("Disposition", Disposition);
     push!("StageResult", StageResult<()>);
     push!("KasuariSolver", KasuariSolver);
+    // Tax domain
+    push!("AuRdActivity", AuRdActivity);
+    push!("AuRdOffset", AuRdOffset);
+    push!("QreActivity", QreActivity);
+    push!("UsRdcCredit", UsRdcCredit);
+    push!("CryptoTx", CryptoTx);
+    push!("CryptoWallet", CryptoWallet);
     map
 }

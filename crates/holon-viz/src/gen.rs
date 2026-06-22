@@ -1,60 +1,17 @@
-// @generated — do not edit. Source: types/domain.kerm
-// Regenerate with: just gen-kerm
+// Auto-derived via `#[derive(HolonEmit)]` on `VizDomain` in `domain.rs`.
+// Do NOT hand-edit the node list — add variants to `VizDomain` instead.
+// Relationships remain explicit below: they encode directed semantics that
+// cannot be auto-derived from enum structure alone.
+use crate::domain::VizDomain;
 use crate::type_graph::{TypeRelationshipGraph, TypeRelationshipKind};
-use crate::type_graph::{type_node, typed_node, rel};
+use crate::type_graph::rel;
 
-pub fn generated_seed() -> TypeRelationshipGraph {
-    let nodes = vec![
-        type_node("iso::HasVisualization", "HasVisualization", "abstract_trait"),
-        type_node("iso::VisualizationSpec", "VisualizationSpec", "contract_type"),
-        type_node("iso::ZLayer", "ZLayer", "metamodel_enum"),
-        type_node("iso::SemanticType", "SemanticType", "metamodel_enum"),
-        type_node("iso::RhaiDsl", "RhaiDsl", "dsl_contract"),
-        type_node("zlayer::Document", "Document", "z_document"),
-        type_node("zlayer::Pipeline", "Pipeline", "z_pipeline"),
-        type_node("zlayer::Constraint", "Constraint", "z_constraint"),
-        type_node("zlayer::Legal", "Legal", "z_legal"),
-        type_node("zlayer::FormalProof", "FormalProof", "z_proof"),
-        type_node("zlayer::Attestation", "Attestation", "z_attestation"),
-        typed_node("pipeline::PipelineState<Ingested>", "PipelineState<Ingested>", "pipeline_state", "Pipeline", "Pipeline"),
-        typed_node("pipeline::PipelineState<Validated>", "PipelineState<Validated>", "pipeline_state", "Pipeline", "Pipeline"),
-        typed_node("pipeline::PipelineState<Classified>", "PipelineState<Classified>", "pipeline_state", "Pipeline", "Pipeline"),
-        typed_node("pipeline::PipelineState<Reconciled>", "PipelineState<Reconciled>", "pipeline_state", "Pipeline", "Pipeline"),
-        typed_node("pipeline::PipelineState<Committed>", "PipelineState<Committed>", "pipeline_state", "Pipeline", "Pipeline"),
-        typed_node("pipeline::PipelineState<NeedsReview>", "PipelineState<NeedsReview>", "review_state", "Pipeline", "Pipeline"),
-        typed_node("pipeline::MetaCtx", "MetaCtx", "meta_type", "Pipeline", "Pipeline"),
-        typed_node("pipeline::KasuariSolver", "KasuariSolver", "solver_type", "FormalProof", "Proof"),
-        typed_node("validation::CommitGate", "CommitGate", "gate_type", "Pipeline", "Gate"),
-        typed_node("validation::StageResult<T>", "StageResult<T>", "validation_type", "Pipeline", "Result"),
-        typed_node("validation::Issue", "Issue", "issue_type", "Constraint", "Issue"),
-        typed_node("validation::MetaFlag", "MetaFlag", "flag_type", "Pipeline", "Flag"),
-        typed_node("validation::Disposition", "Disposition", "result_type", "Pipeline", "Result"),
-        typed_node("constraints::VendorConstraintSet", "VendorConstraintSet", "constraint_type", "Constraint", "Constraint"),
-        typed_node("constraints::ConstraintEvaluation", "ConstraintEvaluation", "result_type", "Constraint", "Result"),
-        typed_node("constraints::InvoiceConstraintSolver", "InvoiceConstraintSolver", "solver_type", "Constraint", "Solver"),
-        typed_node("constraints::InvoiceVerification", "InvoiceVerification", "result_type", "Constraint", "Result"),
-        typed_node("legal::Jurisdiction", "Jurisdiction", "legal_type", "Legal", "Legal"),
-        typed_node("legal::LegalRule", "LegalRule", "legal_type", "Legal", "Legal"),
-        typed_node("legal::TransactionFacts", "TransactionFacts", "fact_type", "Legal", "Legal"),
-        typed_node("legal::LegalSolver", "LegalSolver", "solver_type", "Legal", "Solver"),
-        typed_node("legal::Z3Result", "Z3Result", "proof_result", "Legal", "Result"),
-        typed_node("attest::AttestationSpec", "AttestationSpec", "attestation_type", "Attestation", "Attestation"),
-        type_node("ontology::ArtifactKind", "ArtifactKind", "ontology_enum"),
-        type_node("ontology::RelationKind", "RelationKind", "ontology_enum"),
-        type_node("ontology::OntologySnapshot", "OntologySnapshot", "ontology_snapshot"),
-        type_node("arc_kit_au::EvidenceGraph", "EvidenceGraph", "evidence_graph"),
-        type_node("arc_kit_au::NodeType", "NodeType", "ontology_enum"),
-        type_node("arc_kit_au::SourceDoc", "SourceDoc", "evidence_node"),
-        type_node("arc_kit_au::ExtractedRow", "ExtractedRow", "evidence_node"),
-        type_node("arc_kit_au::Transaction", "Transaction", "evidence_node"),
-        type_node("arc_kit_au::Classification", "Classification", "evidence_node"),
-        type_node("arc_kit_au::ModelProposal", "ModelProposal", "evidence_node"),
-        type_node("arc_kit_au::OperatorApproval", "OperatorApproval", "evidence_node"),
-        type_node("arc_kit_au::WorkbookRow", "WorkbookRow", "evidence_node"),
-        type_node("workbook::TxProjectionRow", "TxProjectionRow", "workbook_projection"),
-        type_node("classify::TaxCategory", "TaxCategory", "taxonomy_type"),
-        type_node("workflow::WorkflowToml", "WorkflowToml", "workflow_type"),
-    ];
+/// Build the canonical `TypeRelationshipGraph` from the `VizDomain` manifest.
+///
+/// Nodes are auto-derived from `#[derive(HolonEmit)]` on `VizDomain`.
+/// Relationships are declared explicitly below.
+pub fn manifest_loader() -> TypeRelationshipGraph {
+    let nodes = VizDomain::emit_nodes();
 
     let relationships = vec![
         rel("iso::VisualizationSpec", "iso::HasVisualization", TypeRelationshipKind::Implements),
@@ -116,6 +73,19 @@ pub fn generated_seed() -> TypeRelationshipGraph {
         rel("zlayer::Legal", "legal::LegalRule", TypeRelationshipKind::Contains),
         rel("zlayer::FormalProof", "legal::Z3Result", TypeRelationshipKind::Contains),
         rel("zlayer::Attestation", "attest::AttestationSpec", TypeRelationshipKind::Contains),
+        // Tax domain relationships
+        rel("au_rd::AuRdActivity", "iso::HasVisualization", TypeRelationshipKind::Implements),
+        rel("au_rd::AuRdOffset", "iso::HasVisualization", TypeRelationshipKind::Implements),
+        rel("us_rdc::QreActivity", "iso::HasVisualization", TypeRelationshipKind::Implements),
+        rel("us_rdc::UsRdcCredit", "iso::HasVisualization", TypeRelationshipKind::Implements),
+        rel("crypto::CryptoTx", "iso::HasVisualization", TypeRelationshipKind::Implements),
+        rel("crypto::CryptoWallet", "iso::HasVisualization", TypeRelationshipKind::Implements),
+        rel("zlayer::Constraint", "au_rd::AuRdActivity", TypeRelationshipKind::Contains),
+        rel("zlayer::Constraint", "us_rdc::QreActivity", TypeRelationshipKind::Contains),
+        rel("au_rd::AuRdActivity", "au_rd::AuRdOffset", TypeRelationshipKind::Produces),
+        rel("us_rdc::QreActivity", "us_rdc::UsRdcCredit", TypeRelationshipKind::Produces),
+        rel("zlayer::Pipeline", "crypto::CryptoWallet", TypeRelationshipKind::Contains),
+        rel("crypto::CryptoWallet", "crypto::CryptoTx", TypeRelationshipKind::Contains),
     ];
 
     TypeRelationshipGraph::new(nodes, relationships)
