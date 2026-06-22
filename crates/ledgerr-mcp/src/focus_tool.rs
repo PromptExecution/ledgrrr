@@ -265,13 +265,24 @@ fn save_records(records: &[FocusToolRecord]) {
     }
 }
 
+/// Serialize focus_tool tests to prevent racy access to the global store.
+#[cfg(test)]
+static FOCUS_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Reset the global store (test helper).  Only available in `#[cfg(test)]`.
+/// Clears both in-memory store and on-disk sidecar to prevent parallel
+/// test leakage.
 #[cfg(test)]
 fn reset_store_for_test() {
     if let Ok(mut guard) = FOCUS_RECORDS.lock() {
         guard.clear();
     }
     FOCUS_LOADED.store(false, Ordering::Release);
+    // Wipe the on-disk sidecar so initialize_store() starts fresh
+    let path = focus_records_path();
+    if path.exists() {
+        let _ = std::fs::remove_file(&path);
+    }
 }
 
 fn handle_append(input: FocusToolInput) -> Result<FocusToolOutput, String> {
@@ -418,9 +429,19 @@ mod tests {
         }
     }
 
+    /// Acquire the test mutex before any test that touches the global store.
+    macro_rules! isolate_focus_test {
+        () => {
+            let _lock = FOCUS_TEST_MUTEX.lock().unwrap();
+            let _tmp = tempfile::tempdir().unwrap();
+            std::env::set_var("FOCUS_SIDECAR_PATH", _tmp.path().join("focus_records.json").to_str().unwrap());
+            reset_store_for_test();
+        };
+    }
+
     #[test]
     fn test_append_focus_record() {
-        reset_store_for_test();
+        isolate_focus_test!();
         let input = FocusToolInput {
             action: "append_focus_record".into(),
             records: vec![make_record("control", 100.0)],
@@ -436,6 +457,7 @@ mod tests {
 
     #[test]
     fn test_compute_focus_delta_action() {
+        isolate_focus_test!();
         let input = FocusToolInput {
             action: "compute_focus_delta".into(),
             records: vec![
@@ -454,6 +476,7 @@ mod tests {
 
     #[test]
     fn test_experiment_score_action() {
+        isolate_focus_test!();
         let input = FocusToolInput {
             action: "experiment_score".into(),
             records: vec![make_record("control", 100.0)],
@@ -467,6 +490,7 @@ mod tests {
 
     #[test]
     fn test_unknown_action_errors() {
+        isolate_focus_test!();
         let input = FocusToolInput {
             action: "bogus".into(),
             records: vec![],
@@ -497,6 +521,7 @@ mod tests {
 
     #[test]
     fn test_handle_append_validates_before_processing() {
+        isolate_focus_test!();
         let mut record = make_record("control", 100.0);
         record.billing_account_id.clear();
         let input = FocusToolInput {
@@ -512,12 +537,7 @@ mod tests {
 
     #[test]
     fn test_query_summary() {
-        // Use a temp dir to avoid loading existing records from the default path
-        let tmp = tempfile::tempdir().unwrap();
-        let tmp_path = tmp.path().join("focus_records.json");
-        std::env::set_var("FOCUS_SIDECAR_PATH", tmp_path.to_str().unwrap());
-
-        reset_store_for_test();
+        isolate_focus_test!();
         let input = FocusToolInput {
             action: "query_focus_summary".into(),
             records: vec![],
@@ -533,12 +553,7 @@ mod tests {
 
     #[test]
     fn test_persistence_round_trip() {
-        // Use a temp dir so test data doesn't pollute the real sidecar
-        let tmp = tempfile::tempdir().unwrap();
-        let tmp_path = tmp.path().join("focus_records.json");
-        std::env::set_var("FOCUS_SIDECAR_PATH", tmp_path.to_str().unwrap());
-
-        reset_store_for_test();
+        isolate_focus_test!();
 
         // Append a record
         let append_input = FocusToolInput {
