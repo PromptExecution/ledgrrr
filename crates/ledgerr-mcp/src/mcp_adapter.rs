@@ -1138,6 +1138,16 @@ pub fn handle_tax_tool(service: &TurboLedgerService, arguments: &Value) -> Value
                 "workbook_path": workbook_path,
             }),
         ),
+        TaxArgs::AuRdCheckEligibility { lei, activity_id, activity_name, has_hypothesis, has_technical_uncertainty, is_systematic, is_core } =>
+            crate::au_rd::handle_au_rd_check_eligibility(&lei, &activity_id, &activity_name, has_hypothesis, has_technical_uncertainty, is_systematic, is_core),
+        TaxArgs::AuRdClassifyExpenditure { lei, tx_id, category, amount_aud } =>
+            crate::au_rd::handle_au_rd_classify_expenditure(&lei, &tx_id, &category, &amount_aud),
+        TaxArgs::AuRdCalculateOffset { lei, total_eligible_aud, is_refundable } =>
+            crate::au_rd::handle_au_rd_calculate_offset(&lei, &total_eligible_aud, is_refundable),
+        TaxArgs::UsRdcFourPartTestCheck { lei, activity_id, activity_name, technical_in_nature, permits_experimentation, technological_uncertainty, systematic_process } =>
+            crate::us_rdc::handle_us_rdc_four_part_test(&lei, &activity_id, &activity_name, technical_in_nature, permits_experimentation, technological_uncertainty, systematic_process),
+        TaxArgs::CryptoCostBasisCheck { lei, tx_hash, tx_type, gross_proceeds, cost_basis, date, acquisition_date, jurisdiction, currency } =>
+            crate::crypto::handle_crypto_cost_basis_check(&lei, &tx_hash, &tx_type, &gross_proceeds, &cost_basis, &date, acquisition_date.as_deref(), &jurisdiction, &currency),
     }
 }
 
@@ -3037,6 +3047,8 @@ fn evidence_node_type_label(nt: arc_kit_au::NodeType) -> &'static str {
         NodeType::OperatorApproval => "operator_approval",
         NodeType::WorkbookRow => "workbook_row",
         NodeType::ValidationIssue => "validation_issue",
+        NodeType::RndActivity => "rnd_activity",
+        NodeType::TaxOffset => "tax_offset",
         NodeType::Unknown => "unknown",
     }
 }

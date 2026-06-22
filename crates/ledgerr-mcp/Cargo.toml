@@ -10,6 +10,7 @@ arc-kit-au = { path = "../arc-kit-au" }
 blake3 = "1.8.3"
 chrono = { workspace = true }
 ledger-core = { version = "=1.9.0", path = "../ledger-core" }
+ufo-types = { path = "../ufo-types" }
 ledgerr-focus = { workspace = true }
 ledgerr-mcp-core = { workspace = true }
 ledgerr-xero = { version = "=1.9.0", path = "../ledgerr-xero", optional = true }

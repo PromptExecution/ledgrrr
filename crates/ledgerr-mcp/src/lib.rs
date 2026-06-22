@@ -42,7 +42,10 @@ pub mod providers;
 pub mod reconciliation;
 pub mod schema;
 pub mod shape_tool;
+pub mod au_rd;
+pub mod crypto;
 pub mod tax_assist;
+pub mod us_rdc;
 pub mod xero_service;
 pub use calendar_tool::{list_calendar_events, CalendarEventRow, ListCalendarEventsRequest};
 pub use contract::{

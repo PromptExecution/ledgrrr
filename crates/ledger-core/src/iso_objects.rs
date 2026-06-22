@@ -404,3 +404,40 @@ mod tests {
         check!(KasuariSolver);
     }
 }
+
+/// Returns a map of type_id → Rhai DSL source for all registered visualization types.
+///
+/// Used by `ledgerr-mcp`'s `handle_manifest_tool` to expose the full canonical viz manifest.
+pub fn canonical_viz_dsl_map() -> std::collections::BTreeMap<String, String> {
+    use crate::iso::HasVisualization;
+    let mut map = std::collections::BTreeMap::new();
+    macro_rules! push {
+        ($key:expr, $t:ty) => {
+            let spec = <$t as HasVisualization>::viz_spec();
+            map.insert($key.to_string(), spec.rhai_dsl.to_string());
+        };
+    }
+    push!("PipelineState<Ingested>", PipelineState<Ingested>);
+    push!("PipelineState<Classified>", PipelineState<Classified>);
+    push!("PipelineState<Validated>", PipelineState<Validated>);
+    push!("PipelineState<Reconciled>", PipelineState<Reconciled>);
+    push!("PipelineState<Committed>", PipelineState<Committed>);
+    push!("PipelineState<NeedsReview>", PipelineState<NeedsReview>);
+    push!("ConstraintEvaluation", ConstraintEvaluation);
+    push!("VendorConstraintSet", VendorConstraintSet);
+    push!("InvoiceConstraintSolver", InvoiceConstraintSolver);
+    push!("InvoiceVerification", InvoiceVerification);
+    push!("Z3Result", Z3Result);
+    push!("LegalRule", LegalRule);
+    push!("LegalSolver", LegalSolver);
+    push!("Jurisdiction", Jurisdiction);
+    push!("TransactionFacts", TransactionFacts);
+    push!("CommitGate", CommitGate);
+    push!("Issue", Issue);
+    push!("MetaFlag", MetaFlag);
+    push!("MetaCtx", MetaCtx);
+    push!("Disposition", Disposition);
+    push!("StageResult", StageResult<()>);
+    push!("KasuariSolver", KasuariSolver);
+    map
+}

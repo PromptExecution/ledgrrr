@@ -636,6 +636,52 @@ pub enum TaxArgs {
     ExportWorkbook {
         workbook_path: PathBuf,
     },
+    // ── Tax-Lawyer Platform actions (gh#516) ──────────────────────────────
+    /// Check AU R&D activity eligibility under ITAA 1997 s.355-100.
+    AuRdCheckEligibility {
+        lei: String,
+        activity_id: String,
+        activity_name: String,
+        has_hypothesis: bool,
+        has_technical_uncertainty: bool,
+        is_systematic: bool,
+        is_core: bool,
+    },
+    /// Classify AU R&D expenditure under s.355-305.
+    AuRdClassifyExpenditure {
+        lei: String,
+        tx_id: String,
+        category: String,
+        amount_aud: String,
+    },
+    /// Calculate AU R&D Tax Incentive offset for an income year.
+    AuRdCalculateOffset {
+        lei: String,
+        total_eligible_aud: String,
+        is_refundable: bool,
+    },
+    /// Apply the IRC § 41(d) 4-part test for a US R&D activity.
+    UsRdcFourPartTestCheck {
+        lei: String,
+        activity_id: String,
+        activity_name: String,
+        technical_in_nature: bool,
+        permits_experimentation: bool,
+        technological_uncertainty: bool,
+        systematic_process: bool,
+    },
+    /// Check crypto transaction cost basis compliance for AU or US jurisdiction.
+    CryptoCostBasisCheck {
+        lei: String,
+        tx_hash: String,
+        tx_type: String,
+        gross_proceeds: String,
+        cost_basis: String,
+        date: String,
+        acquisition_date: Option<String>,
+        jurisdiction: String,
+        currency: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
