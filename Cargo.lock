@@ -1104,6 +1104,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
+name = "beankeeper"
+version = "0.4.0"
+source = "git+https://github.com/PromptExecution/beankeeper-b00t.git?branch=feat%2Fserde-feature#d100f89ca68667a1250a6dbac776dd3bed5be7c1"
+dependencies = [
+ "chrono",
+ "data-encoding",
+ "serde",
+ "sha2",
+]
+
+[[package]]
+name = "beankeeper-bridge"
+version = "1.9.0"
+dependencies = [
+ "beankeeper",
+ "blake3",
+ "ofx-rs",
+ "rust_decimal",
+ "rust_decimal_macros",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "bincode"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7484,6 +7509,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff76201f031d8863c38aa7f905eca4f53abbfa15f609db4277d44cd8938f33fe"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "ofx-rs"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2a8200cbd088af447f7e812d6394bfca752e55c91ec5132a01e41304bbe03a9"
+dependencies = [
+ "quick-xml",
+ "rust_decimal",
+ "time",
 ]
 
 [[package]]

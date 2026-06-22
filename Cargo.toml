@@ -22,6 +22,7 @@ members = [
   "crates/holon-viz",
   "crates/ledgerr-model-server",
   "crates/holon-viz-wasm",
+  "crates/beankeeper-bridge",
 ]
 resolver = "2"
 
@@ -53,6 +54,8 @@ ledgerr-mcp-core = { path = "crates/ledgerr-mcp-core" }
 msft-agent-gov-ledgrrr = { path = "crates/msft-agent-gov-ledgrrr" }
 agentmesh = "3.5.0"
 agentmesh-mcp = "3.5.0"
+beankeeper = { git = "https://github.com/PromptExecution/beankeeper-b00t.git", branch = "feat/serde-feature", features = ["serde"] }
+ofx-rs = "0.2"
 
 [workspace.lints.rust]
 unsafe_code = "deny"
