@@ -7,6 +7,7 @@ description = "Holonic visualization engine — Cytoscape.js JSON, SysML-v2, OWL
 
 [dependencies]
 b00t-reflect.workspace = true
+b00t-reflect-types.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 blake3.workspace = true

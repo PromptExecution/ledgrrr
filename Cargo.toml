@@ -21,6 +21,7 @@ members = [
   "kani-proofs",
   "crates/holon-viz",
   "crates/ledgerr-model-server",
+  "crates/b00t-reflect-types",
   "crates/b00t-reflect",
   "crates/holon-viz-wasm",
   "crates/beankeeper-bridge",
@@ -49,6 +50,7 @@ kasuari = "0.4"
 statig = "0.4"
 anyhow = "1"
 ordered-float = { version = "4", features = ["serde"] }
+b00t-reflect-types = { path = "crates/b00t-reflect-types" }
 b00t-reflect = { path = "crates/b00t-reflect" }
 ledger-core = { path = "crates/ledger-core" }
 ledgerr-focus = { path = "crates/ledgerr-focus" }

@@ -9,6 +9,7 @@ description = "Proc-macro: #[derive(HolonEmit)] — auto-emits TypeNode lists fr
 proc-macro = true
 
 [dependencies]
+b00t-reflect-types.workspace = true
 syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"
