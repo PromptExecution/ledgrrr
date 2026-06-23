@@ -129,6 +129,19 @@ impl TypeRelationshipGraph {
     }
 }
 
+impl From<b00t_reflect_types::HolonNode> for TypeNode {
+    fn from(n: b00t_reflect_types::HolonNode) -> Self {
+        TypeNode {
+            id: n.id,
+            label: n.label,
+            kind: n.kind,
+            parent_id: None,
+            z_layer: n.z_layer,
+            semantic_type: n.semantic_type,
+        }
+    }
+}
+
 impl From<&TypeRelationshipGraph> for CytoscapeGraph {
     fn from(graph: &TypeRelationshipGraph) -> Self {
         let canonical_nodes = graph

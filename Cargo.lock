@@ -1083,10 +1083,15 @@ dependencies = [
 name = "b00t-reflect"
 version = "1.9.0"
 dependencies = [
+ "b00t-reflect-types",
  "proc-macro2",
  "quote",
  "syn 2.0.117",
 ]
+
+[[package]]
+name = "b00t-reflect-types"
+version = "1.9.0"
 
 [[package]]
 name = "base64"
@@ -4572,6 +4577,7 @@ name = "holon-viz"
 version = "1.9.0"
 dependencies = [
  "b00t-reflect",
+ "b00t-reflect-types",
  "blake3",
  "chrono",
  "serde",

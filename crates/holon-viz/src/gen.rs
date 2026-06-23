@@ -11,7 +11,8 @@ use crate::type_graph::rel;
 /// Nodes are auto-derived from `#[derive(HolonEmit)]` on `VizDomain`.
 /// Relationships are declared explicitly below.
 pub fn manifest_loader() -> TypeRelationshipGraph {
-    let nodes = VizDomain::emit_nodes();
+    let nodes: Vec<crate::type_graph::TypeNode> =
+        VizDomain::emit_nodes().into_iter().map(crate::type_graph::TypeNode::from).collect();
 
     let relationships = vec![
         rel("iso::VisualizationSpec", "iso::HasVisualization", TypeRelationshipKind::Implements),
