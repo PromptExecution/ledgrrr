@@ -1080,6 +1080,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "b00t-reflect"
+version = "1.9.0"
+dependencies = [
+ "b00t-reflect-types",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "b00t-reflect-types"
+version = "1.9.0"
+
+[[package]]
 name = "base64"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1102,6 +1116,31 @@ name = "base64ct"
 version = "1.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
+
+[[package]]
+name = "beankeeper"
+version = "0.4.0"
+source = "git+https://github.com/PromptExecution/beankeeper-b00t.git?branch=feat%2Fserde-feature#d100f89ca68667a1250a6dbac776dd3bed5be7c1"
+dependencies = [
+ "chrono",
+ "data-encoding",
+ "serde",
+ "sha2",
+]
+
+[[package]]
+name = "beankeeper-bridge"
+version = "1.9.0"
+dependencies = [
+ "beankeeper",
+ "blake3",
+ "ofx-rs",
+ "rust_decimal",
+ "rust_decimal_macros",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
 
 [[package]]
 name = "bincode"
@@ -4537,6 +4576,8 @@ dependencies = [
 name = "holon-viz"
 version = "1.9.0"
 dependencies = [
+ "b00t-reflect",
+ "b00t-reflect-types",
  "blake3",
  "chrono",
  "serde",
@@ -5727,6 +5768,7 @@ dependencies = [
  "regex",
  "rhai",
  "rust_decimal",
+ "rust_decimal_macros",
  "rust_xlsxwriter",
  "serde",
  "serde_json",
@@ -5739,6 +5781,7 @@ dependencies = [
  "toml 0.8.2",
  "tracing",
  "trybuild",
+ "ufo-types",
  "xattr",
  "z3",
 ]
@@ -5836,6 +5879,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tracing",
+ "ufo-types",
  "winreg 0.52.0",
 ]
 
@@ -5843,6 +5887,7 @@ dependencies = [
 name = "ledgerr-mcp-core"
 version = "1.9.0"
 dependencies = [
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -7483,6 +7528,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ofx-rs"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2a8200cbd088af447f7e812d6394bfca752e55c91ec5132a01e41304bbe03a9"
+dependencies = [
+ "quick-xml",
+ "rust_decimal",
+ "time",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9009,6 +9065,16 @@ dependencies = [
  "serde",
  "serde_json",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "rust_decimal_macros"
+version = "1.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "74a5a6f027e892c7a035c6fddb50435a1fbf5a734ffc0c2a9fed4d0221440519"
+dependencies = [
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -11972,6 +12038,16 @@ dependencies = [
  "memoffset",
  "tempfile",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "ufo-types"
+version = "1.9.0"
+dependencies = [
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

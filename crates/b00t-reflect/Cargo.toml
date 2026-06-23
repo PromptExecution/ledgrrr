@@ -1,0 +1,15 @@
+[package]
+name = "b00t-reflect"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Proc-macro: #[derive(HolonEmit)] — auto-emits TypeNode lists from annotated enums"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+b00t-reflect-types.workspace = true
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"
