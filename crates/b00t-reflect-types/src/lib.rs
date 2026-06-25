@@ -3,7 +3,7 @@
 /// Consumers convert to their own graph node type via `From<HolonNode>`.
 /// Defined in this companion crate (not the proc-macro crate itself) because
 /// Rust proc-macro crates cannot export non-macro items.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct HolonNode {
     pub id: String,
     pub label: String,

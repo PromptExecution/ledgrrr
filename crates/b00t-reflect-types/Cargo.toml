@@ -5,5 +5,8 @@ edition.workspace = true
 license.workspace = true
 description = "Shared output types for #[derive(HolonEmit)] — HolonNode and friends"
 
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+
 [lints]
 workspace = true
