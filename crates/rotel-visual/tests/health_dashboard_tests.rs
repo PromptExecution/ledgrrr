@@ -151,9 +151,10 @@ async fn test_otlp_logs_rejects_invalid_json_with_400() {
 async fn test_classified_artifacts_are_accepted_via_otlp_logs() {
     // This test verifies that an OTLP log payload matching a classification
     // rule is accepted by the ingestion endpoint.
+    let app = rotel_visual::create_app().expect("create_app failed");
 
-    // Ingest a log that matches the GPU fault rule
     // Ingest a log that matches the GPU fault rule.
+    let body = json!({
         "resourceLogs": [
             {
                 "resource": {
