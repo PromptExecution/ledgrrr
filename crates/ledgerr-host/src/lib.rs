@@ -2,6 +2,7 @@ pub mod agent_runtime;
 pub mod chat;
 pub mod evidence;
 pub mod internal_openai;
+pub mod notification;
 #[cfg(feature = "local-llm")]
 pub mod local_llm;
 #[cfg(feature = "mistralrs-llm")]
