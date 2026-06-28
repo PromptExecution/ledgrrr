@@ -4,6 +4,9 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "core:menu:default",
+    "core:tray:default",
+    "core:event:default",
     "opener:allow-open-url"
   ]
 }
