@@ -28,24 +28,24 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 // Each tray menu item is assigned a stable command ID dispatched via WM_COMMAND.
 // Info/status items (greyed out) share the same ID namespace.
 
-pub(crate) const CMD_VERSION: u32 = 100;
-pub(crate) const CMD_BACKEND: u32 = 101;
-pub(crate) const CMD_TOAST_ENABLED: u32 = 102;
-pub(crate) const CMD_CYCLE_BACKEND: u32 = 103;
-pub(crate) const CMD_LAST_TEST: u32 = 104;
-pub(crate) const CMD_START_MINIMIZED: u32 = 105;
-pub(crate) const CMD_WINDOW_VISIBLE: u32 = 106;
-pub(crate) const CMD_NOTIFY_APPROVAL: u32 = 107;
-pub(crate) const CMD_NOTIFY_SUBMITTED: u32 = 108;
-pub(crate) const CMD_NOTIFY_FAILED: u32 = 109;
-pub(crate) const CMD_NOTIFY_COMPLETED: u32 = 110;
-pub(crate) const CMD_TEST_TOAST: u32 = 111;
-pub(crate) const CMD_STATUS: u32 = 112;
-pub(crate) const CMD_SHOW_WINDOW: u32 = 113;
-pub(crate) const CMD_EXIT: u32 = 114;
+pub const CMD_VERSION: u32 = 100;
+pub const CMD_BACKEND: u32 = 101;
+pub const CMD_TOAST_ENABLED: u32 = 102;
+pub const CMD_CYCLE_BACKEND: u32 = 103;
+pub const CMD_LAST_TEST: u32 = 104;
+pub const CMD_START_MINIMIZED: u32 = 105;
+pub const CMD_WINDOW_VISIBLE: u32 = 106;
+pub const CMD_NOTIFY_APPROVAL: u32 = 107;
+pub const CMD_NOTIFY_SUBMITTED: u32 = 108;
+pub const CMD_NOTIFY_FAILED: u32 = 109;
+pub const CMD_NOTIFY_COMPLETED: u32 = 110;
+pub const CMD_TEST_TOAST: u32 = 111;
+pub const CMD_STATUS: u32 = 112;
+pub const CMD_SHOW_WINDOW: u32 = 113;
+pub const CMD_EXIT: u32 = 114;
 
 /// Items rendered with a checkmark that toggle on click.
-pub(crate) const CHECK_ITEM_IDS: &[u32] = &[
+pub const CHECK_ITEM_IDS: &[u32] = &[
     CMD_TOAST_ENABLED,
     CMD_START_MINIMIZED,
     CMD_WINDOW_VISIBLE,
@@ -56,7 +56,7 @@ pub(crate) const CHECK_ITEM_IDS: &[u32] = &[
 ];
 
 /// Items whose text is updated dynamically at runtime (always greyed info rows).
-pub(crate) const DYNAMIC_TEXT_IDS: &[u32] = &[
+pub const DYNAMIC_TEXT_IDS: &[u32] = &[
     CMD_VERSION,
     CMD_BACKEND,
     CMD_LAST_TEST,
@@ -67,14 +67,14 @@ pub(crate) const DYNAMIC_TEXT_IDS: &[u32] = &[
 
 /// Events sent from the tray message-pump thread to the main event loop.
 #[derive(Debug, Clone)]
-pub(crate) enum TrayEvent {
+pub enum TrayEvent {
     /// A menu item was selected; payload is the command ID.
     MenuCommand(u32),
 }
 
 /// Commands sent from the main thread to the tray thread to update menu state.
 #[derive(Debug)]
-pub(crate) enum TrayControl {
+pub enum TrayControl {
     /// Refresh all dynamic labels and check states from the current application state.
     UpdateLabels {
         version: String,
@@ -104,7 +104,7 @@ struct WindowUserData {
 // ── Icon Data Generation ──────────────────────────────────────────────────────
 // Moved from runtime.rs: produces the RGBA pixel buffer for the 16×16 tray icon.
 
-pub(crate) fn make_icon_data() -> (Vec<u8>, i32, i32) {
+pub fn make_icon_data() -> (Vec<u8>, i32, i32) {
     let width = 16i32;
     let height = 16i32;
     let mut rgba = Vec::with_capacity((width * height * 4) as usize);
@@ -354,13 +354,13 @@ unsafe fn set_menu_check(hmenu: HMENU, id: u32, checked: bool) {
 /// context menu, and message-pump thread.
 ///
 /// Dropping this struct sends [`TrayControl::Quit`] and joins the thread.
-pub(crate) struct NativeTrayPlatform {
+pub struct NativeTrayPlatform {
     /// Sender for control commands to the tray thread.
-    pub(crate) control_tx: mpsc::Sender<TrayControl>,
+    pub control_tx: mpsc::Sender<TrayControl>,
     /// Receiver for menu events from the tray thread.
-    pub(crate) event_rx: mpsc::Receiver<TrayEvent>,
+    pub event_rx: mpsc::Receiver<TrayEvent>,
     /// Join handle for the message-pump thread.
-    pub(crate) thread_handle: Option<std::thread::JoinHandle<()>>,
+    pub thread_handle: Option<std::thread::JoinHandle<()>>,
 }
 
 impl NativeTrayPlatform {
@@ -368,7 +368,7 @@ impl NativeTrayPlatform {
     ///
     /// Blocks until the hidden window and tray icon are registered, then returns
     /// the control handles. The thread runs until [`TrayControl::Quit`] is sent.
-    pub(crate) fn spawn(
+    pub fn spawn(
         tooltip: &str,
         icon_rgba: Vec<u8>,
         icon_width: i32,
@@ -417,7 +417,7 @@ impl NativeTrayPlatform {
     }
 
     /// Signal the pump thread to quit and wait for it to finish.
-    pub(crate) fn shutdown(&mut self) {
+    pub fn shutdown(&mut self) {
         let _ = self.control_tx.send(TrayControl::Quit);
         if let Some(handle) = self.thread_handle.take() {
             let _ = handle.join();
