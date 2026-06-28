@@ -70,24 +70,32 @@ fn toggle_toast_enabled_persists_across_fresh_store_instance() {
 }
 
 #[test]
-fn legacy_json_without_chat_block_uses_default_chat_settings() {
+fn legacy_v1_settings_without_chat_block_uses_default_chat() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("settings.json");
+
+    // Simulate V1 settings without a chat block, stored in the new
+    // key-value format (`{"app_settings": "<json>"}`).
+    let inner = serde_json::json!({
+        "schema_version": "v1",
+        "toast_enabled": true,
+        "toast_backend_preference": "powershell",
+        "start_minimized_to_tray": false,
+        "window_visible_on_start": true,
+        "show_notifications_for": {
+            "approval_required": true,
+            "transaction_submitted": true,
+            "run_failed": true,
+            "run_completed": false
+        }
+    });
+    let outer = serde_json::json!({
+        "app_settings": inner.to_string()
+    });
+
     std::fs::write(
         &path,
-        r#"{
-  "schema_version": "v1",
-  "toast_enabled": true,
-  "toast_backend_preference": "powershell",
-  "start_minimized_to_tray": false,
-  "window_visible_on_start": true,
-  "show_notifications_for": {
-    "approval_required": true,
-    "transaction_submitted": true,
-    "run_failed": true,
-    "run_completed": false
-  }
-}"#,
+        serde_json::to_vec_pretty(&outer).unwrap(),
     )
     .unwrap();
 
