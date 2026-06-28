@@ -86,8 +86,16 @@ pub fn tool_descriptors() -> Vec<Value> {
     let mut tools: Vec<Value> = BUILTIN_TOOL_NAMES
         .iter()
         .map(|name| {
-            let schema = builtin_tool_input_schema(name);
-            json!({ "name": name, "inputSchema": schema })
+            let mut schema = builtin_tool_input_schema(name);
+            // Strip $schema — opencode's strict parser rejects it in inputSchema
+            if let Some(obj) = schema.as_object_mut() {
+                obj.remove("$schema");
+                // Ensure type: object at top level for validators that require it
+                if !obj.contains_key("type") {
+                    obj.insert("type".to_string(), json!("object"));
+                }
+            }
+            json!({ "name": name, "description": builtin_tool_description(name), "inputSchema": schema })
         })
         .collect();
     let ext_tools = external_tool_descriptors();
@@ -115,6 +123,21 @@ const BUILTIN_TOOL_NAMES: &[&str] = &[
 
 fn builtin_tool_input_schema(name: &str) -> Value {
     crate::contract::tool_input_schema(name)
+}
+
+fn builtin_tool_description(name: &str) -> &'static str {
+    match name {
+        DOCUMENTS_TOOL => "Document ingestion, listing, tagging, and pipeline management",
+        REVIEW_TOOL => "Transaction classification, rule execution, and flag management",
+        RECONCILIATION_TOOL => "Financial reconciliation: validate, reconcile, and commit",
+        WORKFLOW_TOOL => "Workflow lifecycle: status, transitions, and plugin info",
+        AUDIT_TOOL => "Audit trail: event history, replay, and query",
+        TAX_TOOL => "Tax assistance: evidence chains, schedule summaries, and workbook export",
+        ONTOLOGY_TOOL => "Ontology graph: query paths, upsert entities/edges, export snapshots",
+        XERO_TOOL => "Xero integration: contacts, accounts, invoices, and entity linking",
+        EVIDENCE_TOOL => "Evidence provenance: trace transactions and identify gaps",
+        _ => "Ledgerr MCP tool",
+    }
 }
 
 /// Returns the names of all top-level published tools.
