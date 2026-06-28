@@ -142,7 +142,7 @@ fn step_initialize(ctx: &mut FlowContext) -> Result<(), String> {
     let response = ctx.client.request(
         "initialize",
         json!({
-            "protocolVersion": "2025-11-25",
+            "protocolVersion": "2024-11-05",
             "capabilities": {},
             "clientInfo": { "name": "mcp-outcome-test", "version": "0.1.0" }
         }),
