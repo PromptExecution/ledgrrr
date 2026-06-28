@@ -9,6 +9,7 @@ pub mod local_llm;
 pub mod local_llm_mistral;
 pub mod notify;
 pub mod settings;
+pub mod settings_backend;
 pub mod tray;
 pub use internal_openai::{
     cloud_chat_settings, local_demo_chat_settings, windows_ai_chat_settings, provider_status,
