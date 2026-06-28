@@ -5,6 +5,7 @@
 
 mod commands;
 mod state;
+mod tray;
 
 use std::sync::{Arc, Mutex};
 
@@ -30,6 +31,10 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(app_state)
+        .setup(|app| {
+            tray::setup_tray(app);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::get_initial_state,
             commands::save_settings,
