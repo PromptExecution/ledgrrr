@@ -1,252 +1,323 @@
-# PRD-10: Financial Pipeline — Ingestion, Workbook Write, and AGT Governance Wiring
+# PRD-10: Desktop Agent, MCPB Bootstrapper, Office Diagram Playbook, and Local Simulation Runtime
 
-**Status:** Draft | **Priority:** P1 (Core Value Delivery) | **Date:** 2026-05-09
-**Depends on:** PRD-6 (type system), `msft-agent-gov-ledgrrr` (all 12 gaps closed, merged)
-
----
-
-## 1. Problem Statement
-
-The governance layer (`msft-agent-gov-ledgrrr`) is complete and merged. The Rhai classification waterfall (`RuleRegistry::classify_waterfall`) is implemented. Neither is connected to anything that moves real data.
-
-The three load-bearing gaps preventing end-to-end pipeline operation:
-
-| Gap | Location | State |
-|---|---|---|
-| PDF ingestion from disk to classified transactions | `ledger-core/src/ledger_ops.rs` `PdfIngestOp` | Phase 2 stub, `NotImplemented` |
-| Transaction rows written to Excel workbook | `ledger-core/src/workbook.rs` | 71 lines, sheet init only |
-| AGT governance gating MCP tool dispatch | `ledgerr-mcp/src/gate.rs` | Zero references to `LedgrrAgtGateway` |
-
-Secondary gaps that must land in the same phase to avoid regression:
-
-| Gap | Location | State |
-|---|---|---|
-| OpaGateOp pre-commit policy gate | `ledger-core/src/ledger_ops.rs` `OpaGateOp` | Phase 3 stub; replace with Cedar/AGT |
-| Rhai rule hot-reload on file change | `ledger-core/src/rule_registry.rs` | `notify` crate present, not wired |
-| Semantic rule selector | `ledger-core/src/rule_registry.rs` `SemanticRuleSelector` | Trait defined, impl panics — fallback to deterministic |
+**Status:** Future-state requirements | **Priority:** P0 platform packaging / P1 Office surface | **Date:** 2026-07-20
 
 ---
 
-## 2. Scope
+## 1. Situation
 
-### In scope
+`l3dg3rr` is evolving from a local-first bookkeeping and evidence graph into a Windows-first control plane for modelling, visualizing, simulating, and approving orchestration pipelines. The system must remain local-first: sensitive documents, workbook state, model prompts, and simulation traces should be able to run without leaving the user's machine.
 
-- `PdfIngestOp`: spawn Docling/reqif-opa-mcp subprocess, parse NDJSON output, dedup via Blake3, drive `classify_waterfall`, hand off to workbook write
-- `WorkbookWriter`: `ClassificationOutcome` → schedule sheet row, mutation history append, data validation dropdowns from `TaxCategory` strum enum
-- `LedgrrAgtGateway` wired into `ledgerr-mcp/gate.rs`: ring-gate each tool call before dispatch
-- `OpaGateOp` replaced with Cedar/AGT `ComplianceEngine::check_policy` (feature-gated `cedar-policy`)
-- `notify` watcher: hot-reload `RuleRegistry` on `.rhai` rule file changes; trigger ingest agent on new PDFs in watched directory
+The current project already has several relevant pieces:
 
-### Out of scope
-
-- Semantic rule selector (embedding infrastructure: `candle`/`fastembed-rs`/ONNX) — deterministic waterfall is sufficient for Phase 2
-- HelixDB graph projection — remains Phase 3+
-- DataFusion analytics layer — remains Phase 3+
-- UI changes beyond surfacing pipeline status in existing Tauri host
-
----
-
-## 3. Architecture
-
-### 3.1 Data flow (end-to-end)
-
-```
-PDF file (VENDOR--ACCOUNT--YYYY-MM--DOCTYPE naming)
-  │
-  ▼  [notify watcher or operator-triggered MCP tool]
-PdfIngestOp
-  │  spawn: reqif-opa-mcp ingest --file <path> --output ndjson
-  │  read NDJSON → Vec<ReqIfCandidate>
-  │  Blake3 content-hash dedup (skip known tx_ids)
-  ▼
-RuleRegistry::classify_waterfall(engine, &tx) → ClassificationOutcome
-  │
-  ▼  [Cedar/AGT gate — replaces OpaGateOp stub]
-ComplianceEngine::check_policy(&outcome) → allow | flag
-  │
-  ├─ allow → WorkbookWriter::append_row(schedule_sheet, &row)
-  │            + mutation_history::append(tx_id, timestamp, agent_id, action)
-  │
-  └─ flag  → WorkbookWriter::append_flag(flags_sheet, &row, reason)
-```
-
-### 3.2 AGT governance layer in MCP dispatch
-
-```
-MCP tool call arrives at ledgerr-mcp/gate.rs
-  │
-  ▼
-LedgrrAgtGateway::check_tool_call(agent_id, tool_name, input_json)
-  │  PolicyDecision::Allow → proceed
-  │  PolicyDecision::Deny(reason) → return ToolError::PolicyDenied
-  │  PolicyDecision::RequiresApproval → queue for operator review
-  │  PolicyDecision::RateLimited{retry_after_secs} → return ToolError::RateLimited
-  ▼
-existing gate.rs dispatch (unchanged)
-```
-
-Ring enforcement per tool:
-
-| Tool | Minimum ring |
+| Area | Present state |
 |---|---|
-| `ingest_pdf` | Standard |
-| `classify_transaction` | Standard |
-| `edit_rhai_rule` | Admin |
-| `commit_workbook` | Standard |
-| `promote_agent` | Admin |
+| Core bookkeeping graph | Rust crates model documents, transactions, journal projections, evidence, workflow, validation, legal checks, and workbook export. |
+| MCP surface | `ledgerr-mcp-server` exposes typed `ledgerr_*` capability families over stdio. |
+| Visualization | mdBook and the live Rhai editor render Mermaid and isometric pipeline diagrams from a narrow DSL. |
+| Desktop host | Tauri/host crates exist for Windows tray/window control and local operator state. |
+| b00t integration | `_b00t_` consumes ledgrrr as a submodule and exposes b00t/agent/MCP context around it. |
+| Claude plugin marketplace | A Claude plugin marketplace entry exists for Cowork/plugin workflows, but it is not a Claude Desktop MCPB binary bundle. |
+| Release packaging | CI builds release binaries and a Windows tray artifact in adjacent workflows, but there is not yet one coherent Windows install/update story. |
+
+The missing product shape is a unified installation and runtime architecture:
+
+1. Claude Desktop should install a small MCPB bundle that starts a local ledgrrr controller MCP server.
+2. That controller should be able to inspect, install, repair, update, and control the native Windows ledgrrr stack with explicit user approval.
+3. The native stack should install the tray/taskbar UI, background service, model/runtime assets, and Office/SharePoint integration helpers.
+4. OneNote, Office, and SharePoint should display and persist generated diagrams/playbooks from ledgrrr, not just static screenshots.
+5. The full path should support local CPU execution of a fine-tuned model for generative process modelling, visualization, simulation, and orchestration control.
 
 ---
 
-## 4. Component Specifications
+## 2. Product Thesis
 
-### 4.1 `PdfIngestOp` — `ledger-core/src/ledger_ops.rs`
+Ledgrrr is the local control mechanism for financial and operational pipelines. b00t supplies the typed agent and orchestration vocabulary; ledgrrr supplies the durable desktop runtime, evidence graph, visual playbooks, and Office-facing user surface.
 
-**Trigger:** Called by the MCP `ingest_pdf` tool handler after `check_tool_call` returns `Allow`.
+The target user should be able to install ledgrrr once, open Claude Desktop or Microsoft 365, and ask for a model of a pipeline. The system should:
 
-**Inputs:**
-- `input_path: PathBuf` — validated against `VENDOR--ACCOUNT--YYYY-MM--DOCTYPE` filename pattern (existing `filename.rs`)
-- `rule_dir: PathBuf` — directory of `.rhai` rule files; loaded into `RuleRegistry`
-- `workbook_path: PathBuf` — target `.xlsx`; created if absent
+1. discover the relevant b00t/ledgrrr capabilities,
+2. generate a typed pipeline/playbook model,
+3. render it as Mermaid/isometric/Office-friendly artifacts,
+4. simulate the state transitions locally,
+5. expose approval and rollback controls,
+6. write the resulting evidence into ledgrrr and, where requested, OneNote or SharePoint.
 
-**Subprocess contract:**
+---
+
+## 3. Chosen Distribution Architecture
+
+### 3.1 Claude Desktop MCPB
+
+The Claude Desktop artifact is a MCPB bundle. It installs only the Claude-facing controller:
+
+```text
+ledgrrr-claude.mcpb
+├── manifest.json
+├── server/
+│   ├── ledgrrr-mcp.exe
+│   └── ledgrrr-mcp-support.json
+└── assets/
+    └── icon.png
 ```
-reqif-opa-mcp ingest --file <input_path> --output ndjson
-```
-- One JSON object per stdout line; each line deserializes as `ReqIfCandidate`
-- Non-zero exit → `LedgerOpError::ExternalProcessFailed { exit_code, stderr }`
-- Subprocess timeout: 120 seconds; kill and return `LedgerOpError::Timeout` if exceeded
 
-**Dedup:** For each `ReqIfCandidate`, compute `blake3::hash(account_id + date + amount + description)` as `tx_id`. Check against `rkyv` sidecar (`<workbook_path>.rkyv`); skip if present.
+The MCPB server is `ledgrrr-mcp.exe`, a small binary MCP server using stdio. It must not silently install services, write HKLM registry keys, or mutate system state during bundle installation. It exposes explicit tools that the user or agent can call.
 
-**Classification:** `RuleRegistry::classify_waterfall(engine, &tx)` using `select_rules_deterministic`. Store outcome + `tx_id` in `rkyv` sidecar before workbook write (write-ahead for crash recovery).
+Required MCPB tools:
 
-**Error handling:** Per-row errors are collected and returned as `Vec<IngestRowError>` — partial ingest succeeds; caller decides whether to surface failures as warnings or abort.
-
-**Idempotency:** Re-running on the same PDF with the same rules must produce identical workbook rows. Blake3 dedup + rkyv sidecar enforce this.
-
-### 4.2 `WorkbookWriter` — `ledger-core/src/workbook.rs`
-
-Replace the 71-line skeleton with a write-capable struct. The existing `initialize_workbook` is kept; the writer wraps an open `calamine`-read / `rust_xlsxwriter`-write session.
-
-**Sheet layout:**
-
-| Sheet | Content |
+| Tool | Purpose |
 |---|---|
-| `TRANSACTIONS` | One row per classified transaction: `tx_id`, `date`, `vendor`, `account`, `amount` (Decimal formatted), `category`, `confidence`, `needs_review`, `flag` |
-| `FLAGS.open` | Transactions flagged for review: all TRANSACTIONS columns + `flag_reason`, `flagged_by` |
-| `FLAGS.resolved` | Resolved flags: above + `resolved_by`, `resolved_at`, `resolution_note` |
-| `MUTATION_HISTORY` | Append-only audit log: `timestamp`, `tx_id`, `agent_id`, `ring`, `action`, `before`, `after` |
-| `SCHEDULES.*` | One sheet per tax schedule (B, C, D, SE…); rows are aggregations from TRANSACTIONS filtered by `TaxCategory` |
+| `ledgrrr_status` | Report installed desktop version, service status, tray status, model runtime status, Office add-in status, and b00t linkage. |
+| `ledgrrr_install_plan` | Return a dry-run install/repair plan, including privilege requirements and affected paths. |
+| `ledgrrr_install_desktop` | Launch the signed native installer with visible UI or documented silent flags. |
+| `ledgrrr_install_service` | Request service installation through the native installer/elevated helper. |
+| `ledgrrr_start_service` | Start the ledgrrr background service if installed. |
+| `ledgrrr_stop_service` | Stop the background service. |
+| `ledgrrr_open_tray` | Launch or focus the tray/taskbar application. |
+| `ledgrrr_open_playbook` | Open the local playbook UI for a pipeline/run id. |
+| `ledgrrr_render_diagram` | Render a typed pipeline to Mermaid/SVG/PNG/HTML payloads. |
+| `ledgrrr_simulate_pipeline` | Run local simulation over a pipeline model and return state/evidence summary. |
+| `ledgrrr_export_office_artifact` | Produce an Office-safe artifact for OneNote/SharePoint insertion. |
+| `ledgrrr_repair` | Re-run repair checks for service, tray, model runtime, and Office manifests. |
+| `ledgrrr_uninstall` | Launch the native uninstaller or return exact removal instructions. |
 
-**Data validation:** `TaxCategory` strum enum → `strum::VariantNames::VARIANTS` → Excel dropdown on `category` column. Same for `Flag` enum on `flag` column.
+### 3.2 Native Windows Installer
 
-**Append semantics:** `append_row` and `append_flag` use `calamine` to read existing row count, then `rust_xlsxwriter` to write the next row. No full-file rewrite on each append.
+The native Windows installer is the authoritative installer for the desktop stack. It should use MSIX with external location or an equivalent Microsoft Store-compatible package identity strategy, while preserving unrestricted Win32 behavior where required.
 
-**`Decimal` formatting:** Written as string `"1234.56"` via `Decimal::to_string()` — never `f64`. Column format set to `@` (text) to prevent Excel from converting.
+The installer owns:
 
-### 4.3 AGT wiring — `ledgerr-mcp/src/gate.rs` + `Cargo.toml`
+- `ledgrrr-service.exe` background service.
+- `ledgrrr-tray.exe` tray/taskbar widget.
+- `ledgrrr-mcp.exe` local controller binary.
+- Local model/runtime assets and configuration directories.
+- WebView2 / Tauri prerequisites where required.
+- Start Menu entries, repair/uninstall registration, logging locations, and update channel metadata.
+- Optional Office add-in and SharePoint helper manifests/documentation.
 
-**Dependency:** Add `msft-agent-gov-ledgrrr = { path = "../msft-agent-gov-ledgrrr" }` to `ledgerr-mcp/Cargo.toml`.
+The installer must support:
 
-**Gateway init:** `LedgrrAgtGateway::with_persist_path` called once at MCP server startup; `Arc<LedgrrAgtGateway>` threaded through the actor/gate state.
+- interactive install,
+- unattended enterprise install,
+- repair,
+- uninstall,
+- versioned upgrades,
+- code signing,
+- explicit UAC/elevation for service/HKLM operations,
+- non-admin per-user mode where service installation is skipped.
 
-**Dispatch wrapper:** Before each tool handler call in `gate.rs`, call:
-```rust
-gw.check_tool_call(agent_id, tool_name, &input_json)?;
-```
-Map `PolicyDecision::Deny` → `ToolError::PolicyDenied(reason)`, `RateLimited` → `ToolError::RateLimited { retry_after_secs }`.
+### 3.3 Microsoft 365 Surfaces
 
-**`arc-kit-au` provenance:** After each successful tool dispatch, emit a provenance edge:
-```rust
-arc_kit_au::trace(tx_id, source_doc, tool_name, agent_id, ring);
-```
+Office and SharePoint integration are separate from the Windows installer. They are deployed with Microsoft 365 mechanisms:
 
-### 4.4 Cedar/AGT gate replacing `OpaGateOp` — `ledger-core/src/ledger_ops.rs`
-
-Remove `OpaGateOp`; replace call sites with:
-```rust
-gw.attest_z3_proof(tx_id, &outcome.category, outcome.confidence)?;
-```
-`ComplianceGrade::Full` → proceed to workbook write.
-`ComplianceGrade::Partial` → write to `FLAGS.open` with `reason = "compliance_partial"`.
-
-Feature-gated: `#[cfg(feature = "cedar-policy")]`. Without the feature, gate is a no-op (existing behavior).
-
-### 4.5 `notify` watcher — new `ledger-core/src/watcher.rs`
-
-```rust
-pub struct PipelineWatcher {
-    pub rule_dir: PathBuf,
-    pub ingest_dir: PathBuf,
-    pub registry: Arc<RwLock<RuleRegistry>>,
-    pub ingest_tx: tokio::sync::mpsc::Sender<PathBuf>,
-}
-
-impl PipelineWatcher {
-    pub fn spawn(self) -> notify::RecommendedWatcher;
-}
-```
-
-- `.rhai` file change in `rule_dir` → debounce 500ms → `RuleRegistry::load_from_dir` reload
-- New `.pdf` in `ingest_dir` (create event only) → send path to `ingest_tx` channel → `PdfIngestOp`
-- Debounce: `notify::event::ModifyKind::Data` only; ignore renames and metadata changes
-
----
-
-## 5. File Change Map
-
-| File | Change |
-|---|---|
-| `crates/ledger-core/src/ledger_ops.rs` | Implement `PdfIngestOp::execute`; remove `OpaGateOp` (replace with Cedar/AGT call) |
-| `crates/ledger-core/src/workbook.rs` | Replace skeleton with `WorkbookWriter` struct + `append_row`, `append_flag`, `append_mutation` |
-| `crates/ledger-core/src/watcher.rs` | New file: `PipelineWatcher` |
-| `crates/ledger-core/src/lib.rs` | `pub mod watcher` |
-| `crates/ledgerr-mcp/Cargo.toml` | Add `msft-agent-gov-ledgrrr` dependency |
-| `crates/ledgerr-mcp/src/gate.rs` | Add `Arc<LedgrrAgtGateway>` field; wrap each dispatch with `check_tool_call` |
-| `crates/ledgerr-mcp/src/mcp_adapter.rs` | Thread gateway into gate actor init; resolve existing `TODO` at line 140 |
-
----
-
-## 6. Acceptance Criteria
-
-### `PdfIngestOp`
-- [ ] Given a fixture PDF with known transactions, `execute` produces `ClassificationOutcome` rows matching expected categories
-- [ ] Re-running on the same PDF produces zero new rows (Blake3 dedup)
-- [ ] Subprocess non-zero exit returns `LedgerOpError::ExternalProcessFailed` with captured stderr
-- [ ] Subprocess timeout after 120s returns `LedgerOpError::Timeout`
-
-### `WorkbookWriter`
-- [ ] `append_row` writes a `ClassificationOutcome` row to `TRANSACTIONS` sheet; re-opening the file with `calamine` reads the same data
-- [ ] `amount` column contains string value `"1234.56"` — not a float
-- [ ] `category` column has Excel data validation dropdown matching `TaxCategory::VARIANTS`
-- [ ] `MUTATION_HISTORY` is append-only: calling `append_row` twice results in two history rows, not one overwrite
-- [ ] `initialize_workbook` followed by two `append_row` calls produces a valid `.xlsx` with all required sheets
-
-### AGT governance wiring
-- [ ] MCP tool call from a `Sandboxed` ring agent attempting `ingest_pdf` returns `ToolError::PolicyDenied`
-- [ ] MCP tool call from a `Standard` ring agent attempting `ingest_pdf` proceeds to handler
-- [ ] MCP tool call from a `Standard` ring agent attempting `edit_rhai_rule` returns `ToolError::PolicyDenied`
-- [ ] MCP tool call from an `Admin` ring agent attempting `edit_rhai_rule` proceeds to handler
-- [ ] `arc-kit-au` provenance edge emitted with correct `tx_id`, `agent_id`, `ring` after successful dispatch
-
-### Cedar/AGT gate (feature = `cedar-policy`)
-- [ ] Transaction with `ComplianceGrade::Full` routes to `TRANSACTIONS` sheet
-- [ ] Transaction with `ComplianceGrade::Partial` routes to `FLAGS.open` with `reason = "compliance_partial"`
-- [ ] Without `cedar-policy` feature, gate is a no-op — existing test suite passes unchanged
-
-### `notify` watcher
-- [ ] Modifying a `.rhai` file in `rule_dir` causes `RuleRegistry` to reload within 600ms
-- [ ] Dropping a new `.pdf` into `ingest_dir` sends path on `ingest_tx` within 600ms
-- [ ] Watcher does not trigger on metadata-only changes (touch without write)
-
----
-
-## 7. Dependencies and Risks
-
-| Item | Risk | Mitigation |
+| Surface | Deployment path | Responsibility |
 |---|---|---|
-| `reqif-opa-mcp` subprocess availability | Not installed → `PdfIngestOp` fails at runtime | Return `LedgerOpError::SubprocessNotFound` with install hint; document in AGENTS.md |
-| `calamine` + `rust_xlsxwriter` on same file | Both open the same `.xlsx` simultaneously | Use read-then-write pattern: `calamine` reads row count, drops handle, `rust_xlsxwriter` appends |
-| `notify` on WSL2 | `inotify` events from Windows-side file drops may be delayed or missed | Document known WSL2 limitation; add a manual `poll` fallback trigger via MCP tool `poll_ingest_dir` |
-| Cedar policy authoring | Policies must be written before the gate has any effect | Ship a `default.cedar` policy file that mirrors the existing YAML policy semantics |
-| `arc-kit-au` API stability | Provenance crate is in-repo but may lack stable public API | Wrap in a thin `ledger_core::provenance` adapter so gate.rs doesn't couple directly |
+| OneNote/Office Add-in | Office add-in manifest / centralized deployment | Task pane for generating, previewing, inserting, and refreshing diagrams/playbooks. |
+| SharePoint diagram display | SPFx web part | Render ledgrrr playbook artifacts in SharePoint pages/libraries. |
+| Office artifact bridge | ledgrrr local service + Graph/user export | Convert ledgrrr models into Office-safe SVG/PNG/HTML/JSON artifacts. |
+
+The Office surfaces should not depend on Claude Desktop. Claude Desktop is one client of the ledgrrr local controller; Microsoft 365 is another.
+
+---
+
+## 4. Runtime Component Model
+
+```text
+Claude Desktop
+  -> ledgrrr-claude.mcpb
+    -> ledgrrr-mcp.exe --stdio
+      -> ledgrrr-service.exe
+      -> ledgrrr-tray.exe
+      -> local model runtime
+      -> b00t capability index
+      -> ledger-core / ledgerr-mcp / visualization crates
+
+OneNote / Office Add-in
+  -> local service or exported artifact bridge
+    -> diagram renderer
+    -> evidence graph
+    -> workbook/playbook store
+
+SharePoint SPFx Web Part
+  -> stored diagram artifact
+  -> optional signed refresh link / local handoff
+```
+
+The local service is the durable runtime. It owns state, audit, simulation jobs, model lifecycle, and artifact persistence. The tray app owns user-visible status and approvals. The MCPB server is a controller and bridge, not the service itself.
+
+---
+
+## 5. b00t Contract
+
+Ledgrrr must integrate with b00t as a typed local capability, not as an opaque desktop app.
+
+Required b00t-facing artifacts:
+
+| Artifact | Requirement |
+|---|---|
+| Datum(s) | Publish datums for `ledgrrr.cli`, `ledgrrr.mcp`, `ledgrrr.desktop`, `ledgrrr.service`, `ledgrrr.office-addin`, `ledgrrr.sharepoint-webpart`, and `ledgrrr.model-runtime`. |
+| Capability map | Map `ledgerr_*` MCP tools to b00t capability families and installation state. |
+| Installer recipe | b00t must be able to ask for install status, dry-run install, repair, and uninstall without guessing commands. |
+| Simulation model | b00t pipeline/orchestration datums must be serializable into ledgrrr playbook models. |
+| Evidence | Every install, repair, simulation, diagram export, and approval must emit structured evidence with deterministic ids. |
+| Local model | b00t must be able to select local CPU fine-tuned inference for diagram/playbook generation when the model runtime is installed. |
+
+Minimum b00t command contracts:
+
+```text
+b00t learn ledgrrr
+b00t ledgrrr status --json
+b00t ledgrrr install --dry-run
+b00t ledgrrr repair --json
+b00t ledgrrr render --input pipeline.json --format mermaid
+b00t ledgrrr simulate --input pipeline.json --profile local-cpu
+b00t ledgrrr export-office --input playbook.json --target onenote
+```
+
+These commands may be implemented by b00t delegating to `ledgrrr-mcp.exe` or `ledgrrr-service.exe`, but the user-facing contract should stay stable.
+
+---
+
+## 6. Diagram and Playbook Requirements
+
+The diagram generator is not a decorative feature. It is the control surface for process modelling and orchestration.
+
+### 6.1 Supported diagram formats
+
+Initial:
+
+- Mermaid flowchart/state diagrams.
+- SVG export.
+- PNG export for Office clients that cannot preserve live SVG behavior.
+- JSON playbook model containing typed nodes, edges, gates, evidence refs, and simulation state.
+
+Future:
+
+- PlantUML import/export where useful.
+- UFO/ISO stereotype overlay.
+- Isometric HTML export for interactive SharePoint pages.
+- Signed artifact bundles containing diagram, playbook JSON, provenance, and render metadata.
+
+### 6.2 Playbook model
+
+A playbook must contain:
+
+- `playbook_id`
+- `title`
+- `version`
+- `source`
+- typed nodes
+- typed edges
+- b00t capability references
+- ledgrrr evidence references
+- simulation profile
+- approval gates
+- rollback/repair actions
+- Office artifact pointers
+
+### 6.3 Simulation
+
+Simulation must support:
+
+- deterministic run id,
+- local CPU inference profile,
+- pure deterministic mode with no LLM,
+- step-by-step state transition trace,
+- resource/cost/time estimates,
+- evidence output,
+- comparison of planned vs actual execution,
+- export into the workbook/audit model where relevant.
+
+---
+
+## 7. Security and Governance
+
+This project has privileged local execution risk. The following constraints are mandatory:
+
+- MCPB install must not silently perform privileged mutation.
+- Service installation must require native installer/elevation.
+- Claude-facing tools that mutate host state must return a plan before execution.
+- The tray app must surface pending privileged actions and their reason.
+- Credentials remain outside model prompts and are stored through OS/user-approved secure storage.
+- Office/SharePoint artifacts must distinguish generated content, source evidence, and user-approved publication.
+- Every tool call that installs, repairs, starts/stops services, exports artifacts, or runs simulation must be audit logged.
+- Local model use must be visible in status output, including model id, quantization/profile, and whether cloud fallback is enabled.
+
+---
+
+## 8. CI and Release Requirements
+
+CI must produce and validate these artifacts:
+
+| Artifact | CI requirement |
+|---|---|
+| `ledgrrr-claude-<platform>.mcpb` | Pack and validate MCPB manifest; upload as PR artifact and release asset. |
+| Native Windows installer | Build signed or test-signed installer; validate silent install flags in CI where possible. |
+| `ledgrrr-service.exe` | Build and run smoke tests for status/start/stop protocol. |
+| `ledgrrr-tray.exe` | Build and run non-interactive smoke test for startup/config detection. |
+| Office add-in manifest | Validate manifest schema and task-pane URL/assets. |
+| SPFx web part package | Build/package and validate static assets. |
+| Diagram renderer | Golden tests for Mermaid/SVG/PNG/playbook JSON. |
+| b00t contract | JSON status/dry-run/render/simulate commands must have stable schema tests. |
+
+Release assets must include checksums and provenance metadata. The Windows installer and binaries must be prepared for code signing before public distribution.
+
+---
+
+## 9. Definition of Done
+
+The future-state project is done when all of the following are true.
+
+### Installation
+
+- A user can install `ledgrrr-claude.mcpb` in Claude Desktop and call `ledgrrr_status`.
+- A user can install the native Windows package from a release asset.
+- The native installer supports install, repair, upgrade, uninstall, and documented unattended mode.
+- The installer can install a Windows service with UAC and can install a per-user tray/taskbar app without admin rights.
+- The tray app shows service status, model runtime status, Claude MCPB status, Office add-in status, and b00t status.
+
+### Runtime
+
+- `ledgrrr-service.exe` runs as the long-lived local runtime and exposes a local IPC/API consumed by the MCPB controller, tray app, and Office bridge.
+- `ledgrrr-mcp.exe` runs as a stdio MCP server and exposes the required tool set listed in this PRD.
+- Service, tray, and MCPB controller share one config schema and one audit log schema.
+- All privileged operations require an explicit plan and user/elevation boundary.
+
+### b00t
+
+- b00t can discover ledgrrr installation state.
+- b00t can invoke dry-run install, repair, render, simulate, and Office export contracts without ad hoc shell knowledge.
+- Ledgrrr publishes typed datums for its desktop, service, MCP, Office, SharePoint, and model-runtime surfaces.
+- b00t orchestration pipeline datums can be transformed into ledgrrr playbook models.
+- Every b00t-triggered ledgrrr action returns structured evidence.
+
+### Diagram and Office
+
+- OneNote/Office add-in can insert a generated diagram artifact into a notebook/document.
+- SharePoint SPFx web part can render the same playbook artifact.
+- Mermaid/SVG/PNG exports are deterministic for a fixed playbook input.
+- A playbook artifact includes provenance, source model/profile, evidence refs, render metadata, and refresh instructions.
+- Diagram refresh never silently mutates a published artifact without creating a new version/evidence node.
+
+### Simulation and Local AI
+
+- A local CPU inference profile can generate or mutate playbook models without cloud access.
+- A deterministic non-LLM simulation mode exists for CI and audit replay.
+- Simulation output includes state trace, gate decisions, timing/cost estimates, and evidence ids.
+- The user can compare planned, simulated, and actual execution paths.
+
+### CI/Release
+
+- PR CI validates MCPB, Windows build, manifest schemas, diagram golden outputs, and b00t JSON contracts.
+- Release CI uploads MCPB, Windows installer, checksums, and provenance metadata.
+- Docs include install, repair, uninstall, Office deployment, SPFx deployment, and b00t integration instructions.
+- A clean Windows test machine can install, run `ledgrrr_status`, render a sample Mermaid diagram, and uninstall without manual cleanup.
+
+---
+
+## 10. Non-Goals
+
+- MCPB is not the privileged installer.
+- Claude Desktop is not the only client; Office, SharePoint, b00t, and the tray app must remain first-class clients.
+- Cloud inference is not required for the target state.
+- Office/SharePoint integration does not replace the local evidence graph; it publishes views over ledgrrr-owned artifacts.

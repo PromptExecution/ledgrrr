@@ -40,6 +40,8 @@ The workbook remains the human and accounting interface. The graph, sidecar stat
 | Agent autonomy vs operator control | MCP exposes capability families; host policy, audit, approvals, notifications, and credentials remain owned by `l3dg3rr`. |
 | Rich visual workflows vs stable execution | A narrow Rhai diagram DSL renders Mermaid and isometric views while typed Rust workflow structs own execution contracts. |
 | Xero integration vs local-first privacy | Xero is a supervised capability reached through worker tools and reconciled evidence, not raw credential leakage to a model. |
+| Claude/Desktop installability vs privileged Windows control | MCPB installs only the Claude-facing controller; a native Windows installer owns service, tray, repair, update, and UAC boundaries. |
+| Office-native diagrams vs local evidence ownership | OneNote/Office and SharePoint publish versioned playbook artifacts; ledgrrr remains the source of truth for evidence, simulation, and refresh provenance. |
 
 MECE module grouping keeps the logic approachable:
 
@@ -53,6 +55,8 @@ MECE module grouping keeps the logic approachable:
 | Visualization | Mermaid, isometric docs renderer, live Rhai editor | `crates/mdbook-rhai-mermaid/`, `book/theme/rhai-live-core.js`, `visualize.rs` |
 | Agent boundary | published MCP capability families and deterministic argument contracts | `crates/ledgerr-mcp/src/contract.rs`, `mcp_adapter.rs`, `docs/mcp-capability-contract.md` |
 | Operator host | desktop settings, notifications, local chat endpoint, tray/window control | `crates/ledgerr-host/src/` |
+| Desktop packaging | Claude MCPB controller, Windows service/tray installer, local runtime status | `PRD-10.md`, `book/src/desktop-agent-office-playbook.md`, `crates/ledgerr-host/src/` |
+| Microsoft 365 surface | OneNote/Office diagram task pane and SharePoint playbook rendering | `PRD-10.md`, future Office add-in manifest, future SPFx package |
 
 ## Bookkeeping Flow
 
@@ -127,6 +131,11 @@ See [Capability Map](book/src/capability-map.md) for the full component table.
 | Tauri desktop host | Active | primary operator host (replaces legacy Slint surface) |
 | VZ panel — Cytoscape.js + dagre layout | Active | hierarchical type/trait graph in Tauri sidebar; dagre TB layout; CDP observable on port 19222 |
 | Slint desktop host | Legacy | fallback window, settings, local endpoint, notifications |
+| Claude Desktop MCPB bundle | Missing | future `ledgrrr-claude.mcpb` installs only `ledgrrr-mcp.exe` controller |
+| Native Windows installer | Missing | future MSIX/external-location package installs service, tray, controller, model config, repair/uninstall |
+| OneNote/Office add-in | Missing | future task pane generates, previews, inserts, and refreshes versioned diagram/playbook artifacts |
+| SharePoint SPFx web part | Missing | future web part renders published playbook artifacts in SharePoint pages/libraries |
+| Local CPU model runtime | Planned | future profile supports offline playbook generation, mutation, and simulation |
 | Evidence traceability (arc-kit-au) | Implemented | petgraph-backed provenance graph with deterministic node identity |
 | Docling extraction bridge | Missing | planned local extraction sidecar |
 | File watcher | Missing | `notify` not yet wired as an end-to-end inbox loop |
@@ -165,6 +174,18 @@ Key harnesses planned:
 Core idea: the Excel workbook gains a `_invariants` sheet where every type-level claim (e.g., "this invoice GST arithmetic is valid", "this pipeline state has passed legal review") is a persistent, Blake3-chained record linking the runtime verification result to the Kani proof that held at build time. New invariants can be registered by any crate at runtime without modifying `ledger-core`, making the knowledge system self-extensible.
 
 This closes the gap between structural type safety (what the Rust type system currently enforces) and semantic correctness (what a CPA needs to trust the output).
+
+### PRD-10: Desktop Agent, MCPB Bootstrapper, Office Playbook, and Local Simulation Runtime
+
+[PRD-10.md](PRD-10.md) defines the Windows and Microsoft 365 product packaging target. Claude Desktop receives a MCPB bundle containing a small `ledgrrr-mcp.exe` controller. The privileged desktop stack is installed by the native Windows package, which owns `ledgrrr-service.exe`, `ledgrrr-tray.exe`, local model/runtime assets, repair/uninstall, and update metadata.
+
+The same ledgrrr playbook model is exposed through Claude, b00t, OneNote/Office, and SharePoint:
+
+- Claude calls explicit MCP tools such as `ledgrrr_status`, `ledgrrr_install_plan`, `ledgrrr_render_diagram`, and `ledgrrr_simulate_pipeline`.
+- b00t discovers ledgrrr through typed datums and stable `status`, `install --dry-run`, `render`, `simulate`, and `export-office` JSON contracts.
+- OneNote/Office add-ins insert and refresh versioned Mermaid/SVG/PNG/HTML playbook artifacts.
+- SharePoint SPFx renders the same published playbook artifacts.
+- The local service supports deterministic simulation and local CPU fine-tuned inference without cloud dependency.
 
 ## <|🥾|> b00t — Capability Surface
 

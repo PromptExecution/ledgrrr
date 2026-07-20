@@ -7,6 +7,34 @@ This repo now includes a Claude plugin marketplace and a plugin entry intended f
 - Marketplace: `promptexecution-fdkms`
 - Plugin: `l3dg3rr-plugin-create`
 
+This is not the same artifact as the future Claude Desktop MCPB bundle. The current marketplace entry helps Claude/Cowork discover ledgrrr development skills and MCP profiles. The future MCPB package installs a local binary controller for Claude Desktop and is specified in [PRD-10](../PRD-10.md).
+
+## Present vs Future Claude Surfaces
+
+| Surface | Present state | Future state |
+|---|---|---|
+| Cowork/plugin marketplace | Present: `l3dg3rr-plugin-create` skill and runtime profiles | Remains the developer/operator plugin surface |
+| Local MCP server | Present: cargo/binary/docker/python launcher profiles | `ledgrrr-mcp.exe` becomes the stable local controller binary |
+| Claude Desktop MCPB | Missing | `ledgrrr-claude.mcpb` bundles `ledgrrr-mcp.exe`, manifest, icon, and support config |
+| Native desktop install | Manual/dev workflow | MCPB tool launches signed Windows installer for service/tray/runtime |
+| Office/SharePoint | Missing | Office add-in and SPFx surfaces consume ledgrrr playbook artifacts |
+
+The future Claude Desktop tool surface should expose explicit host-control actions:
+
+- `ledgrrr_status`
+- `ledgrrr_install_plan`
+- `ledgrrr_install_desktop`
+- `ledgrrr_start_service`
+- `ledgrrr_stop_service`
+- `ledgrrr_open_tray`
+- `ledgrrr_render_diagram`
+- `ledgrrr_simulate_pipeline`
+- `ledgrrr_export_office_artifact`
+- `ledgrrr_repair`
+- `ledgrrr_uninstall`
+
+The MCPB install itself must not silently install services or make privileged host changes. Privileged Windows operations belong to the native installer and must cross a visible user approval/elevation boundary.
+
 ## Key files
 
 - Marketplace catalog: [marketplace.json](.claude-plugin/marketplace.json)
