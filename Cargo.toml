@@ -1,33 +1,25 @@
 [workspace]
 members = [
   "crates/ledger-core",
-  "crates/ledger-attest",
-  "crates/ledgerr-focus",
+  "crates/ledgerr-desktop-agent",
   "crates/ledgerr-host",
   "crates/ledgerr-mcp",
   "crates/ledgerr-mcp-core",
   "crates/ledgerr-xero",
   "crates/ledgerr-llm",
   "crates/mdbook-rhai-mermaid",
+  "crates/ledgerr-tauri",
   "crates/arc-kit-au",
   "crates/datum",
   "crates/b00t-iface",
-  "xtask",
-  "crates/rotel-visual",
-  "crates/ontology-extractor",
-  "crates/lfmf-counter",
-  "crates/msft-agent-gov-ledgrrr",
-  "kani-proofs",
-  "crates/holon-viz",
-  "crates/ledgerr-model-server",
-  "crates/holon-viz-wasm",
+  "xtask", "crates/rotel-visual",
 ]
 resolver = "2"
 
 [workspace.package]
-version = "1.9.0"
 edition = "2021"
 license = "MIT"
+version = "1.8.1"
 
 [workspace.dependencies]
 rust_xlsxwriter = "0.94.0"
@@ -37,22 +29,20 @@ thiserror = "2"
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", features = ["blocking", "json", "rustls-tls"], default-features = false }
 chrono = { version = "0.4", features = ["serde"] }
-rust_decimal = { version = "1.40", features = ["serde"] }
+rust_decimal = { version = "1.41.0", features = ["serde"] }
 blake3 = "1.8.3"
 tracing = "0.1"
 tempfile = "3"
-z3 = "0.8"
+z3 = "0.8" # Optional - comment out if native Z3 libs not available
 kasuari = "0.4"
 statig = "0.4"
 anyhow = "1"
 ordered-float = { version = "4", features = ["serde"] }
 ledger-core = { path = "crates/ledger-core" }
-ledgerr-focus = { path = "crates/ledgerr-focus" }
 ledgerr-mcp-core = { path = "crates/ledgerr-mcp-core" }
-msft-agent-gov-ledgrrr = { path = "crates/msft-agent-gov-ledgrrr" }
-agentmesh = "3.5.0"
-agentmesh-mcp = "3.5.0"
 
 [workspace.lints.rust]
+# "deny" rather than "forbid" so proc-macro expansions (e.g. slint::slint!)
+# can emit #[allow(unsafe_code)] for their own generated unsafe blocks without
+# triggering E0453.  The rule is still enforced at error level everywhere.
 unsafe_code = "deny"
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }

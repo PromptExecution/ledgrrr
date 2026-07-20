@@ -1,0 +1,35 @@
+{
+  "playbook_id": "demo-gated",
+  "title": "Demo Gated Pipeline",
+  "version": "1.0.0",
+  "source": "test-fixture",
+  "nodes": [
+    { "id": "start", "label": "Start", "kind": "start" },
+    { "id": "ingest", "label": "Ingest PDF", "kind": "task", "b00t_capability": "ledgrrr.mcp" },
+    { "id": "approve", "label": "CPA Approval", "kind": "gate" },
+    { "id": "export", "label": "Export Workbook", "kind": "task" },
+    { "id": "end", "label": "End", "kind": "end" }
+  ],
+  "edges": [
+    { "from": "start", "to": "ingest" },
+    { "from": "ingest", "to": "approve" },
+    { "from": "approve", "to": "export", "label": "approved" },
+    { "from": "export", "to": "end" }
+  ],
+  "capability_refs": ["ledgrrr.mcp"],
+  "evidence_refs": [],
+  "simulation_profile": "deterministic",
+  "approval_gates": [
+    {
+      "id": "gate-approve",
+      "node_id": "approve",
+      "description": "CPA must approve before export",
+      "required": true,
+      "auto_approve": false
+    }
+  ],
+  "rollback_actions": [
+    { "id": "rollback-export", "target_node_id": "export", "description": "Revert workbook export" }
+  ],
+  "office_artifacts": []
+}
