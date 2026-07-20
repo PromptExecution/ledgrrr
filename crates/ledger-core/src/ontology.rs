@@ -1,6 +1,8 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -140,9 +142,53 @@ pub struct ProvenanceRef {
     pub value: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactInput {
+    pub kind: ArtifactKind,
+    pub attrs: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactUpsertResult {
+    pub inserted_count: usize,
+    pub ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RelationInput {
+    pub from: String,
+    pub to: String,
+    pub relation: String,
+    pub provenance: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RelationUpsertResult {
+    pub inserted_count: usize,
+    pub ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PathQueryResult {
+    pub artifacts: Vec<Artifact>,
+    pub relations: Vec<Relation>,
+}
+
+#[derive(Debug, Error)]
+pub enum OntologyError {
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error("invalid input: {0}")]
+    InvalidInput(String),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct OntologySnapshot {
+    #[serde(alias = "entities")]
     pub artifacts: Vec<Artifact>,
+    #[serde(alias = "edges")]
     pub relations: Vec<Relation>,
 }
 
@@ -159,6 +205,164 @@ impl OntologySnapshot {
         let mut snapshot = self.clone();
         snapshot.sort_deterministic();
         serde_json::to_string_pretty(&snapshot)
+    }
+
+    pub fn load(path: &Path) -> Result<Self, OntologyError> {
+        if !path.exists() {
+            return Ok(Self::default());
+        }
+        let raw = std::fs::read_to_string(path)?;
+        let mut store: Self = serde_json::from_str(&raw)?;
+        store.sort_deterministic();
+        Ok(store)
+    }
+
+    pub fn persist(&self, path: &Path) -> Result<(), OntologyError> {
+        let mut snapshot = self.clone();
+        snapshot.sort_deterministic();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let payload = serde_json::to_string_pretty(&snapshot)?;
+        std::fs::write(path, payload)?;
+        Ok(())
+    }
+
+    pub fn upsert_artifacts(
+        &mut self,
+        inputs: Vec<ArtifactInput>,
+    ) -> ArtifactUpsertResult {
+        let mut inserted_count = 0usize;
+        let mut ids = Vec::with_capacity(inputs.len());
+
+        for input in inputs {
+            let id = if let Some(user_id) = input.attrs.get("id") {
+                user_id.clone()
+            } else {
+                artifact_content_hash(input.kind, &input.attrs)
+            };
+            ids.push(id.clone());
+            if self.artifacts.iter().any(|existing| existing.id == id) {
+                continue;
+            }
+            self.artifacts.push(Artifact {
+                id,
+                kind: input.kind,
+                attrs: input.attrs,
+            });
+            inserted_count += 1;
+        }
+
+        self.sort_deterministic();
+
+        ArtifactUpsertResult {
+            inserted_count,
+            ids,
+        }
+    }
+
+    pub fn upsert_relations(
+        &mut self,
+        inputs: Vec<RelationInput>,
+    ) -> Result<RelationUpsertResult, OntologyError> {
+        let known_ids: BTreeSet<String> =
+            self.artifacts.iter().map(|a| a.id.clone()).collect();
+
+        let mut inserted_count = 0usize;
+        let mut ids = Vec::with_capacity(inputs.len());
+
+        for input in inputs {
+            if !known_ids.contains(&input.from) || !known_ids.contains(&input.to) {
+                return Err(OntologyError::InvalidInput(
+                    "missing_ref: relation endpoints must reference existing artifacts".to_string(),
+                ));
+            }
+
+            let id = relation_content_hash(&input.from, &input.to, &input.relation, &input.provenance);
+            ids.push(id.clone());
+
+            if self.relations.iter().any(|existing| existing.id == id) {
+                continue;
+            }
+
+            self.relations.push(Relation {
+                id,
+                from: input.from,
+                to: input.to,
+                relation: input.relation,
+                provenance: input.provenance,
+            });
+            inserted_count += 1;
+        }
+
+        self.sort_deterministic();
+
+        Ok(RelationUpsertResult {
+            inserted_count,
+            ids,
+        })
+    }
+
+    pub fn query_path(
+        &self,
+        from_artifact_id: &str,
+        max_depth: Option<usize>,
+    ) -> Result<PathQueryResult, OntologyError> {
+        let lookup: BTreeMap<String, Artifact> = self
+            .artifacts
+            .iter()
+            .cloned()
+            .map(|a| (a.id.clone(), a))
+            .collect();
+
+        let start = lookup.get(from_artifact_id).cloned().ok_or_else(|| {
+            OntologyError::InvalidInput(
+                "missing_ref: from_artifact_id must reference an existing artifact".to_string(),
+            )
+        })?;
+
+        let depth_limit = max_depth.unwrap_or(usize::MAX);
+        let mut queue = VecDeque::new();
+        queue.push_back((from_artifact_id.to_string(), 0usize));
+
+        let mut visited = BTreeSet::new();
+        visited.insert(from_artifact_id.to_string());
+
+        let mut artifacts = vec![start];
+        let mut relations = Vec::new();
+
+        while let Some((current_id, depth)) = queue.pop_front() {
+            if depth >= depth_limit {
+                continue;
+            }
+
+            let mut outgoing = self
+                .relations
+                .iter()
+                .filter(|r| r.from == current_id)
+                .cloned()
+                .collect::<Vec<_>>();
+            outgoing.sort_by(|a, b| {
+                (&a.relation, &a.to, &a.id).cmp(&(&b.relation, &b.to, &b.id))
+            });
+
+            for rel in outgoing {
+                if visited.contains(&rel.to) {
+                    continue;
+                }
+                if let Some(artifact) = lookup.get(&rel.to) {
+                    visited.insert(rel.to.clone());
+                    queue.push_back((rel.to.clone(), depth + 1));
+                    artifacts.push(artifact.clone());
+                    relations.push(rel);
+                }
+            }
+        }
+
+        Ok(PathQueryResult {
+            artifacts,
+            relations,
+        })
     }
 
     pub fn to_rhai_dsl(&self) -> String {
