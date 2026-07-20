@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "crates/ledger-core",
+  "crates/ledgerr-desktop-agent",
   "crates/ledgerr-host",
   "crates/ledgerr-mcp",
   "crates/ledgerr-mcp-core",

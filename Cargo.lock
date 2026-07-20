@@ -5464,6 +5464,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ledgerr-desktop-agent"
+version = "1.8.1"
+dependencies = [
+ "blake3",
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "sysinfo 0.33.1",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "ledgerr-host"
 version = "1.8.1"
 dependencies = [

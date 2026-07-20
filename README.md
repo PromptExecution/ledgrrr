@@ -128,11 +128,13 @@ See [Capability Map](book/src/capability-map.md) for the full component table.
 | Xero capability family | In flight | supervised MCP capability, not raw credential exposure |
 | Tauri desktop host | Active | primary operator host (replaces legacy Slint surface) |
 | Slint desktop host | Legacy | fallback window, settings, local endpoint, notifications |
-| Claude Desktop MCPB bundle | Missing | future `ledgrrr-claude.mcpb` installs only `ledgrrr-mcp.exe` controller |
+| `ledgrrr-mcp` controller | Implemented | `crates/ledgerr-desktop-agent`; real stdio JSON-RPC server, all 11 `ledgrrr_*` tools, golden + contract tested |
+| `ledgrrr-service` heartbeat process | Implemented (Phase 1) | user-level spawn/kill via `ledgrrr_start_service`/`ledgrrr_stop_service`, not an OS service registration |
+| Claude Desktop MCPB bundle | Missing | controller binary exists; not yet packaged as `.mcpb` or wired into Claude Desktop |
 | Native Windows installer | Missing | future MSIX/external-location package installs service, tray, controller, model config, repair/uninstall |
-| OneNote/Office add-in | Missing | future task pane generates, previews, inserts, and refreshes versioned diagram/playbook artifacts |
+| OneNote/Office add-in | Missing | `ledgrrr_export_office_artifact` writes a local versioned bundle a future task pane can consume; no manifest/tenant integration yet |
 | SharePoint SPFx web part | Missing | future web part renders published playbook artifacts in SharePoint pages/libraries |
-| Local CPU model runtime | Planned | future profile supports offline playbook generation, mutation, and simulation |
+| Local CPU model runtime | Missing | `ledgrrr_status.model_runtime.configured` honestly reports `false`; deterministic (non-LLM) simulation is the only working profile |
 | Evidence traceability (arc-kit-au) | Implemented | petgraph-backed provenance graph with deterministic node identity |
 | Docling extraction bridge | Missing | planned local extraction sidecar |
 | File watcher | Missing | `notify` not yet wired as an end-to-end inbox loop |
