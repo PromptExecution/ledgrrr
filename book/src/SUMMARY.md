@@ -19,6 +19,7 @@
 
 - [Theory of Operation](./theory.md)
 - [MCP Surface](./mcp-surface.md)
+- [Desktop Agent and Office Playbook Surface](./desktop-agent-office-playbook.md)
 - [Pipeline](./pipeline.md)
 - [Workflow](./workflow.md)
 - [Constraints](./constraints.md)

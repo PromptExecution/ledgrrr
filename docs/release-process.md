@@ -65,6 +65,47 @@ Docs deploy automatically via `.github/workflows/docs.yml` on:
 
 No manual step is needed — pushing the release tag triggers the docs deployment.
 
+## Future Desktop / Office Release Artifacts
+
+PRD-10 adds a second release track beyond crate/docs publishing: a Windows-first desktop and Microsoft 365 distribution bundle. These artifacts are not all implemented yet, but release automation should converge on the following matrix.
+
+| Artifact | Purpose | Release requirement |
+|---|---|---|
+| `ledgrrr-claude-<platform>.mcpb` | Claude Desktop local MCP controller bundle | Pack, validate manifest, upload with checksum and provenance. |
+| Windows native package | Installs service, tray/taskbar app, controller, model config, repair/uninstall | Build signed or test-signed package; document silent enterprise flags. |
+| `ledgrrr-service.exe` | Long-running local runtime for simulation, evidence, model, and Office bridge | Smoke test status/start/stop protocol. |
+| `ledgrrr-tray.exe` | User-visible local status and approval UI | Smoke test startup/config detection without requiring an interactive desktop in CI. |
+| Office add-in manifest/package | OneNote/Office task pane for diagram/playbook insert and refresh | Validate manifest schema and static task-pane assets. |
+| SPFx package | SharePoint web part for published playbook rendering | Build package and validate assets. |
+| Diagram golden outputs | Mermaid/SVG/PNG/HTML/playbook JSON determinism | Compare checked fixtures for stable input playbooks. |
+| b00t contract fixtures | `status`, `install --dry-run`, `render`, `simulate`, `export-office` JSON schemas | Run schema tests and keep fixtures under version control. |
+
+The Claude MCPB artifact is a bootstrap/controller package only. It must not silently install the Windows service or mutate privileged machine state during Claude Desktop extension install. Service, tray, registry, update, repair, and uninstall behavior belongs to the native Windows package.
+
+## Future Desktop / Office Gates
+
+Before a release can claim desktop/Office support:
+
+```bash
+# names are target contracts; recipes may be introduced as implementation lands
+just mcpb-validate
+just windows-installer-smoke
+just office-manifest-validate
+just spfx-build
+just diagram-golden-test
+just b00t-contract-test
+```
+
+Required evidence for a release candidate:
+
+1. MCPB validates and launches `ledgrrr_status`.
+2. Windows package installs on a clean Windows host or runner image.
+3. Repair and uninstall leave no orphaned service registration.
+4. Tray reports service/model/MCPB/Office/b00t state.
+5. A sample playbook renders to Mermaid, SVG, PNG, and JSON with stable hashes.
+6. OneNote/Office artifact insertion path is documented and tested at least manually until full UI automation exists.
+7. SharePoint/SPFx render path is documented and packaged.
+
 ## CI Release Path (workflow_dispatch)
 
 The `release.yml` workflow (trigger: Actions → Release → Run workflow) runs `cog bump --auto`, pushes to `main`, and creates the GitHub release. It applies the same odd/even policy:
