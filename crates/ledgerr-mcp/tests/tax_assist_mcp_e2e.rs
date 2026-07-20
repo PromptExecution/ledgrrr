@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
-use ledgerr_mcp::ontology::{edge_content_hash, entity_content_hash};
+use ledgerr_mcp::ontology::{self, edge_content_hash, entity_content_hash};
 use ledgerr_mcp::{OntologyEdge, OntologyEntity, OntologyEntityKind, OntologyStore};
 use serde_json::{json, Value};
 
@@ -132,7 +132,7 @@ fn write_tax_ontology(path: &std::path::Path) -> String {
     ambiguity_prov.insert("reason".to_string(), "classification_conflict".to_string());
 
     let store = OntologyStore {
-        entities: vec![
+        artifacts: vec![
             OntologyEntity {
                 id: tx_id.clone(),
                 kind: OntologyEntityKind::Transaction,
@@ -149,7 +149,7 @@ fn write_tax_ontology(path: &std::path::Path) -> String {
                 attrs: tax_attrs,
             },
         ],
-        edges: vec![
+        relations: vec![
             OntologyEdge {
                 id: edge_content_hash(&tx_id, &tax_id, "schedule_c", &schedule_prov),
                 from: tx_id.clone(),

@@ -1,15 +1,20 @@
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use ledger_core::ontology::{
-    artifact_content_hash, relation_content_hash, Artifact, ArtifactKind, OntologySnapshot,
-    Relation,
+    artifact_content_hash, relation_content_hash, Artifact, ArtifactInput, ArtifactKind,
+    ArtifactUpsertResult, OntologyError, OntologySnapshot, PathQueryResult, Relation,
+    RelationInput, RelationUpsertResult,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::ToolError;
 
-pub type OntologyEntityKind = ArtifactKind;
+pub use ledger_core::ontology::ArtifactKind as OntologyEntityKind;
+
+pub type OntologyStore = OntologySnapshot;
+pub type OntologyEntity = Artifact;
+pub type OntologyEdge = Relation;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OntologyEntityInput {
@@ -23,28 +28,6 @@ pub struct OntologyEdgeInput {
     pub to: String,
     pub relation: String,
     pub provenance: BTreeMap<String, String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OntologyEntity {
-    pub id: String,
-    pub kind: OntologyEntityKind,
-    pub attrs: BTreeMap<String, String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OntologyEdge {
-    pub id: String,
-    pub from: String,
-    pub to: String,
-    pub relation: String,
-    pub provenance: BTreeMap<String, String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct OntologyStore {
-    pub entities: Vec<OntologyEntity>,
-    pub edges: Vec<OntologyEdge>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,202 +67,6 @@ pub struct OntologyQueryPathResponse {
     pub edges: Vec<OntologyEdge>,
 }
 
-impl OntologyStore {
-    pub fn load(path: &Path) -> Result<Self, ToolError> {
-        if !path.exists() {
-            return Ok(Self::default());
-        }
-
-        let raw = std::fs::read_to_string(path).map_err(|e| ToolError::Internal(e.to_string()))?;
-        let mut store: Self =
-            serde_json::from_str(&raw).map_err(|e| ToolError::Internal(e.to_string()))?;
-        store.sort_deterministic();
-        Ok(store)
-    }
-
-    pub fn persist(&mut self, path: &Path) -> Result<(), ToolError> {
-        self.sort_deterministic();
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| ToolError::Internal(e.to_string()))?;
-        }
-        let payload =
-            serde_json::to_string_pretty(self).map_err(|e| ToolError::Internal(e.to_string()))?;
-        std::fs::write(path, payload).map_err(|e| ToolError::Internal(e.to_string()))
-    }
-
-    pub fn to_core_snapshot(&self) -> OntologySnapshot {
-        let mut snapshot = OntologySnapshot {
-            artifacts: self
-                .entities
-                .iter()
-                .map(|entity| Artifact {
-                    id: entity.id.clone(),
-                    kind: entity.kind,
-                    attrs: entity.attrs.clone(),
-                })
-                .collect(),
-            relations: self
-                .edges
-                .iter()
-                .map(|edge| Relation {
-                    id: edge.id.clone(),
-                    from: edge.from.clone(),
-                    to: edge.to.clone(),
-                    relation: edge.relation.clone(),
-                    provenance: edge.provenance.clone(),
-                })
-                .collect(),
-        };
-        snapshot.sort_deterministic();
-        snapshot
-    }
-
-    pub fn upsert_entities(
-        &mut self,
-        entities: Vec<OntologyEntityInput>,
-    ) -> Result<OntologyUpsertEntitiesResponse, ToolError> {
-        let mut inserted_count = 0usize;
-        let mut entity_ids = Vec::with_capacity(entities.len());
-
-        for input in entities {
-            let id = if let Some(user_id) = input.attrs.get("id") {
-                user_id.clone()
-            } else {
-                entity_content_hash(input.kind, &input.attrs)
-            };
-            entity_ids.push(id.clone());
-            if self.entities.iter().any(|existing| existing.id == id) {
-                continue;
-            }
-
-            self.entities.push(OntologyEntity {
-                id,
-                kind: input.kind,
-                attrs: input.attrs,
-            });
-            inserted_count += 1;
-        }
-
-        self.sort_deterministic();
-
-        Ok(OntologyUpsertEntitiesResponse {
-            inserted_count,
-            entity_ids,
-        })
-    }
-
-    pub fn upsert_edges(
-        &mut self,
-        edges: Vec<OntologyEdgeInput>,
-    ) -> Result<OntologyUpsertEdgesResponse, ToolError> {
-        let entity_ids = self
-            .entities
-            .iter()
-            .map(|entity| entity.id.clone())
-            .collect::<BTreeSet<_>>();
-
-        let mut inserted_count = 0usize;
-        let mut edge_ids = Vec::with_capacity(edges.len());
-
-        for input in edges {
-            if !entity_ids.contains(&input.from) || !entity_ids.contains(&input.to) {
-                return Err(ToolError::InvalidInput(
-                    "missing_ref: edge endpoints must reference existing entities".to_string(),
-                ));
-            }
-
-            let id = edge_content_hash(&input.from, &input.to, &input.relation, &input.provenance);
-            edge_ids.push(id.clone());
-
-            if self.edges.iter().any(|existing| existing.id == id) {
-                continue;
-            }
-
-            self.edges.push(OntologyEdge {
-                id,
-                from: input.from,
-                to: input.to,
-                relation: input.relation,
-                provenance: input.provenance,
-            });
-            inserted_count += 1;
-        }
-
-        self.sort_deterministic();
-
-        Ok(OntologyUpsertEdgesResponse {
-            inserted_count,
-            edge_ids,
-        })
-    }
-
-    pub fn query_path(
-        &self,
-        from_entity_id: &str,
-        max_depth: Option<usize>,
-    ) -> Result<OntologyQueryPathResponse, ToolError> {
-        let entity_lookup = self
-            .entities
-            .iter()
-            .cloned()
-            .map(|entity| (entity.id.clone(), entity))
-            .collect::<BTreeMap<_, _>>();
-
-        let start = entity_lookup.get(from_entity_id).cloned().ok_or_else(|| {
-            ToolError::InvalidInput(
-                "missing_ref: from_entity_id must reference an existing entity".to_string(),
-            )
-        })?;
-
-        let depth_limit = max_depth.unwrap_or(usize::MAX);
-        let mut queue = VecDeque::new();
-        queue.push_back((from_entity_id.to_string(), 0usize));
-
-        let mut visited = BTreeSet::new();
-        visited.insert(from_entity_id.to_string());
-
-        let mut nodes = vec![start];
-        let mut edges = Vec::new();
-
-        while let Some((current_id, depth)) = queue.pop_front() {
-            if depth >= depth_limit {
-                continue;
-            }
-
-            let mut outgoing = self
-                .edges
-                .iter()
-                .filter(|edge| edge.from == current_id)
-                .cloned()
-                .collect::<Vec<_>>();
-            outgoing.sort_by(|a, b| (&a.relation, &a.to, &a.id).cmp(&(&b.relation, &b.to, &b.id)));
-
-            for edge in outgoing {
-                if visited.contains(&edge.to) {
-                    continue;
-                }
-
-                if let Some(node) = entity_lookup.get(&edge.to) {
-                    visited.insert(edge.to.clone());
-                    queue.push_back((edge.to.clone(), depth + 1));
-                    nodes.push(node.clone());
-                    edges.push(edge);
-                }
-            }
-        }
-
-        Ok(OntologyQueryPathResponse { nodes, edges })
-    }
-
-    fn sort_deterministic(&mut self) {
-        self.entities
-            .sort_by(|a, b| (a.kind, &a.id).cmp(&(b.kind, &b.id)));
-        self.edges.sort_by(|a, b| {
-            (&a.relation, &a.from, &a.to, &a.id).cmp(&(&b.relation, &b.from, &b.to, &b.id))
-        });
-    }
-}
-
 pub fn entity_content_hash(kind: OntologyEntityKind, attrs: &BTreeMap<String, String>) -> String {
     artifact_content_hash(kind, attrs)
 }
@@ -295,4 +82,78 @@ pub fn edge_content_hash(
 
 pub fn content_hash(canonical: &str) -> String {
     ledger_core::ontology::content_hash(canonical)
+}
+
+fn to_upsert_entities_response(result: ArtifactUpsertResult) -> OntologyUpsertEntitiesResponse {
+    OntologyUpsertEntitiesResponse {
+        inserted_count: result.inserted_count,
+        entity_ids: result.ids,
+    }
+}
+
+fn to_upsert_edges_response(result: RelationUpsertResult) -> OntologyUpsertEdgesResponse {
+    OntologyUpsertEdgesResponse {
+        inserted_count: result.inserted_count,
+        edge_ids: result.ids,
+    }
+}
+
+fn to_path_query_response(result: PathQueryResult) -> OntologyQueryPathResponse {
+    OntologyQueryPathResponse {
+        nodes: result.artifacts,
+        edges: result.relations,
+    }
+}
+
+pub fn load_store(path: &Path) -> Result<OntologyStore, ToolError> {
+    OntologyStore::load(path).map_err(|e| ToolError::Internal(e.to_string()))
+}
+
+pub fn persist_store(store: &OntologyStore, path: &Path) -> Result<(), ToolError> {
+    store.persist(path).map_err(|e| ToolError::Internal(e.to_string()))
+}
+
+pub fn upsert_entities(
+    store: &mut OntologyStore,
+    inputs: Vec<OntologyEntityInput>,
+) -> Result<OntologyUpsertEntitiesResponse, ToolError> {
+    let core_inputs = inputs
+        .into_iter()
+        .map(|i| ArtifactInput {
+            kind: i.kind,
+            attrs: i.attrs,
+        })
+        .collect();
+    let result = store.upsert_artifacts(core_inputs);
+    Ok(to_upsert_entities_response(result))
+}
+
+pub fn upsert_edges(
+    store: &mut OntologyStore,
+    inputs: Vec<OntologyEdgeInput>,
+) -> Result<OntologyUpsertEdgesResponse, ToolError> {
+    let core_inputs = inputs
+        .into_iter()
+        .map(|i| RelationInput {
+            from: i.from,
+            to: i.to,
+            relation: i.relation,
+            provenance: i.provenance,
+        })
+        .collect();
+    let result = store
+        .upsert_relations(core_inputs)
+        .map_err(|e| ToolError::Internal(e.to_string()))?;
+    Ok(to_upsert_edges_response(result))
+}
+
+pub fn query_path(
+    store: &OntologyStore,
+    from_entity_id: &str,
+    max_depth: Option<usize>,
+) -> Result<OntologyQueryPathResponse, ToolError> {
+    let result = store
+        .query_path(from_entity_id, max_depth)
+        .map_err(|e| ToolError::Internal(e.to_string()))?;
+    Ok(to_path_query_response(result))
 }

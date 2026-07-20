@@ -8,7 +8,7 @@ use ledger_core::proposal::{
     ModelMetadata, OntologyEdgeProposal, ProposalPolicy, ProposalState, ProposalValidation,
 };
 use ledgerr_mcp::{
-    mcp_adapter, IngestStatementRowsRequest, OntologyEdgeInput, OntologyEntityInput,
+    mcp_adapter, ontology, IngestStatementRowsRequest, OntologyEdgeInput, OntologyEntityInput,
     OntologyEntityKind, OntologyQueryPathRequest, OntologyStore, OntologyUpsertEdgesRequest,
     OntologyUpsertEntitiesRequest, TurboLedgerService, TurboLedgerTools,
 };
@@ -125,7 +125,7 @@ fn onto_01_missing_ref_rejected_deterministically() {
 
     assert_eq!(
         err.to_string(),
-        "invalid input: missing_ref: edge endpoints must reference existing entities"
+        "internal error: invalid input: missing_ref: relation endpoints must reference existing artifacts"
     );
 }
 
@@ -260,8 +260,9 @@ fn ontology_core_snapshot_conversion_preserves_legacy_ids() {
     tx_attrs.insert("tx_id".to_string(), "tx-001".to_string());
 
     let mut store = OntologyStore::default();
-    let entities = store
-        .upsert_entities(vec![
+    let entities = ontology::upsert_entities(
+        &mut store,
+        vec![
             OntologyEntityInput {
                 kind: OntologyEntityKind::Document,
                 attrs: doc_attrs,
@@ -270,32 +271,34 @@ fn ontology_core_snapshot_conversion_preserves_legacy_ids() {
                 kind: OntologyEntityKind::Transaction,
                 attrs: tx_attrs,
             },
-        ])
-        .expect("entities");
+        ],
+    )
+    .expect("entities");
 
     let doc_id = entities.entity_ids[0].clone();
     let tx_id = entities.entity_ids[1].clone();
-    store
-        .upsert_edges(vec![OntologyEdgeInput {
+    ontology::upsert_edges(
+        &mut store,
+        vec![OntologyEdgeInput {
             from: doc_id.clone(),
             to: tx_id.clone(),
             relation: "documents_transaction".to_string(),
             provenance: BTreeMap::new(),
-        }])
-        .expect("edge");
+        }],
+    )
+    .expect("edge");
 
-    let snapshot = store.to_core_snapshot();
-    assert_eq!(snapshot.artifacts.len(), 2);
-    assert_eq!(snapshot.relations.len(), 1);
-    assert!(snapshot
+    assert_eq!(store.artifacts.len(), 2);
+    assert_eq!(store.relations.len(), 1);
+    assert!(store
         .artifacts
         .iter()
         .any(|artifact| artifact.id == doc_id));
-    assert!(snapshot
+    assert!(store
         .artifacts
         .iter()
         .any(|artifact| artifact.id == tx_id));
-    assert_eq!(snapshot.relations[0].relation, "documents_transaction");
+    assert_eq!(store.relations[0].relation, "documents_transaction");
 }
 
 // ONTO-04 / PRD-4 Phase 1: the advertised entity kinds map through the legacy MCP
@@ -329,10 +332,10 @@ fn ontology_legacy_payload_maps_to_core_types() {
     .expect("json payload");
     assert_eq!(payload["upserted"], 4);
 
-    let store = OntologyStore::load(&ontology_path).expect("store");
+    let store = ontology::load_store(&ontology_path).expect("store");
     assert_eq!(
         store
-            .entities
+            .artifacts
             .iter()
             .map(|entity| entity.kind)
             .collect::<Vec<_>>(),
@@ -383,15 +386,11 @@ fn ingest_rows_emits_document_to_transaction_ontology_edges() {
     assert_eq!(first.inserted_count, 1);
     assert_eq!(second.inserted_count, 0);
 
-    let store = OntologyStore::load(&ontology_path).expect("ontology store");
-    assert_eq!(store.entities.len(), 2);
-    assert_eq!(store.edges.len(), 1);
-    assert_eq!(store.edges[0].relation, "documents_transaction");
-    assert_eq!(store.edges[0].provenance.get("tx_id"), Some(&tx_id));
-
-    let snapshot = store.to_core_snapshot();
-    assert_eq!(snapshot.artifacts.len(), 2);
-    assert_eq!(snapshot.relations.len(), 1);
+    let store = ontology::load_store(&ontology_path).expect("ontology store");
+    assert_eq!(store.artifacts.len(), 2);
+    assert_eq!(store.relations.len(), 1);
+    assert_eq!(store.relations[0].relation, "documents_transaction");
+    assert_eq!(store.relations[0].provenance.get("tx_id"), Some(&tx_id));
 }
 
 #[test]
@@ -466,9 +465,9 @@ fn semantic_context_refs_are_added_to_model_provenance() {
         })
         .expect("edge should upsert");
 
-    let store = OntologyStore::load(&ontology_path).expect("ontology store");
+    let store = ontology::load_store(&ontology_path).expect("ontology store");
     let edge = store
-        .edges
+        .relations
         .iter()
         .find(|edge| edge.relation == "links_tax_category")
         .expect("committed semantic edge");
