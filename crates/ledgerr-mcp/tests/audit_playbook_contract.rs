@@ -3,8 +3,8 @@ mod common;
 use calamine::Reader;
 use ledger_core::ingest::{deterministic_tx_id, TransactionInput};
 use ledgerr_mcp::{
-    ClassifyTransactionRequest, EventHistoryFilter, ExportCpaWorkbookRequest,
-    IngestStatementRowsRequest, OntologyStore, TurboLedgerService, TurboLedgerTools,
+    ontology, ClassifyTransactionRequest, EventHistoryFilter, ExportCpaWorkbookRequest,
+    IngestStatementRowsRequest, TurboLedgerService, TurboLedgerTools,
 };
 
 fn service(workbook_path: &std::path::Path) -> TurboLedgerService {
@@ -74,15 +74,15 @@ fn audit_playbook_ids_match_across_workbook_ontology_and_events() {
         "AUDIT.log should include tx_id {expected_tx_id}"
     );
 
-    let store = OntologyStore::load(&ontology_path).expect("ontology store");
-    assert!(store.entities.iter().any(|entity| {
+    let store = ontology::load_store(&ontology_path).expect("ontology store");
+    assert!(store.artifacts.iter().any(|entity| {
         entity
             .attrs
             .get("tx_id")
             .map(|tx_id| tx_id == &expected_tx_id)
             .unwrap_or(false)
     }));
-    assert!(store.edges.iter().any(|edge| {
+    assert!(store.relations.iter().any(|edge| {
         edge.relation == "documents_transaction"
             && edge
                 .provenance
