@@ -10,15 +10,15 @@
 //! The derived impl adds:
 //! ```ignore
 //! impl MyEnum {
-//!     pub fn emit_nodes() -> Vec<crate::type_graph::TypeNode> { ... }
+//!     pub fn emit_nodes() -> Vec<::b00t_reflect_types::HolonNode> { ... }
 //! }
 //! ```
 
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
-    parse_macro_input, Data, DeriveInput, Fields, LitStr, Token,
-    parse::Parse, parse::ParseStream, Ident,
+    parse_macro_input, Data, DeriveInput, Fields, Ident, LitStr, Token,
+    parse::Parse, parse::ParseStream,
 };
 
 /// A single `key = "value"` pair inside `#[holon(...)]`.
@@ -68,7 +68,6 @@ impl Parse for HolonAttr {
                     ));
                 }
             }
-            // consume optional trailing comma
             let _ = input.parse::<Token![,]>();
         }
 
@@ -76,7 +75,6 @@ impl Parse for HolonAttr {
     }
 }
 
-/// Parse `#[holon(...)]` from a variant's attribute list.
 fn parse_holon_attr(attrs: &[syn::Attribute], variant_name: &Ident) -> syn::Result<HolonAttr> {
     for attr in attrs {
         if attr.path().is_ident("holon") {
@@ -92,7 +90,7 @@ fn parse_holon_attr(attrs: &[syn::Attribute], variant_name: &Ident) -> syn::Resu
     ))
 }
 
-/// `#[derive(HolonEmit)]` — generates `emit_nodes() -> Vec<TypeNode>` for the enum.
+/// `#[derive(HolonEmit)]` — generates `emit_nodes() -> Vec<::b00t_reflect_types::HolonNode>`.
 ///
 /// # Example
 /// ```ignore
@@ -119,7 +117,6 @@ pub fn holon_emit_derive(input: TokenStream) -> TokenStream {
         }
     };
 
-    // Validate all variants have unit fields (no struct/tuple variants needed for type nodes)
     for v in variants.iter() {
         if !matches!(v.fields, Fields::Unit) {
             return syn::Error::new_spanned(
@@ -142,45 +139,35 @@ pub fn holon_emit_derive(input: TokenStream) -> TokenStream {
         let id_str = match &attr.id {
             Some(s) => s.clone(),
             None => {
-                return syn::Error::new(
-                    v.ident.span(),
-                    "holon attribute is missing required key `id`",
-                )
-                .to_compile_error()
-                .into();
+                return syn::Error::new(v.ident.span(), "holon attribute is missing required key `id`")
+                    .to_compile_error()
+                    .into();
             }
         };
         let label_str = match &attr.label {
             Some(s) => s.clone(),
             None => {
-                return syn::Error::new(
-                    v.ident.span(),
-                    "holon attribute is missing required key `label`",
-                )
-                .to_compile_error()
-                .into();
+                return syn::Error::new(v.ident.span(), "holon attribute is missing required key `label`")
+                    .to_compile_error()
+                    .into();
             }
         };
         let kind_str = match &attr.kind {
             Some(s) => s.clone(),
             None => {
-                return syn::Error::new(
-                    v.ident.span(),
-                    "holon attribute is missing required key `kind`",
-                )
-                .to_compile_error()
-                .into();
+                return syn::Error::new(v.ident.span(), "holon attribute is missing required key `kind`")
+                    .to_compile_error()
+                    .into();
             }
         };
 
         let node_call = match (&attr.z_layer, &attr.semantic_type) {
             (Some(zl), Some(st)) => {
                 quote! {
-                    crate::type_graph::TypeNode {
+                    ::b00t_reflect_types::HolonNode {
                         id: #id_str.to_string(),
                         label: #label_str.to_string(),
                         kind: #kind_str.to_string(),
-                        parent_id: None,
                         z_layer: Some(#zl.to_string()),
                         semantic_type: Some(#st.to_string()),
                     }
@@ -188,11 +175,10 @@ pub fn holon_emit_derive(input: TokenStream) -> TokenStream {
             }
             (None, None) => {
                 quote! {
-                    crate::type_graph::TypeNode {
+                    ::b00t_reflect_types::HolonNode {
                         id: #id_str.to_string(),
                         label: #label_str.to_string(),
                         kind: #kind_str.to_string(),
-                        parent_id: None,
                         z_layer: None,
                         semantic_type: None,
                     }
@@ -222,8 +208,8 @@ pub fn holon_emit_derive(input: TokenStream) -> TokenStream {
     let expanded = quote! {
         impl #name {
             /// Auto-derived by `#[derive(HolonEmit)]`.
-            /// Returns one `TypeNode` per enum variant, in declaration order.
-            pub fn emit_nodes() -> Vec<crate::type_graph::TypeNode> {
+            /// Returns one `HolonNode` per enum variant, in declaration order.
+            pub fn emit_nodes() -> Vec<::b00t_reflect_types::HolonNode> {
                 vec![
                     #(#node_arms),*
                 ]
