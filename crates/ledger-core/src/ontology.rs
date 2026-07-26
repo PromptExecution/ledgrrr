@@ -3,6 +3,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use ufo_types::ufo::{EndurantStereotype, MomentStereotype, UfoCategory};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -26,6 +27,25 @@ pub enum ArtifactKind {
     ClassificationOutcome,
 }
 
+/// The current `ufo-types` API separates endurant and moment stereotypes.
+///
+/// This tagged union preserves the complete classification for ledger
+/// artifacts while retaining the upstream strongly typed stereotype enums.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArtifactUfoStereotype {
+    Endurant(EndurantStereotype),
+    Moment(MomentStereotype),
+}
+
+impl ArtifactUfoStereotype {
+    pub const fn category(self) -> UfoCategory {
+        match self {
+            Self::Endurant(_) => UfoCategory::Endurant,
+            Self::Moment(_) => UfoCategory::Moment,
+        }
+    }
+}
+
 impl ArtifactKind {
     pub fn canonical_name(self) -> &'static str {
         match self {
@@ -46,6 +66,32 @@ impl ArtifactKind {
             Self::ValidationIssue => "validation_issue",
             Self::DocumentChunk => "document_chunk",
             Self::ClassificationOutcome => "classification_outcome",
+        }
+    }
+
+    /// Classifies every artifact kind according to the project's UFO model.
+    ///
+    /// The match is intentionally exhaustive so introducing an artifact
+    /// requires an explicit ontological decision.
+    pub const fn ufo_stereotype(self) -> ArtifactUfoStereotype {
+        match self {
+            Self::Document
+            | Self::Account
+            | Self::Institution
+            | Self::Transaction
+            | Self::TaxCategory
+            | Self::XeroContact
+            | Self::ModelJob
+            | Self::WorkbookRow => ArtifactUfoStereotype::Endurant(EndurantStereotype::Kind),
+            Self::XeroBankAccount | Self::XeroInvoice | Self::DocumentChunk => {
+                ArtifactUfoStereotype::Endurant(EndurantStereotype::SubKind)
+            }
+            Self::EvidenceReference | Self::ModelProposal | Self::AuditEvent => {
+                ArtifactUfoStereotype::Moment(MomentStereotype::Relator)
+            }
+            Self::WorkflowTag | Self::ValidationIssue | Self::ClassificationOutcome => {
+                ArtifactUfoStereotype::Moment(MomentStereotype::Mode)
+            }
         }
     }
 }
@@ -623,6 +669,74 @@ mod tests {
         };
 
         assert!(snapshot.to_rhai_dsl().contains("missing_provenance_"));
+    }
+
+    #[test]
+    fn artifact_kind_ufo_stereotype_labels() {
+        // Kinds are rigid, independent entities.
+        assert_eq!(
+            ArtifactKind::Transaction.ufo_stereotype(),
+            ArtifactUfoStereotype::Endurant(EndurantStereotype::Kind)
+        );
+        assert_eq!(
+            ArtifactKind::Document.ufo_stereotype().category(),
+            UfoCategory::Endurant
+        );
+
+        // SubKinds are rigid specializations of existing Kinds.
+        assert_eq!(
+            ArtifactKind::XeroBankAccount.ufo_stereotype(),
+            ArtifactUfoStereotype::Endurant(EndurantStereotype::SubKind)
+        );
+        assert_eq!(
+            ArtifactKind::DocumentChunk.ufo_stereotype().category(),
+            UfoCategory::Endurant
+        );
+
+        // Relators mediate between artifacts.
+        assert_eq!(
+            ArtifactKind::EvidenceReference.ufo_stereotype(),
+            ArtifactUfoStereotype::Moment(MomentStereotype::Relator)
+        );
+
+        // Modes are intrinsic qualities/states of a single artifact.
+        assert_eq!(
+            ArtifactKind::ValidationIssue.ufo_stereotype(),
+            ArtifactUfoStereotype::Moment(MomentStereotype::Mode)
+        );
+    }
+
+    #[test]
+    fn artifact_kind_ufo_stereotype_covers_every_variant() {
+        // Every ArtifactKind must classify without panicking; this guards
+        // against a future variant being added and forgotten in the
+        // Stereotyped impl (the match above has no wildcard arm).
+        let all = [
+            ArtifactKind::Document,
+            ArtifactKind::Account,
+            ArtifactKind::Institution,
+            ArtifactKind::Transaction,
+            ArtifactKind::TaxCategory,
+            ArtifactKind::EvidenceReference,
+            ArtifactKind::XeroContact,
+            ArtifactKind::XeroBankAccount,
+            ArtifactKind::XeroInvoice,
+            ArtifactKind::WorkflowTag,
+            ArtifactKind::ModelJob,
+            ArtifactKind::ModelProposal,
+            ArtifactKind::WorkbookRow,
+            ArtifactKind::AuditEvent,
+            ArtifactKind::ValidationIssue,
+            ArtifactKind::DocumentChunk,
+            ArtifactKind::ClassificationOutcome,
+        ];
+        for kind in all {
+            let stereotype = kind.ufo_stereotype();
+            assert!(matches!(
+                stereotype.category(),
+                UfoCategory::Endurant | UfoCategory::Moment
+            ));
+        }
     }
 }
 
