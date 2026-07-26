@@ -24,6 +24,16 @@ fn atomic_save_replaces_old_file_without_partial_contents() {
     store.save(&updated).unwrap();
 
     let raw = std::fs::read_to_string(path).unwrap();
-    assert!(raw.contains("\"toast_enabled\": false"));
-    assert!(raw.contains("\"start_minimized_to_tray\": true"));
+
+    // With the new backend format, settings are serialized as a JSON string
+    // under the `"app_settings"` key. Parse the outer JSON to extract the
+    // inner AppSettings content and verify the values were persisted.
+    let outer: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    let inner_str = outer["app_settings"]
+        .as_str()
+        .expect("app_settings should be a JSON string");
+    let inner: serde_json::Value = serde_json::from_str(inner_str).unwrap();
+
+    assert_eq!(inner["toast_enabled"], false);
+    assert_eq!(inner["start_minimized_to_tray"], true);
 }
