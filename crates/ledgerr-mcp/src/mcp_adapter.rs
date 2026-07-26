@@ -756,6 +756,30 @@ pub fn handle_documents_tool(service: &TurboLedgerService, arguments: &Value) ->
                 Err(e) => error_envelope(&e),
             }
         }
+        DocumentsArgs::ImportOfx {
+            ofx_path,
+            journal_path,
+            workbook_path,
+            ontology_path,
+            asset_code,
+            asset_name,
+            offset_code,
+            offset_name,
+            offset_kind,
+        } => handle_import_ofx(
+            service,
+            &json!({
+                "ofx_path": ofx_path,
+                "journal_path": journal_path,
+                "workbook_path": workbook_path,
+                "ontology_path": ontology_path,
+                "asset_code": asset_code,
+                "asset_name": asset_name,
+                "offset_code": offset_code,
+                "offset_name": offset_name,
+                "offset_kind": offset_kind,
+            }),
+        ),
         DocumentsArgs::NormalizeFilename {
             file_path,
             vendor,
@@ -1445,6 +1469,100 @@ pub fn handle_ingest_statement_rows<T: TurboLedgerTools>(
                         "provider": "rustledger",
                         "backend_tool": "ingest_statement_rows",
                     }))],
+                "isError": false
+            })
+        }
+        Err(err) => error_envelope(&err),
+    }
+}
+
+pub fn handle_import_ofx(service: &TurboLedgerService, arguments: &Value) -> Value {
+    use beankeeper_bridge::OffsetKind;
+
+    let ofx_path = match arguments.get("ofx_path").and_then(Value::as_str) {
+        Some(p) => std::path::PathBuf::from(p),
+        None => return error_envelope(&ToolError::InvalidInput("missing ofx_path".into())),
+    };
+    let journal_path = match arguments.get("journal_path").and_then(Value::as_str) {
+        Some(p) => std::path::PathBuf::from(p),
+        None => return error_envelope(&ToolError::InvalidInput("missing journal_path".into())),
+    };
+    let workbook_path = match arguments.get("workbook_path").and_then(Value::as_str) {
+        Some(p) => std::path::PathBuf::from(p),
+        None => return error_envelope(&ToolError::InvalidInput("missing workbook_path".into())),
+    };
+    let ontology_path = arguments
+        .get("ontology_path")
+        .and_then(Value::as_str)
+        .map(std::path::PathBuf::from);
+    let asset_code = match required_str(arguments, "asset_code") {
+        Ok(s) => s.to_string(),
+        Err(e) => return error_envelope(&e),
+    };
+    let asset_name = match required_str(arguments, "asset_name") {
+        Ok(s) => s.to_string(),
+        Err(e) => return error_envelope(&e),
+    };
+    let offset_code = match required_str(arguments, "offset_code") {
+        Ok(s) => s.to_string(),
+        Err(e) => return error_envelope(&e),
+    };
+    let offset_name = match required_str(arguments, "offset_name") {
+        Ok(s) => s.to_string(),
+        Err(e) => return error_envelope(&e),
+    };
+    let offset_kind_str = match required_str(arguments, "offset_kind") {
+        Ok(s) => s.to_string(),
+        Err(e) => return error_envelope(&e),
+    };
+    let offset_kind = match offset_kind_str.as_str() {
+        "revenue" => OffsetKind::Revenue,
+        "expense" => OffsetKind::Expense,
+        "equity" => OffsetKind::Equity,
+        "liability" => OffsetKind::Liability,
+        _ => return error_envelope(&ToolError::InvalidInput(format!(
+            "invalid offset_kind '{}': expected revenue, expense, equity, or liability", offset_kind_str
+        ))),
+    };
+
+    let config = beankeeper_bridge::ConversionConfig {
+        asset_code,
+        asset_name,
+        offset_code,
+        offset_name,
+        offset_kind,
+    };
+
+    let rows = match crate::beankeeper_import::parse_ofx_to_rows(&ofx_path, &config) {
+        Ok(r) => r,
+        Err(e) => return error_envelope(&ToolError::Internal(e.to_string())),
+    };
+
+    let ingest_request = IngestStatementRowsRequest {
+        journal_path,
+        workbook_path,
+        ontology_path: ontology_path.clone(),
+        rows,
+    };
+
+    match service.ingest_statement_rows(ingest_request.clone()) {
+        Ok(response) => {
+            let tx_ids = if response.tx_ids.is_empty() {
+                ingest_request
+                    .rows
+                    .iter()
+                    .map(ledger_core::ingest::deterministic_tx_id)
+                    .collect::<Vec<_>>()
+            } else {
+                response.tx_ids
+            };
+            json!({
+                "content": [text_content(json!({
+                    "inserted_count": response.inserted_count,
+                    "tx_ids": tx_ids,
+                    "provider": "beankeeper-bridge",
+                    "backend_tool": "import_ofx",
+                }))],
                 "isError": false
             })
         }
