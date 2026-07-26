@@ -123,6 +123,7 @@ pub const PUBLISHED_TOOLS: [ToolContractSpec; 12] = [
             "schedule_summary",
             "export_workbook",
             "compute_feie",
+            "compute_depreciation",
         ],
     },
     ToolContractSpec {
@@ -707,6 +708,17 @@ pub enum TaxArgs {
         window_start: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         window_end: Option<String>,
+    },
+    /// Compute Schedule E 27.5yr straight-line depreciation with mid-month convention.
+    ComputeDepreciation {
+        tax_year: u16,
+        placed_in_service: String,
+        total_basis: String,
+        land_value: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        improvements: Option<Vec<Vec<String>>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prior_accumulated: Option<String>,
     },
 }
 

@@ -44,6 +44,7 @@ pub mod au_rd;
 pub mod coverage;
 pub mod crypto;
 pub mod feie;
+pub mod schedule_e;
 pub mod tax_assist;
 pub mod us_rdc;
 pub mod xero_service;
