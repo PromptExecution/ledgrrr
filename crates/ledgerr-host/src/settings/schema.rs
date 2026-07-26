@@ -83,8 +83,14 @@ pub struct AppSettings {
     pub show_notifications_for: ShowNotificationsFor,
     #[serde(default)]
     pub chat: ChatSettings,
+    #[serde(default = "default_enable_tray")]
+    pub enable_tray: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_test_result: Option<NotificationTestResult>,
+}
+
+fn default_enable_tray() -> bool {
+    true
 }
 
 fn default_model_provider() -> ModelProviderLabel {
@@ -102,6 +108,7 @@ impl Default for AppSettings {
             window_visible_on_start: true,
             show_notifications_for: ShowNotificationsFor::default(),
             chat: ChatSettings::default(),
+            enable_tray: true,
             last_test_result: None,
         }
     }
