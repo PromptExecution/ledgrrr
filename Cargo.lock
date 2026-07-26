@@ -1080,6 +1080,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "b00t-reflect"
+version = "1.9.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "base64"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4562,6 +4571,7 @@ dependencies = [
 name = "holon-viz"
 version = "1.9.0"
 dependencies = [
+ "b00t-reflect",
  "blake3",
  "chrono",
  "serde",
