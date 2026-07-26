@@ -998,6 +998,23 @@ pub fn handle_reconciliation_tool(service: &TurboLedgerService, arguments: &Valu
                 "posting_amounts": posting_amounts,
             }),
         ),
+        ReconciliationArgs::AssertCoverage {
+            account_ids,
+            tax_year,
+        } => {
+            use crate::coverage::CoverageRequest;
+            let request = CoverageRequest {
+                account_ids,
+                tax_year,
+            };
+            match service.assert_account_coverage_tool(request) {
+                Ok(report) => json!({
+                    "content": [text_content(json!(report))],
+                    "isError": false
+                }),
+                Err(err) => error_envelope(&err),
+            }
+        }
     }
 }
 

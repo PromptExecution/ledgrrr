@@ -43,11 +43,15 @@ pub mod reconciliation;
 pub mod schema;
 pub mod shape_tool;
 pub mod au_rd;
+pub mod coverage;
 pub mod crypto;
 pub mod tax_assist;
 pub mod us_rdc;
 pub mod xero_service;
 pub use calendar_tool::{list_calendar_events, CalendarEventRow, ListCalendarEventsRequest};
+pub use coverage::{
+    AccountPeriodCoverage, CoverageReport, CoverageRequest, Discontinuity,
+};
 pub use contract::{
     AmountRange, ApplyMappingBulkRequest, ApplyMappingBulkResponse, BatchClassifyRequest,
     BatchClassifyResponse, BatchItemResult, BatchItemStatus, BatchMode, BatchResolveFlagsRequest,
@@ -859,6 +863,19 @@ impl TurboLedgerService {
         request: ReconciliationStageRequest,
     ) -> Result<ReconciliationStageResponse, ToolError> {
         commit_stage(&request)
+    }
+
+    pub fn assert_account_coverage_tool(
+        &self,
+        request: CoverageRequest,
+    ) -> Result<CoverageReport, ToolError> {
+        let tx_rows = self
+            .classification_state
+            .lock()
+            .map_err(|_| ToolError::Internal("classification lock poisoned".to_string()))?
+            .tx_rows
+            .clone();
+        coverage::assert_account_coverage(&request, &tx_rows)
     }
 
     pub fn hsm_transition_tool(
