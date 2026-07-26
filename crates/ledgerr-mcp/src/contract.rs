@@ -122,6 +122,7 @@ pub const PUBLISHED_TOOLS: [ToolContractSpec; 12] = [
             "ambiguity_review",
             "schedule_summary",
             "export_workbook",
+            "compute_depreciation",
         ],
     },
     ToolContractSpec {
@@ -681,6 +682,50 @@ pub enum TaxArgs {
         acquisition_date: Option<String>,
         jurisdiction: String,
         currency: String,
+        cost_basis_method: String,
+        chain: String,
+        address: String,
+    },
+    /// Compute FEIE (Form 2555) exclusion with hard guard that SE tax is not reduced.
+    ComputeFeie {
+        tax_year: u16,
+        foreign_earned_income: String,
+        days_qualified: u16,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        housing_exclusion: Option<String>,
+        test: String,
+        test_start: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        test_end: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        qualifying_days: Option<u16>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        window_start: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        window_end: Option<String>,
+    },
+    /// Compute Schedule E 27.5yr straight-line depreciation with mid-month convention.
+    ComputeDepreciation {
+        tax_year: u16,
+        placed_in_service: String,
+        total_basis: String,
+        land_value: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        improvements: Option<Vec<Vec<String>>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prior_accumulated: Option<String>,
+    },
+    ComputeCapitalLoss {
+        tax_year: u16,
+        filing_status: String,
+        short_term_losses: String,
+        long_term_losses: String,
+        short_term_gains: String,
+        long_term_gains: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prior_short_term_carryforward: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prior_long_term_carryforward: Option<String>,
     },
 }
 

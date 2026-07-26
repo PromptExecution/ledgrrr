@@ -44,6 +44,9 @@ pub mod schema;
 pub mod shape_tool;
 pub mod au_rd;
 pub mod crypto;
+pub mod capital_loss;
+pub mod schedule_e;
+pub mod feie;
 pub mod tax_assist;
 pub mod us_rdc;
 pub mod xero_service;
@@ -78,6 +81,7 @@ pub use reconciliation::{
 };
 pub use schema::{CustomKind, KindInfo, SchemaKinds, SchemaStore};
 pub use shape_tool::{get_document_shape, GetDocumentShapeRequest};
+pub use feie::{FeieInput, FeieOutcome, ForeignResidenceTest};
 pub use tax_assist::{
     TaxAmbiguityRecord, TaxAmbiguityReviewRequest, TaxAmbiguityReviewResponse, TaxAssistRequest,
     TaxAssistResponse, TaxAssistSummary, TaxEvidenceChainRequest, TaxEvidenceChainResponse,
@@ -1138,6 +1142,10 @@ impl TurboLedgerService {
             stage,
             assist.ambiguity,
         ))
+    }
+
+    pub fn compute_feie_tool(&self, input: FeieInput) -> Result<FeieOutcome, ToolError> {
+        Ok(feie::compute_feie(&input))
     }
 
     fn append_lifecycle_event(
@@ -3205,10 +3213,12 @@ fn emit_ingest_ontology_edges(
                 OntologyEntityInput {
                     kind: OntologyEntityKind::Document,
                     attrs: doc_attrs,
+                    custom_kind: None,
                 },
                 OntologyEntityInput {
                     kind: OntologyEntityKind::Transaction,
                     attrs: tx_attrs,
+                    custom_kind: None,
                 },
             ],
         )?
@@ -3897,7 +3907,7 @@ impl TurboLedgerService {
             attrs.insert("xero_id".into(), xero_id.clone());
             attrs.insert("display_name".into(), display_name.clone());
             attrs.insert("local_id".into(), local_id.clone());
-            let _ = ontology::upsert_entities(&mut store, vec![OntologyEntityInput { kind, attrs }]);
+            let _ = ontology::upsert_entities(&mut store, vec![OntologyEntityInput { kind, attrs, custom_kind: None }]);
             let _ = ontology::persist_store(&store, &ont_path);
         }
 
