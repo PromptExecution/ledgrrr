@@ -122,6 +122,7 @@ pub const PUBLISHED_TOOLS: [ToolContractSpec; 12] = [
             "ambiguity_review",
             "schedule_summary",
             "export_workbook",
+            "compute_feie",
         ],
     },
     ToolContractSpec {
@@ -684,6 +685,24 @@ pub enum TaxArgs {
         cost_basis_method: String,
         chain: String,
         address: String,
+    },
+    /// Compute FEIE (Form 2555) exclusion with hard guard that SE tax is not reduced.
+    ComputeFeie {
+        tax_year: u16,
+        foreign_earned_income: String,
+        days_qualified: u16,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        housing_exclusion: Option<String>,
+        test: String,
+        test_start: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        test_end: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        qualifying_days: Option<u16>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        window_start: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        window_end: Option<String>,
     },
 }
 
