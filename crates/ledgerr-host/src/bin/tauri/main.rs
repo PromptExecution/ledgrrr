@@ -7,6 +7,8 @@
 mod commands;
 #[cfg(target_os = "windows")]
 mod state;
+#[cfg(target_os = "windows")]
+mod tray;
 
 #[cfg(not(target_os = "windows"))]
 fn main() {
@@ -132,6 +134,11 @@ fn main() {
             .build()
             .expect("failed to build main window");
             let _: std::result::Result<(), _> = w.set_title(&title);
+            if let Ok(settings) = app.state::<AppState>().store.load() {
+                if settings.enable_tray {
+                    tray::setup_tray(app);
+                }
+            }
             Ok(())
         })
         .invoke_handler(specta_builder.invoke_handler())
