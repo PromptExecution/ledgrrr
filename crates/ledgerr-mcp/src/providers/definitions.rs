@@ -3,7 +3,10 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use crate::provider::{BoxedProvider, McpProvider, ProviderResult, StdioMcpProvider};
+use crate::provider::{
+    BoxedProvider, HttpMcpProvider, McpProvider, ProviderInfo, ProviderResult, StdioMcpProvider,
+    ToolDescriptor,
+};
 
 pub struct B00tProvider {
     inner: BoxedProvider,
@@ -133,6 +136,72 @@ impl McpProvider for Ir0ntologyProvider {
     }
 }
 
+pub struct OpenMetadataProvider {
+    inner: BoxedProvider,
+}
+
+impl OpenMetadataProvider {
+    pub const TOOL_PREFIX: &'static str = "openmetadata__";
+
+    pub fn from_env() -> Option<ProviderResult<Self>> {
+        let endpoint = std::env::var("OPENMETADATA_MCP_URL")
+            .or_else(|_| std::env::var("OPENMETADATA_URL"))
+            .ok()?;
+        let token = std::env::var("OPENMETADATA_MCP_BEARER_TOKEN")
+            .or_else(|_| std::env::var("OPENMETADATA_JWT_TOKEN"))
+            .ok();
+        Some(Self::new(endpoint, token))
+    }
+
+    pub fn new(endpoint: impl Into<String>, bearer_token: Option<String>) -> ProviderResult<Self> {
+        let inner: BoxedProvider = Arc::new(HttpMcpProvider::new(
+            "openmetadata",
+            endpoint.into(),
+            bearer_token,
+        )?);
+        Ok(Self { inner })
+    }
+
+    fn prefixed_tool_name(tool_name: &str) -> String {
+        format!("{}{tool_name}", Self::TOOL_PREFIX)
+    }
+
+    fn remote_tool_name(tool_name: &str) -> &str {
+        tool_name
+            .strip_prefix(Self::TOOL_PREFIX)
+            .unwrap_or(tool_name)
+    }
+}
+
+impl McpProvider for OpenMetadataProvider {
+    fn name(&self) -> &str {
+        "openmetadata"
+    }
+
+    fn initialize(&self) -> ProviderResult<ProviderInfo> {
+        let mut info = self.inner.initialize()?;
+        info.name = self.name().to_string();
+        info.tools = info
+            .tools
+            .into_iter()
+            .map(|tool| ToolDescriptor {
+                name: Self::prefixed_tool_name(&tool.name),
+                input_schema: tool.input_schema,
+            })
+            .collect();
+        Ok(info)
+    }
+
+    fn call_tool(&self, name: &str, arguments: Value) -> ProviderResult<Value> {
+        self.inner
+            .call_tool(Self::remote_tool_name(name), arguments)
+    }
+
+    fn shutdown(&self) {
+        self.inner.shutdown();
+    }
+}
+
 pub fn register_default_providers(
     registry: &mut crate::provider::McpProviderRegistry,
     b00t_home: Option<PathBuf>,
@@ -162,6 +231,17 @@ pub fn register_default_providers(
         }
         Err(e) => {
             tracing::warn!("ir0ntology mcp provider unavailable: {e}");
+        }
+    }
+
+    if let Some(provider) = OpenMetadataProvider::from_env() {
+        match provider {
+            Ok(p) => {
+                registry.register(Arc::new(p) as BoxedProvider);
+            }
+            Err(e) => {
+                tracing::warn!("openmetadata mcp provider unavailable: {e}");
+            }
         }
     }
 }

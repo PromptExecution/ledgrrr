@@ -142,3 +142,48 @@ fn smoke_register_default_providers_graceful_missing_binaries() {
         }
     }
 }
+
+#[test]
+fn smoke_openmetadata_provider_constructs_without_network() {
+    let provider = ledgerr_mcp::providers::definitions::OpenMetadataProvider::new(
+        "https://metadata.example.com",
+        Some("test-token".to_string()),
+    )
+    .expect("constructor should not contact OpenMetadata");
+
+    assert_eq!(provider.name(), "openmetadata");
+}
+
+#[test]
+fn live_openmetadata_provider_lists_prefixed_tools_when_configured() {
+    let endpoint =
+        std::env::var("OPENMETADATA_MCP_URL").or_else(|_| std::env::var("OPENMETADATA_URL"));
+    let Ok(endpoint) = endpoint else {
+        eprintln!("skipping live OpenMetadata MCP test: OPENMETADATA_MCP_URL not set");
+        return;
+    };
+    let token = std::env::var("OPENMETADATA_MCP_BEARER_TOKEN")
+        .or_else(|_| std::env::var("OPENMETADATA_JWT_TOKEN"));
+    let Ok(token) = token else {
+        eprintln!("skipping live OpenMetadata MCP test: bearer token not set");
+        return;
+    };
+
+    let provider =
+        ledgerr_mcp::providers::definitions::OpenMetadataProvider::new(endpoint, Some(token))
+            .expect("provider should construct");
+    let info = provider
+        .initialize()
+        .expect("live OpenMetadata MCP initialize/tools-list should succeed");
+    let tool_names = info
+        .tools
+        .iter()
+        .map(|tool| tool.name.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(
+        tool_names.contains(&"openmetadata__search_metadata")
+            || tool_names.contains(&"openmetadata__get_entity_details"),
+        "OpenMetadata tools should be visible with ledgrrr namespace prefix: {tool_names:?}"
+    );
+}

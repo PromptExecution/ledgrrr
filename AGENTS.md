@@ -12,7 +12,7 @@ ledgrrr is a **local agentic governance proxy**: a memory-safe, deterministicall
 | Capability | How it works |
 |---|---|
 | Deterministic knowledge retrieval | Blake3 content-hash IDs + idempotent ingest + rkyv sidecar snapshots — same source always produces the same tx_ids regardless of execution order |
-| Poly-tool governance | 10 published `ledgerr_*` MCP tools, each a supervised capability family with required `action` parameters; agent calls go through the governance proxy, never directly to raw APIs |
+| Poly-tool governance | 12 published `ledgerr_*` MCP tools (including `ledgerr_schema` and `ledgerr_manifest`), each a supervised capability family with required `action` parameters; agent calls go through the governance proxy, never directly to raw APIs |
 | Workflow visualization | `HasVisualization` trait on 21+ domain types; isometric 3D + Mermaid 2D dual render paths; `WorkflowToml` compiles to operator Mermaid diagram + Rhai FSM execution graph |
 | Runtime-editable policy | Rhai scripting for classification rules, flag heuristics, and workflow FSM steps — agent/human editable without recompile |
 | Formal verification | `legal-z3` feature gate enables Z3-backed hard satisfiability checks on jurisdiction rules; Kasuari handles soft plausibility/layout constraints |
@@ -102,12 +102,14 @@ Use `TurboLedgerService` in `crates/ledgerr-mcp/src/lib.rs` as the canonical con
 Use `docs/mcp-capability-contract.md` as the canonical MCP surface map (tool names, arg contracts, service mapping, contrived usage flow).
 
 Published MCP surface rule:
-- Default `tools/list` exposes **10** top-level `ledgerr_*` capability families: `ledgerr_documents`, `ledgerr_review`, `ledgerr_reconciliation`, `ledgerr_workflow`, `ledgerr_audit`, `ledgerr_tax`, `ledgerr_ontology`, `ledgerr_xero`, `ledgerr_evidence`, `ledgerr_focus`.
+- Default `tools/list` exposes **12** top-level `ledgerr_*` capability families: `ledgerr_documents`, `ledgerr_review`, `ledgerr_reconciliation`, `ledgerr_workflow`, `ledgerr_audit`, `ledgerr_tax`, `ledgerr_ontology`, `ledgerr_xero`, `ledgerr_focus`, `ledgerr_evidence`, `ledgerr_schema`, `ledgerr_manifest`.
 - `ledgerr_evidence` — arc-kit-au evidence traceability graph (actions: `summary`, `list_nodes`, `node_detail`).
 - `ledgerr_focus` — FOCUS (FinOps Cost Usage Spec) v1.3 cost/usage analysis (always-on core capability, no feature gate).
+- `ledgerr_schema` — runtime schema extensibility for custom ontology kinds.
+- `ledgerr_manifest` — canonical visualization manifest export.
 - Use required `action` parameters to expose sub-operations while keeping major capability families visible.
 - Keep any legacy `l3dg3rr_*` or proxy-style names hidden compatibility aliases only; do not advertise them in the default tool catalog.
-- Source of truth: `crates/ledgerr-mcp/src/contract.rs` → `PUBLISHED_TOOLS: [ToolContractSpec; 10]`. Drift from generated docs is a CI failure (`contract_docs_are_generated_from_rust_source`).
+- Source of truth: `crates/ledgerr-mcp/src/contract.rs` → `PUBLISHED_TOOLS: [ToolContractSpec; 12]`. Drift from generated docs is a CI failure (`contract_docs_are_generated_from_rust_source`).
 
 Core methods:
 - `list_accounts` / `list_accounts_tool`: enumerate account ids from manifest.
@@ -383,6 +385,10 @@ Treat this as a standing operational gate, not a one-time migration task.
   - Model-call audit hooks should record metadata and outcomes, not raw prompt or response content.
 - 2026-04-21: Use `uv` for Python package and tool workflows.
   - Do not document `pipx` or direct `pip install` as the preferred path; use `uv tool install ...` for Python CLIs and `uv pip ...` for environment-scoped installs.
+- 2026-05-16: Tauri VZ/Cytoscape fusion uses `holon-viz-wasm` as a pure graph-transform bridge.
+  - Keep Cytoscape rendering in the webview JS; compile only deterministic graph transforms, catalog extraction, filtering, node detail, and process projection into WASM.
+  - Run `just build-wasm` before `npm run build`/`just ui-build` when the Tauri UI should bundle the optional bridge assets; the UI still falls back to direct JS graph handling when the package is absent.
+  - Treat `scripts/ledgrrr-viz-serve.py` as a behavioral prototype for process-catalog/state ideas, not as a Tauri runtime dependency.
 - 2026-04-17: issue `#22` established a code-first MCP contract path.
   - The published MCP surface now lives in `crates/ledgerr-mcp/src/contract.rs`; treat it as the only source of truth for parser shapes, generated JSON Schema, and checked-in operator docs/examples.
   - Regenerate `docs/mcp-capability-contract.md`, `docs/agent-mcp-runbook.md`, and `scripts/mcp_cli_demo.sh` via `cargo run -p xtask-mcpb -- generate-mcp-artifacts` after changing the published MCP surface.
@@ -509,8 +515,8 @@ Treat this as a standing operational gate, not a one-time migration task.
   - **Sub-agent pattern**: Used explore sub-agents with codebase-memory-mcp for survey (returned structured report in ~30s). Compare: previous grep-based survey attempt in PR #69 took 10+ minutes of CPU with truncated output. This validated the new tooling approach.
 - 2026-05-05: System identity retrospective + forward roadmap written into AGENTS.md.
   - ledgrrr reframed as a new class of software: local agentic governance proxy, deterministically executable knowledge retrieval, poly-tool governance & workflow visualization.
-  - 10-tool MCP surface confirmed (`ledgerr_focus` + `ledgerr_evidence` added since last AGENTS update); `PUBLISHED_TOOLS: [ToolContractSpec; 10]` in `contract.rs` is authoritative.
-  - Root cause of prior CI failures: `FOCUS_TOOL` was wired into `PUBLISHED_TOOLS` and `handle_focus_tool` but missing from `tool_names_for()` core bucket in `mcp_adapter.rs` — all test assertions said 9 tools; fix was adding `FOCUS_TOOL` to the core bucket and bumping count to 10. Lesson: `tool_names_for()` core bucket must match `PUBLISHED_TOOLS` exactly; test count assertions flag the drift.
+  - Historical note: the surface was 10 tools after `ledgerr_focus` + `ledgerr_evidence`; it is now 12 after `ledgerr_schema` + `ledgerr_manifest`. `PUBLISHED_TOOLS` in `contract.rs` is authoritative.
+  - Root cause of prior CI failures: `FOCUS_TOOL` was wired into `PUBLISHED_TOOLS` and `handle_focus_tool` but missing from `tool_names_for()` core bucket in `mcp_adapter.rs` — all test assertions said 9 tools; fix was adding `FOCUS_TOOL` to the core bucket and bumping count. Lesson: `tool_names_for()` core bucket must match `PUBLISHED_TOOLS` exactly; test count assertions flag the drift.
   - `rotel-visual` metric counter test failure: empty `scopeMetrics: []` payload means `inc_metrics_ingested(0)` is a no-op; counter stays 0. Fix: include at least one named metric in test payloads.
   - `iso_objects.rs` compile failure pattern: deleting an `impl<T: 'static> HasVisualization for StageResult<T> {` header while leaving the `fn viz_spec()` body produces "unexpected closing delimiter" — always delete entire `impl` block together or restore the header.
   - On-disk generated docs (`docs/mcp-capability-contract.md`, `docs/agent-mcp-runbook.md`, `scripts/mcp_cli_demo.sh`) must be regenerated via `cargo run -p ledgerr-mcp --bin regen-docs` after any change to `contract.rs`. CI assertion is `checked_in == generated` (left=disk, right=generated) — stale artifacts are a test failure, not a lint warning.
@@ -698,3 +704,9 @@ The `hive` surface declares `"pattern": "parallel-subagents", "isolation": "work
 
 **Scheduled:**
 - KerML metamodel for domain types → `xtask` codegen generating Rust structs + TS types from one source. Invest after metamodel is stable.
+
+### OpenMetadata MCP Integration Ruling (2026-05-24)
+
+OpenMetadata should be treated as a remote governed MCP/provider surface, not forked first. Use the reusable `HttpMcpProvider` transport for `{OMURL}/mcp` JSON-RPC over HTTP with bearer auth, then wrap OpenMetadata as `OpenMetadataProvider` with `openmetadata__*` tool prefixes so provider tools cannot collide with ledgrrr's published catalog.
+
+Represent OpenMetadata catalog objects through `ledgerr_ontology` custom kinds first (`openmetadata_service`, `openmetadata_database`, `openmetadata_database_schema`, `openmetadata_table`, `openmetadata_column`, `openmetadata_tag`, `openmetadata_glossary_term`, `openmetadata_owner`) instead of expanding core `ArtifactKind` prematurely. Keep OpenMetadata entity identity stable: hash `source_system`, `entity_type`, and `fully_qualified_name`; do not include volatile hrefs, display labels, timestamps, or bearer-derived data in deterministic identity/provenance.

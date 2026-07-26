@@ -115,6 +115,7 @@ fn seed_ontology(path: &std::path::Path) -> (String, String, String, String) {
                     attrs.insert("source_ref".to_string(), "wf-statement.pdf".to_string());
                     attrs
                 },
+                custom_kind: None,
             },
             OntologyEntityInput {
                 kind: OntologyEntityKind::Transaction,
@@ -123,6 +124,7 @@ fn seed_ontology(path: &std::path::Path) -> (String, String, String, String) {
                     attrs.insert("tx_id".to_string(), "tx-001".to_string());
                     attrs
                 },
+                custom_kind: None,
             },
             OntologyEntityInput {
                 kind: OntologyEntityKind::TaxCategory,
@@ -131,6 +133,7 @@ fn seed_ontology(path: &std::path::Path) -> (String, String, String, String) {
                     attrs.insert("category".to_string(), "OfficeSupplies".to_string());
                     attrs
                 },
+                custom_kind: None,
             },
             OntologyEntityInput {
                 kind: OntologyEntityKind::EvidenceReference,
@@ -139,8 +142,9 @@ fn seed_ontology(path: &std::path::Path) -> (String, String, String, String) {
                     attrs.insert("rkyv_ref".to_string(), "wf-ctx.rkyv".to_string());
                     attrs
                 },
+                custom_kind: None,
             },
-        ])
+        ], None)
         .expect("seed entities");
 
     let doc_id = entities.entity_ids[0].clone();
