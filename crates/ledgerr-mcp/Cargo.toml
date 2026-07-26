@@ -6,6 +6,8 @@ license.workspace = true
 
 [dependencies]
 agentmesh = { workspace = true }
+beankeeper-bridge = { path = "../beankeeper-bridge" }
+ofx-rs = { workspace = true }
 arc-kit-au = { path = "../arc-kit-au" }
 blake3 = "1.8.3"
 chrono = { workspace = true }
