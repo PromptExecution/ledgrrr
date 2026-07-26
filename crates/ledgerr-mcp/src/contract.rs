@@ -126,6 +126,7 @@ pub const PUBLISHED_TOOLS: [ToolContractSpec; 12] = [
             "compute_feie",
             "compute_depreciation",
             "compute_fbar",
+            "compute_capital_loss",
         ],
     },
     ToolContractSpec {
@@ -739,6 +740,18 @@ pub enum TaxArgs {
         improvements: Option<Vec<Vec<String>>>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         prior_accumulated: Option<String>,
+    },
+    ComputeCapitalLoss {
+        tax_year: u16,
+        filing_status: String,
+        short_term_losses: String,
+        long_term_losses: String,
+        short_term_gains: String,
+        long_term_gains: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prior_short_term_carryforward: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prior_long_term_carryforward: Option<String>,
     },
 }
 

@@ -1240,6 +1240,13 @@ pub fn handle_tax_tool(service: &TurboLedgerService, arguments: &Value) -> Value
                 "isError": false,
             })
         }
+        TaxArgs::ComputeCapitalLoss { tax_year, filing_status, short_term_losses, long_term_losses, short_term_gains, long_term_gains, prior_short_term_carryforward, prior_long_term_carryforward } =>
+            crate::capital_loss::handle_compute_capital_loss(
+                tax_year, &filing_status, &short_term_losses, &long_term_losses,
+                &short_term_gains, &long_term_gains,
+                prior_short_term_carryforward.as_deref(),
+                prior_long_term_carryforward.as_deref(),
+            ),
     }
 }
 
