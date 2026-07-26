@@ -44,6 +44,7 @@ pub mod schema;
 pub mod shape_tool;
 pub mod au_rd;
 pub mod crypto;
+pub mod fbar;
 pub mod tax_assist;
 pub mod us_rdc;
 pub mod xero_service;
@@ -82,6 +83,10 @@ pub use tax_assist::{
     TaxAmbiguityRecord, TaxAmbiguityReviewRequest, TaxAmbiguityReviewResponse, TaxAssistRequest,
     TaxAssistResponse, TaxAssistSummary, TaxEvidenceChainRequest, TaxEvidenceChainResponse,
     TaxEvidenceCurrentState, TaxEvidenceEvent, TaxEvidenceRow, TaxEvidenceSource,
+};
+pub use fbar::{
+    compute_fbar, DailyBalance, FbarDetermination, FbarInput, ForeignAccountInput,
+    ForeignAccountYear,
 };
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccountSummary {

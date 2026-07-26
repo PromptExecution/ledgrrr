@@ -1148,6 +1148,30 @@ pub fn handle_tax_tool(service: &TurboLedgerService, arguments: &Value) -> Value
             crate::us_rdc::handle_us_rdc_four_part_test(&lei, &activity_id, &activity_name, technical_in_nature, permits_experimentation, technological_uncertainty, systematic_process),
         TaxArgs::CryptoCostBasisCheck { lei, tx_hash, tx_type, gross_proceeds, cost_basis, date, acquisition_date, jurisdiction, currency } =>
             crate::crypto::handle_crypto_cost_basis_check(&lei, &tx_hash, &tx_type, &gross_proceeds, &cost_basis, &date, acquisition_date.as_deref(), &jurisdiction, &currency),
+        TaxArgs::ComputeFbar { tax_year, filing_status, living_abroad, accounts } => {
+            let input = crate::fbar::FbarInput {
+                tax_year,
+                filing_status,
+                living_abroad,
+                accounts: accounts.into_iter().map(|a| crate::fbar::ForeignAccountInput {
+                    account_id: a.account_id,
+                    institution: a.institution,
+                    country: a.country,
+                    currency: a.currency,
+                    daily_balances: a.daily_balances.into_iter().map(|d| crate::fbar::DailyBalance {
+                        date: d.date,
+                        balance: d.balance,
+                    }).collect(),
+                    year_end_rate: a.year_end_rate,
+                }).collect(),
+            };
+            let result = crate::fbar::compute_fbar(&input);
+            let payload = serde_json::to_value(&result).unwrap_or_default();
+            json!({
+                "content": [{ "type": "text", "text": payload.to_string() }],
+                "isError": false,
+            })
+        }
     }
 }
 
