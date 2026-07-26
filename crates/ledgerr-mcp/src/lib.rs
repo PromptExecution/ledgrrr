@@ -42,6 +42,8 @@ pub mod schema;
 pub mod shape_tool;
 pub mod au_rd;
 pub mod crypto;
+pub mod schedule_e;
+pub mod feie;
 pub mod tax_assist;
 pub mod us_rdc;
 pub mod xero_service;
@@ -76,6 +78,7 @@ pub use reconciliation::{
 };
 pub use schema::{CustomKind, KindInfo, SchemaKinds, SchemaStore};
 pub use shape_tool::{get_document_shape, GetDocumentShapeRequest};
+pub use feie::{FeieInput, FeieOutcome, ForeignResidenceTest};
 pub use tax_assist::{
     TaxAmbiguityRecord, TaxAmbiguityReviewRequest, TaxAmbiguityReviewResponse, TaxAssistRequest,
     TaxAssistResponse, TaxAssistSummary, TaxEvidenceChainRequest, TaxEvidenceChainResponse,
@@ -1131,6 +1134,10 @@ impl TurboLedgerService {
             stage,
             assist.ambiguity,
         ))
+    }
+
+    pub fn compute_feie_tool(&self, input: FeieInput) -> Result<FeieOutcome, ToolError> {
+        Ok(feie::compute_feie(&input))
     }
 
     fn append_lifecycle_event(
@@ -3199,11 +3206,13 @@ fn emit_ingest_ontology_edges(
                     kind: OntologyEntityKind::Document,
                     custom_kind: None,
                     attrs: doc_attrs,
+                    custom_kind: None,
                 },
                 OntologyEntityInput {
                     kind: OntologyEntityKind::Transaction,
                     custom_kind: None,
                     attrs: tx_attrs,
+                    custom_kind: None,
                 },
             ],
         )?
