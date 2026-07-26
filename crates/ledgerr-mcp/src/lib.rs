@@ -62,9 +62,12 @@ pub use hsm::{
     HsmTransitionRequest, HsmTransitionResponse,
 };
 pub use ontology::{
-    OntologyEdge, OntologyEdgeInput, OntologyEntity, OntologyEntityInput, OntologyEntityKind,
-    OntologyQueryPathRequest, OntologyQueryPathResponse, OntologyStore, OntologyUpsertEdgesRequest,
-    OntologyUpsertEdgesResponse, OntologyUpsertEntitiesRequest, OntologyUpsertEntitiesResponse,
+    content_hash, edge_content_hash, entity_content_hash, load_store, persist_store,
+    query_path as query_ontology_path, upsert_edges as upsert_ontology_edges,
+    upsert_entities as upsert_ontology_entities, OntologyEdge, OntologyEdgeInput, OntologyEntity,
+    OntologyEntityInput, OntologyEntityKind, OntologyQueryPathRequest, OntologyQueryPathResponse,
+    OntologyStore, OntologyUpsertEdgesRequest, OntologyUpsertEdgesResponse,
+    OntologyUpsertEntitiesRequest, OntologyUpsertEntitiesResponse,
 };
 pub use reconciliation::{
     commit_stage, reconcile_stage, validate_stage, ReconciliationDiagnostic,
@@ -776,13 +779,9 @@ impl TurboLedgerService {
         &self,
         request: OntologyUpsertEntitiesRequest,
     ) -> Result<OntologyUpsertEntitiesResponse, ToolError> {
-        let mut store = OntologyStore::load(&request.ontology_path)?;
-        let mut schema_store = None;
-        if let Some(ref schema_path) = request.schema_store_path {
-            schema_store = Some(crate::schema::SchemaStore::load(schema_path)?);
-        }
-        let response = store.upsert_entities(request.entities, schema_store.as_ref())?;
-        store.persist(&request.ontology_path)?;
+        let mut store = ontology::load_store(&request.ontology_path)?;
+        let response = ontology::upsert_entities(&mut store, request.entities)?;
+        ontology::persist_store(&store, &request.ontology_path)?;
         Ok(response)
     }
 
@@ -797,9 +796,9 @@ impl TurboLedgerService {
         &self,
         request: OntologyUpsertEdgesRequest,
     ) -> Result<OntologyUpsertEdgesResponse, ToolError> {
-        let mut store = OntologyStore::load(&request.ontology_path)?;
-        let response = store.upsert_edges(request.edges)?;
-        store.persist(&request.ontology_path)?;
+        let mut store = ontology::load_store(&request.ontology_path)?;
+        let response = ontology::upsert_edges(&mut store, request.edges)?;
+        ontology::persist_store(&store, &request.ontology_path)?;
         Ok(response)
     }
 
@@ -814,8 +813,8 @@ impl TurboLedgerService {
         &self,
         request: OntologyQueryPathRequest,
     ) -> Result<OntologyQueryPathResponse, ToolError> {
-        let store = OntologyStore::load(&request.ontology_path)?;
-        store.query_path(&request.from_entity_id, request.max_depth)
+        let store = ontology::load_store(&request.ontology_path)?;
+        ontology::query_path(&store, &request.from_entity_id, request.max_depth)
     }
 
     pub fn ontology_query_path_tool(
@@ -829,12 +828,12 @@ impl TurboLedgerService {
         &self,
         request: OntologyExportSnapshotRequest,
     ) -> Result<OntologyExportSnapshotResponse, ToolError> {
-        let store = OntologyStore::load(&request.ontology_path)?;
+        let store = ontology::load_store(&request.ontology_path)?;
         Ok(OntologyExportSnapshotResponse {
-            entity_count: store.entities.len(),
-            edge_count: store.edges.len(),
-            entities: store.entities,
-            edges: store.edges,
+            entity_count: store.artifacts.len(),
+            edge_count: store.relations.len(),
+            entities: store.artifacts,
+            edges: store.relations,
         })
     }
 
@@ -978,9 +977,9 @@ impl TurboLedgerService {
                 from_entity_id: request.from_entity_id.clone(),
                 max_depth: request.max_depth,
             })?;
-            let store = OntologyStore::load(&ontology_path)?;
+            let store = ontology::load_store(&ontology_path)?;
             let entity_lookup = store
-                .entities
+                .artifacts
                 .iter()
                 .map(|node| (node.id.clone(), node.clone()))
                 .collect::<BTreeMap<_, _>>();
@@ -995,7 +994,7 @@ impl TurboLedgerService {
                 .map(|node| node.id.clone())
                 .collect::<BTreeSet<_>>();
             for edge in store
-                .edges
+                .relations
                 .into_iter()
                 .filter(|edge| edge.from == request.from_entity_id)
             {
@@ -3183,7 +3182,7 @@ fn emit_ingest_ontology_edges(
         return Ok(());
     }
 
-    let mut store = OntologyStore::load(ontology_path)?;
+    let mut store = ontology::load_store(ontology_path)?;
 
     for row in rows {
         let tx_id = deterministic_tx_id(row);
@@ -3197,38 +3196,38 @@ fn emit_ingest_ontology_edges(
         tx_attrs.insert("amount".to_string(), row.amount.clone());
         tx_attrs.insert("description".to_string(), row.description.clone());
 
-        let entity_ids = store
-            .upsert_entities(
-                vec![
-                    OntologyEntityInput {
-                        kind: OntologyEntityKind::Document,
-                        attrs: doc_attrs,
-                        custom_kind: None,
-                    },
-                    OntologyEntityInput {
-                        kind: OntologyEntityKind::Transaction,
-                        attrs: tx_attrs,
-                        custom_kind: None,
-                    },
-                ],
-                None,
-            )?
-            .entity_ids;
+        let entity_ids = ontology::upsert_entities(
+            &mut store,
+            vec![
+                OntologyEntityInput {
+                    kind: OntologyEntityKind::Document,
+                    attrs: doc_attrs,
+                },
+                OntologyEntityInput {
+                    kind: OntologyEntityKind::Transaction,
+                    attrs: tx_attrs,
+                },
+            ],
+        )?
+        .entity_ids;
 
         let mut provenance = BTreeMap::new();
         provenance.insert("emitter".to_string(), "ingest_statement_rows".to_string());
         provenance.insert("source_ref".to_string(), row.source_ref.clone());
         provenance.insert("tx_id".to_string(), tx_id);
 
-        store.upsert_edges(vec![OntologyEdgeInput {
-            from: entity_ids[0].clone(),
-            to: entity_ids[1].clone(),
-            relation: "documents_transaction".to_string(),
-            provenance,
-        }])?;
+        ontology::upsert_edges(
+            &mut store,
+            vec![OntologyEdgeInput {
+                from: entity_ids[0].clone(),
+                to: entity_ids[1].clone(),
+                relation: "documents_transaction".to_string(),
+                provenance,
+            }],
+        )?;
     }
 
-    store.persist(ontology_path)
+    ontology::persist_store(&store, ontology_path)
 }
 
 // ── New TurboLedgerService methods ────────────────────────────────────────────
@@ -3895,15 +3894,8 @@ impl TurboLedgerService {
             attrs.insert("xero_id".into(), xero_id.clone());
             attrs.insert("display_name".into(), display_name.clone());
             attrs.insert("local_id".into(), local_id.clone());
-            let _ = store.upsert_entities(
-                vec![OntologyEntityInput {
-                    kind,
-                    attrs,
-                    custom_kind: None,
-                }],
-                None,
-            );
-            let _ = store.persist(&ont_path);
+            let _ = ontology::upsert_entities(&mut store, vec![OntologyEntityInput { kind, attrs }]);
+            let _ = ontology::persist_store(&store, &ont_path);
         }
 
         Ok(serde_json::json!({

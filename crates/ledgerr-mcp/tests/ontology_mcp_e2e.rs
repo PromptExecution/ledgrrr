@@ -5,7 +5,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use ledgerr_mcp::{
-    mcp_adapter, OntologyEdgeInput, OntologyEntityInput, OntologyEntityKind,
+    mcp_adapter, ontology, OntologyEdgeInput, OntologyEntityInput, OntologyEntityKind,
     OntologyExportSnapshotRequest, OntologyStore, TurboLedgerService,
 };
 use serde_json::{json, Value};
@@ -106,8 +106,9 @@ fn initialize_client(client: &mut McpStdioClient) {
 fn seed_ontology(path: &std::path::Path) -> (String, String, String, String) {
     let mut store = OntologyStore::default();
 
-    let entities = store
-        .upsert_entities(vec![
+    let entities = ontology::upsert_entities(
+        &mut store,
+        vec![
             OntologyEntityInput {
                 kind: OntologyEntityKind::Document,
                 attrs: {
@@ -144,16 +145,18 @@ fn seed_ontology(path: &std::path::Path) -> (String, String, String, String) {
                 },
                 custom_kind: None,
             },
-        ], None)
-        .expect("seed entities");
+        ],
+    )
+    .expect("seed entities");
 
     let doc_id = entities.entity_ids[0].clone();
     let tx_id = entities.entity_ids[1].clone();
     let tax_id = entities.entity_ids[2].clone();
     let evidence_id = entities.entity_ids[3].clone();
 
-    store
-        .upsert_edges(vec![
+    ontology::upsert_edges(
+        &mut store,
+        vec![
             OntologyEdgeInput {
                 from: tx_id.clone(),
                 to: tax_id.clone(),
@@ -172,10 +175,11 @@ fn seed_ontology(path: &std::path::Path) -> (String, String, String, String) {
                 relation: "links_evidence".to_string(),
                 provenance: BTreeMap::new(),
             },
-        ])
-        .expect("seed edges");
+        ],
+    )
+    .expect("seed edges");
 
-    store.persist(path).expect("persist seed ontology");
+    ontology::persist_store(&store, path).expect("persist seed ontology");
 
     (doc_id, tx_id, evidence_id, tax_id)
 }

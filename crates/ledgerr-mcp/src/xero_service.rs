@@ -15,7 +15,7 @@ use tracing::info;
 
 #[cfg(feature = "xero")]
 use crate::{
-    ontology::{OntologyEntityInput, OntologyEntityKind, OntologyStore},
+    ontology::{self, OntologyEntityInput, OntologyEntityKind, OntologyStore},
     ToolError,
 };
 
@@ -194,14 +194,10 @@ impl XeroService {
             });
         }
 
-        let inserted = store
-            .upsert_entities(entities, None)
-            .map_err(|e| ToolError::Internal(e.to_string()))?
+        let inserted = ontology::upsert_entities(store, entities)?
             .inserted_count;
 
-        store
-            .persist(ontology_path)
-            .map_err(|e| ToolError::Internal(e.to_string()))?;
+        ontology::persist_store(store, ontology_path)?;
 
         Ok(json!({
             "contacts_synced": contacts.len(),
