@@ -1192,6 +1192,30 @@ pub fn handle_tax_tool(service: &TurboLedgerService, arguments: &Value) -> Value
             crate::feie::handle_compute_feie(tax_year, &foreign_earned_income, days_qualified, housing_exclusion.as_deref(), &test, &test_start, test_end.as_deref(), qualifying_days, window_start.as_deref(), window_end.as_deref()),
         TaxArgs::ComputeDepreciation { tax_year, placed_in_service, total_basis, land_value, improvements, prior_accumulated } =>
             crate::schedule_e::handle_compute_depreciation(tax_year, placed_in_service, total_basis, land_value, improvements, prior_accumulated),
+        TaxArgs::ComputeFbar { tax_year, filing_status, living_abroad, accounts } => {
+            let input = crate::fbar::FbarInput {
+                tax_year,
+                filing_status,
+                living_abroad,
+                accounts: accounts.into_iter().map(|a| crate::fbar::ForeignAccountInput {
+                    account_id: a.account_id,
+                    institution: a.institution,
+                    country: a.country,
+                    currency: a.currency,
+                    daily_balances: a.daily_balances.into_iter().map(|d| crate::fbar::DailyBalance {
+                        date: d.date,
+                        balance: d.balance,
+                    }).collect(),
+                    year_end_rate: a.year_end_rate,
+                }).collect(),
+            };
+            let result = crate::fbar::compute_fbar(&input);
+            let payload = serde_json::to_value(&result).unwrap_or_default();
+            json!({
+                "content": [{ "type": "text", "text": payload.to_string() }],
+                "isError": false,
+            })
+        }
     }
 }
 
