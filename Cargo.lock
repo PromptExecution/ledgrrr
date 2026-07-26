@@ -5880,6 +5880,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tracing",
+ "ufo-types",
  "winreg 0.52.0",
 ]
 
