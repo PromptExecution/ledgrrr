@@ -303,6 +303,17 @@ just mcp-start
 
 Use `Justfile` as the executable workflow contract. When a command changes, update the recipe first and reference the recipe name from docs.
 
+## MCPB Binary Distinction
+
+This project produces **two distinct `.mcpb` bundles** for different use cases:
+
+| Binary | MCPB name | Purpose | Output |
+|--------|-----------|---------|--------|
+| `ledgerr-mcp-server` (domain server) | `ledgerr-mcp-*.mcpb` | Full tax ledger dataplane: PDF ingest, transaction classification, Rhai rules, Xero, reconciliation, workbook export. Runs as a stdio MCP server for general agent use. | `dist/ledgerr-mcp-<target>.mcpb` (ZIP — built by `xtask-mcpb bundle`) |
+| `ledgerr-desktop-agent` (desktop controller) | `ledgerr-desktop-agent.mcpb` | Lightweight Claude Desktop controller: health check, status, desktop host control. Designed for Claude Desktop integration where the full dataplane is unnecessary. | `dist/ledgerr-desktop-agent.mcpb/` (directory — built by `just package-desktop-mcpb`) |
+
+Use `just bundle` for the domain server MCPB and `just package-desktop-mcpb` for the desktop agent. The desktop agent `.mcpb` directory can be referenced directly in Claude Desktop's MCP config.
+
 ## Agent And MCP Guide
 
 - [AGENTS.md](AGENTS.md): agent-facing operating rules, product constraints, and persistent session guidance.
