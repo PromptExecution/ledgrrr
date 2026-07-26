@@ -1149,9 +1149,16 @@ pub fn handle_tax_tool(service: &TurboLedgerService, arguments: &Value) -> Value
         TaxArgs::CryptoCostBasisCheck { lei, tx_hash, tx_type, gross_proceeds, cost_basis, date, acquisition_date, jurisdiction, currency, cost_basis_method, chain, address } =>
             crate::crypto::handle_crypto_cost_basis_check(&lei, &tx_hash, &tx_type, &gross_proceeds, &cost_basis, &date, acquisition_date.as_deref(), &jurisdiction, &currency, &cost_basis_method, &chain, &address),
         TaxArgs::ComputeFeie { tax_year, foreign_earned_income, days_qualified, housing_exclusion, test, test_start, test_end, qualifying_days, window_start, window_end } =>
-            crate::feie::handle_compute_feie(tax_year, &foreign_earned_income, days_qualified, housing_exclusion.as_deref(), &test, &test_start, test_end.as_deref(), qualifying_days, window_start.as_deref(), window_end.as_deref()),
+            error_envelope(&ToolError::InvalidInput("ComputeFeie not yet implemented".to_string())),
         TaxArgs::ComputeDepreciation { tax_year, placed_in_service, total_basis, land_value, improvements, prior_accumulated } =>
             crate::schedule_e::handle_compute_depreciation(tax_year, placed_in_service, total_basis, land_value, improvements, prior_accumulated),
+        TaxArgs::ComputeCapitalLoss { tax_year, filing_status, short_term_losses, long_term_losses, short_term_gains, long_term_gains, prior_short_term_carryforward, prior_long_term_carryforward } =>
+            crate::capital_loss::handle_compute_capital_loss(
+                tax_year, &filing_status, &short_term_losses, &long_term_losses,
+                &short_term_gains, &long_term_gains,
+                prior_short_term_carryforward.as_deref(),
+                prior_long_term_carryforward.as_deref(),
+            ),
     }
 }
 

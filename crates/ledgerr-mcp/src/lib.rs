@@ -44,6 +44,7 @@ pub mod schema;
 pub mod shape_tool;
 pub mod au_rd;
 pub mod crypto;
+pub mod capital_loss;
 pub mod schedule_e;
 pub mod feie;
 pub mod tax_assist;

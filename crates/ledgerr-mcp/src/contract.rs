@@ -715,6 +715,18 @@ pub enum TaxArgs {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         prior_accumulated: Option<String>,
     },
+    ComputeCapitalLoss {
+        tax_year: u16,
+        filing_status: String,
+        short_term_losses: String,
+        long_term_losses: String,
+        short_term_gains: String,
+        long_term_gains: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prior_short_term_carryforward: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prior_long_term_carryforward: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
