@@ -1169,8 +1169,12 @@ pub fn handle_tax_tool(service: &TurboLedgerService, arguments: &Value) -> Value
             crate::au_rd::handle_au_rd_calculate_offset(&lei, &total_eligible_aud, is_refundable),
         TaxArgs::UsRdcFourPartTestCheck { lei, activity_id, activity_name, technical_in_nature, permits_experimentation, technological_uncertainty, systematic_process } =>
             crate::us_rdc::handle_us_rdc_four_part_test(&lei, &activity_id, &activity_name, technical_in_nature, permits_experimentation, technological_uncertainty, systematic_process),
-        TaxArgs::CryptoCostBasisCheck { lei, tx_hash, tx_type, gross_proceeds, cost_basis, date, acquisition_date, jurisdiction, currency } =>
-            crate::crypto::handle_crypto_cost_basis_check(&lei, &tx_hash, &tx_type, &gross_proceeds, &cost_basis, &date, acquisition_date.as_deref(), &jurisdiction, &currency),
+        TaxArgs::CryptoCostBasisCheck { lei, tx_hash, tx_type, gross_proceeds, cost_basis, date, acquisition_date, jurisdiction, currency, cost_basis_method, chain, address } =>
+            crate::crypto::handle_crypto_cost_basis_check(&lei, &tx_hash, &tx_type, &gross_proceeds, &cost_basis, &date, acquisition_date.as_deref(), &jurisdiction, &currency, &cost_basis_method, &chain, &address),
+        TaxArgs::ComputeFeie { tax_year, foreign_earned_income, days_qualified, housing_exclusion, test, test_start, test_end, qualifying_days, window_start, window_end } =>
+            crate::feie::handle_compute_feie(tax_year, &foreign_earned_income, days_qualified, housing_exclusion.as_deref(), &test, &test_start, test_end.as_deref(), qualifying_days, window_start.as_deref(), window_end.as_deref()),
+        TaxArgs::ComputeDepreciation { tax_year, placed_in_service, total_basis, land_value, improvements, prior_accumulated } =>
+            crate::schedule_e::handle_compute_depreciation(tax_year, placed_in_service, total_basis, land_value, improvements, prior_accumulated),
     }
 }
 
