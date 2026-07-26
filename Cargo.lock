@@ -5787,6 +5787,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ledgerr-desktop-agent"
+version = "1.9.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "ledgerr-focus"
 version = "1.9.0"
 dependencies = [
