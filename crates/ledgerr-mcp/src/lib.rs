@@ -3204,10 +3204,12 @@ fn emit_ingest_ontology_edges(
             vec![
                 OntologyEntityInput {
                     kind: OntologyEntityKind::Document,
+                    custom_kind: None,
                     attrs: doc_attrs,
                 },
                 OntologyEntityInput {
                     kind: OntologyEntityKind::Transaction,
+                    custom_kind: None,
                     attrs: tx_attrs,
                 },
             ],
@@ -3897,7 +3899,14 @@ impl TurboLedgerService {
             attrs.insert("xero_id".into(), xero_id.clone());
             attrs.insert("display_name".into(), display_name.clone());
             attrs.insert("local_id".into(), local_id.clone());
-            let _ = ontology::upsert_entities(&mut store, vec![OntologyEntityInput { kind, attrs }]);
+            let _ = ontology::upsert_entities(
+                &mut store,
+                vec![OntologyEntityInput {
+                    kind,
+                    custom_kind: None,
+                    attrs,
+                }],
+            );
             let _ = ontology::persist_store(&store, &ont_path);
         }
 

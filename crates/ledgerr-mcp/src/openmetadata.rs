@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use ledger_core::ontology::ArtifactKind;
 use serde::{Deserialize, Serialize};
 
-use crate::ontology::{OntologyEdgeInput, OntologyEntityInput, OntologyStore};
+use crate::ontology::{self, OntologyEdgeInput, OntologyEntityInput, OntologyStore};
 use crate::ToolError;
 
 pub const SOURCE_SYSTEM: &str = "openmetadata";
@@ -195,8 +195,8 @@ pub fn apply_import(
     store: &mut OntologyStore,
     import: OpenMetadataOntologyImport,
 ) -> Result<(usize, usize), ToolError> {
-    let entity_response = store.upsert_entities(import.entities, None)?;
-    let edge_response = store.upsert_edges(import.edges)?;
+    let entity_response = ontology::upsert_entities(store, import.entities)?;
+    let edge_response = ontology::upsert_edges(store, import.edges)?;
     Ok((entity_response.inserted_count, edge_response.inserted_count))
 }
 

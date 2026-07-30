@@ -18,7 +18,7 @@ fn create_test_service() -> (TurboLedgerService, std::path::PathBuf) {
 #[test]
 fn test_query_transactions_returns_filtered_results() {
     // Create a service with sample data
-    let (service, workbook_path) = create_test_service();
+    let (service, _workbook_path) = create_test_service();
     
     // Ingest some test transactions
     let tx1 = TransactionInput {
@@ -97,7 +97,7 @@ fn test_query_transactions_returns_filtered_results() {
 #[test]
 fn test_query_transactions_applies_sorting() {
     // Create a service with sample data
-    let (service, workbook_path) = create_test_service();
+    let (service, _workbook_path) = create_test_service();
     
     // Ingest transactions with different dates and amounts
     let tx1 = TransactionInput {
@@ -186,7 +186,7 @@ fn test_query_transactions_applies_sorting() {
 #[test]
 fn test_query_transactions_enforces_pagination_limits() {
     // Create a service with many transactions
-    let (service, workbook_path) = create_test_service();
+    let (service, _workbook_path) = create_test_service();
     
     // Create 1500 transactions
     let mut transactions = Vec::new();
@@ -259,7 +259,7 @@ fn test_query_transactions_enforces_pagination_limits() {
 #[test]
 fn test_query_transactions_deterministic_ordering() {
     // Create a service
-    let (service, workbook_path) = create_test_service();
+    let (service, _workbook_path) = create_test_service();
     
     // Create transactions with deterministic content
     let tx1 = TransactionInput {

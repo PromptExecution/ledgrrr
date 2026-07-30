@@ -942,7 +942,6 @@ pub fn spawn_actor_with_agent(service: TurboLedgerService, agent_id: String) -> 
 mod tests {
     use super::*;
     use crate::{AccountSummary, ListAccountsRequest, SampleTxRequest};
-    use ledger_core::manifest::Manifest;
 
     fn test_manifest() -> String {
         format!(

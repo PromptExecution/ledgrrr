@@ -137,15 +137,23 @@ mod integration {
     fn test_cedar_gate_no_op_without_feature() {
         use crate::ledger_ops::{CedarGateOp, LedgerOperation, OperationContext};
 
-        // Without feature, CedarGateOp should be a no-op
+        // Without the feature, CedarGateOp must preserve the successful no-op
+        // contract so callers do not need feature-specific branching.
         let op = CedarGateOp;
         let ctx = OperationContext::new(PathBuf::from("/tmp/working"), PathBuf::from("/tmp/rules"));
 
-        let result = op.execute(&ctx);
-
-        assert!(result.is_ok());
-        let r = result.unwrap();
+        assert_eq!(op.id(), "cedar-gate");
+        assert_eq!(
+            op.description(),
+            "No-op compliance gate (cedar-policy feature disabled)"
+        );
+        let r = op.execute(&ctx).expect("disabled Cedar gate must succeed");
         assert!(r.success);
+        assert_eq!(r.operation_id, "cedar-gate");
+        assert_eq!(r.items_processed, 0);
+        assert_eq!(r.items_flagged, 0);
+        assert!(r.issues.is_empty());
+        assert!(r.row_errors.is_empty());
     }
 
     /// Test CedarGateOp with compliance feature enabled.
