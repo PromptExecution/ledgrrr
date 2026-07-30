@@ -33,7 +33,7 @@ impl Chain {
             "arbitrum" | "arb" => Some(Self::Arbitrum),
             "optimism" | "op" => Some(Self::Optimism),
             "bsc" | "bnb" => Some(Self::Bsc),
-            _ => None,
+            other => Some(Self::Other(other.to_string())),
         }
     }
 
