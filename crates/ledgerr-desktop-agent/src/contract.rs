@@ -67,7 +67,7 @@ pub struct EmptyArgs {}
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct RenderDiagramArgs {
     pub playbook: PlaybookModel,
-    /// One of: mermaid, json, svg. PNG is not yet supported (PRD-10 §6.1
+    /// One of: mermaid, json, svg. PNG is not yet supported (PRD-11 §6.1
     /// marks it a Future format, deferred until a rasterizer dep lands).
     pub format: String,
 }

@@ -1,7 +1,7 @@
 //! `ledgrrr_status` — real local checks only, no mocked fields.
 //!
 //! Every field here is either measured (process/file/PATH lookup) or an
-//! explicit `not_configured`/`missing` marker. PRD-10 §7 requires local
+//! explicit `not_configured`/`missing` marker. PRD-11 §7 requires local
 //! model use to be visible in status output; Phase 1 has no model runtime
 //! yet, so that field always reports `configured: false`.
 

@@ -1,10 +1,10 @@
-//! Diagram rendering — PRD-10 §6.1.
+//! Diagram rendering — PRD-11 §6.1.
 //!
 //! Mermaid and canonical JSON are implemented for real. SVG uses a minimal
 //! deterministic vertical-stack layout (no external layout engine) so it is
 //! honest about its fidelity rather than faking a graph layout. PNG is left
 //! unsupported: it needs a rasterizer dependency this crate does not carry
-//! yet, and PRD-10 §6.1 marks it a "Future" format.
+//! yet, and PRD-11 §6.1 marks it a "Future" format.
 
 use crate::playbook::PlaybookModel;
 

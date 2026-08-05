@@ -1,9 +1,9 @@
-//! Typed playbook/diagram model — PRD-10 §6.2.
+//! Typed playbook/diagram model — PRD-11 §6.2.
 //!
 //! A playbook is the canonical, serializable description of a pipeline that
 //! `ledgrrr_render_diagram` and `ledgrrr_simulate_pipeline` operate over.
 //! `BTreeMap`/`Vec` (never `HashMap`) everywhere so JSON/Mermaid output is
-//! byte-for-byte deterministic for a fixed input, per PRD-10 §9 "Diagram and
+//! byte-for-byte deterministic for a fixed input, per PRD-11 §9 "Diagram and
 //! Office" done criteria.
 
 use std::collections::BTreeMap;

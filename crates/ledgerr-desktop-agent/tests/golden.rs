@@ -1,4 +1,4 @@
-//! Golden/determinism tests — PRD-10 §9 "Diagram and Office" done criteria:
+//! Golden/determinism tests — PRD-11 §9 "Diagram and Office" done criteria:
 //! "Mermaid/SVG/PNG exports are deterministic for a fixed playbook input."
 //! Fixtures live in `tests/fixtures/*.json`, not embedded in test code.
 

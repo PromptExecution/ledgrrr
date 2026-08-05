@@ -1,10 +1,10 @@
-//! Deterministic, non-LLM pipeline simulation — PRD-10 §6.3.
+//! Deterministic, non-LLM pipeline simulation — PRD-11 §6.3.
 //!
 //! This is the CI/audit-replay simulation mode: no model call, no wall-clock
 //! dependency, same `PlaybookModel` + profile always produces the same
 //! `SimulationTrace` (asserted by golden tests). A gate blocks traversal
 //! unless the playbook author marked it `auto_approve` — silence never
-//! implies approval, matching the PRD-10 §7 governance requirement that
+//! implies approval, matching the PRD-11 §7 governance requirement that
 //! privileged/gated steps must not be silently bypassed.
 
 use schemars::JsonSchema;

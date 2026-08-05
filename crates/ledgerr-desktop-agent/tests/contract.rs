@@ -1,4 +1,4 @@
-//! b00t/MCP contract stability — PRD-10 §8 "b00t contract fixtures" done
+//! b00t/MCP contract stability — PRD-11 §8 "b00t contract fixtures" done
 //! criterion: the `ledgrrr_*` tool registry and schemas must not silently
 //! drift.
 
