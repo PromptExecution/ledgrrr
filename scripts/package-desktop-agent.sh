@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ─── package-desktop-agent.sh ──────────────────────────────────────────────────
 # Builds ledgrrr-mcp and assembles the ledgrrr-claude.mcpb bundle for Claude
-# Desktop, per PRD-10 §3.1.
+# Desktop, per PRD-11 §3.1.
 #
 # The desktop controller MCPB is distinct from the ledgerr-mcp-server (domain
 # server) MCPB built by `just bundle`: this one exposes the eleven ledgrrr_*
@@ -33,7 +33,7 @@ mkdir -p "$OUT_DIR/server"
 cp "$REPO_ROOT/target/release/$BINARY_NAME" "$OUT_DIR/server/$BINARY_NAME"
 chmod 755 "$OUT_DIR/server/$BINARY_NAME"
 
-# 4. Write manifest (PRD-10 §3.1 shape)
+# 4. Write manifest (PRD-11 §3.1 shape)
 echo "[3/3] Writing manifest.json..."
 VERSION="${1:-$(cd "$REPO_ROOT" && (cog get-version 2>/dev/null || echo "0.0.0"))}"
 cat > "$OUT_DIR/manifest.json" <<MANIFEST_EOF
@@ -41,7 +41,7 @@ cat > "$OUT_DIR/manifest.json" <<MANIFEST_EOF
   "manifest_version": "0.3",
   "name": "${BINARY_NAME}",
   "version": "${VERSION}",
-  "description": "Claude Desktop controller for l3dg3rr — stdio MCP server exposing the eleven ledgrrr_* desktop-control tools (PRD-10 §3.1). NOT the ledgerr-mcp-server domain server (that is a separate .mcpb for the full tax ledger dataplane, built by 'just bundle').",
+  "description": "Claude Desktop controller for l3dg3rr — stdio MCP server exposing the eleven ledgrrr_* desktop-control tools (PRD-11 §3.1). NOT the ledgerr-mcp-server domain server (that is a separate .mcpb for the full tax ledger dataplane, built by 'just bundle').",
   "author": {
     "name": "Prompt Execution Pty Ltd.",
     "url": "https://github.com/PromptExecution/ledgrrr"

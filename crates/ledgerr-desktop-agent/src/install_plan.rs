@@ -1,10 +1,10 @@
-//! `ledgrrr_install_plan` / privileged-action plans — PRD-10 §3.1, §7.
+//! `ledgrrr_install_plan` / privileged-action plans — PRD-11 §3.1, §7.
 //!
 //! Phase 1 has no native Windows installer (that is a separate future
-//! release artifact per PRD-10 §3.2/§8). Every privileged action in this
+//! release artifact per PRD-11 §3.2/§8). Every privileged action in this
 //! module therefore returns a `Plan` describing what *would* happen and why
 //! it cannot execute yet — never a silent no-op, never a fabricated success.
-//! This matches the non-goal in PRD-10 §10: "MCPB is not the privileged
+//! This matches the non-goal in PRD-11 §10: "MCPB is not the privileged
 //! installer."
 
 use schemars::JsonSchema;
@@ -44,7 +44,7 @@ pub fn install_plan() -> InstallPlan {
         privilege_required: PrivilegeLevel::Elevated,
         executable_now: false,
         blocked_reason: Some(
-            "native Windows installer (ledgrrr-service.exe/ledgrrr-tray.exe packaging) is not built yet — PRD-10 §3.2/§8".to_string(),
+            "native Windows installer (ledgrrr-service.exe/ledgrrr-tray.exe packaging) is not built yet — PRD-11 §3.2/§8".to_string(),
         ),
         paths: vec![
             PlannedPath {
@@ -68,7 +68,7 @@ pub fn native_installer_required_plan(action: &str) -> InstallPlan {
         privilege_required: PrivilegeLevel::Elevated,
         executable_now: false,
         blocked_reason: Some(format!(
-            "{action} requires the native Windows installer, which is not built yet — PRD-10 §3.2/§8"
+            "{action} requires the native Windows installer, which is not built yet — PRD-11 §3.2/§8"
         )),
         paths: Vec::new(),
     }
