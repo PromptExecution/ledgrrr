@@ -1,7 +1,7 @@
 //! `ledgrrr-service` — Phase 1 user-level long-lived background process.
 //!
 //! This is intentionally not a real OS service (no systemd unit, no Windows
-//! Service Control Manager registration — PRD-10 §3.2 assigns that to the
+//! Service Control Manager registration — PRD-11 §3.2 assigns that to the
 //! native installer, not built yet). It exists so `ledgrrr_start_service` /
 //! `ledgrrr_stop_service` / `ledgrrr_status` have something real to control
 //! and observe: it writes a heartbeat file on a fixed interval.

@@ -3,7 +3,7 @@
 //! Hand-rolled JSON-RPC-over-stdio loop, mirroring
 //! `crates/ledgerr-mcp/src/bin/ledgerr-mcp-server.rs` so the two MCP
 //! surfaces (`ledgerr_*` domain tools, `ledgrrr_*` desktop controller tools)
-//! stay structurally consistent. See PRD-10 §3.1 for the tool contract and
+//! stay structurally consistent. See PRD-11 §3.1 for the tool contract and
 //! §7 for why mutating tools here return plans rather than executing
 //! privileged actions directly.
 

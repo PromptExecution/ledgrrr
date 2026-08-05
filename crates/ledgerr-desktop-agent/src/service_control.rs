@@ -1,7 +1,7 @@
 //! `ledgrrr_start_service` / `ledgrrr_stop_service` / `ledgrrr_open_tray`.
 //!
 //! Phase 1 has no OS service manager (no systemd unit, no Windows Service
-//! Control Manager registration — that is native-installer territory, PRD-10
+//! Control Manager registration — that is native-installer territory, PRD-11
 //! §3.2). What Phase 1 *can* do honestly, without elevation, is spawn/kill a
 //! user-level `ledgrrr-service` child process and track it via the
 //! heartbeat file in [`crate::state`], and launch a tray binary if one is

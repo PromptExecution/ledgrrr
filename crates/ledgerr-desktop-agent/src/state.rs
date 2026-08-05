@@ -1,7 +1,7 @@
 //! Local state directory + service heartbeat/pid file.
 //!
 //! Phase 1 has no OS service manager integration (that is native-installer
-//! territory per PRD-10 §3.2/§7). `ledgrrr-service` is a plain long-lived
+//! territory per PRD-11 §3.2/§7). `ledgrrr-service` is a plain long-lived
 //! process the controller can spawn/kill at the user level; this module is
 //! the shared contract both sides use to find it.
 

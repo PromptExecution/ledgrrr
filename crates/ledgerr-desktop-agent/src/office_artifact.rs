@@ -1,6 +1,6 @@
 //! `ledgrrr_export_office_artifact` — local versioned bundle only.
 //!
-//! PRD-10 §9 requires "Diagram refresh never silently mutates a published
+//! PRD-11 §9 requires "Diagram refresh never silently mutates a published
 //! artifact without creating a new version/evidence node." Phase 1 has no
 //! OneNote/SharePoint tenant to publish to, so this writes a local,
 //! version-numbered bundle (mermaid + svg + playbook json + provenance) that
