@@ -368,10 +368,10 @@ update-server-json artifact sha256="":
         --sha256 "$SHA" \
         --artifact-url "https://github.com/PromptExecution/l3dg3rr/releases/download/$VERSION/$FILENAME"
 
-# Build release binary and assemble the desktop-agent .mcpb directory for Claude Desktop.
-# The desktop-agent MCPB is distinct from the ledgerr-mcp-server (domain server) MCPB:
+# Build release binary and assemble the desktop controller .mcpb directory for Claude Desktop.
+# Distinct from `just bundle` (the ledgerr-mcp-server domain-server MCPB):
 #   - ledgerr-mcp-server → full tax ledger dataplane (dist/ledgerr-mcp-*.mcpb)
-#   - ledgerr-desktop-agent → lightweight Claude Desktop controller (dist/ledgerr-desktop-agent.mcpb/)
+#   - ledgrrr-mcp        → PRD-10 desktop controller, eleven ledgrrr_* tools (dist/ledgrrr-claude.mcpb/)
 package-desktop-mcpb:
     ./scripts/package-desktop-agent.sh
 

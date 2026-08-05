@@ -1,0 +1,21 @@
+{
+  "playbook_id": "demo-linear",
+  "title": "Demo Linear Pipeline",
+  "version": "1.0.0",
+  "source": "test-fixture",
+  "nodes": [
+    { "id": "start", "label": "Start", "kind": "start" },
+    { "id": "ingest", "label": "Ingest PDF", "kind": "task", "b00t_capability": "ledgrrr.mcp" },
+    { "id": "end", "label": "End", "kind": "end" }
+  ],
+  "edges": [
+    { "from": "start", "to": "ingest" },
+    { "from": "ingest", "to": "end", "label": "ingested" }
+  ],
+  "capability_refs": ["ledgrrr.mcp"],
+  "evidence_refs": [],
+  "simulation_profile": "deterministic",
+  "approval_gates": [],
+  "rollback_actions": [],
+  "office_artifacts": []
+}
