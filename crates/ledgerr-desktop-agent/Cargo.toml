@@ -3,17 +3,14 @@ name = "ledgerr-desktop-agent"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Claude Desktop MCP controller for l3dg3rr — lightweight stdio agent distinct from the ledgerr-mcp domain server"
-
-[[bin]]
-name = "ledgerr-desktop-agent"
-path = "src/bin/desktop-agent.rs"
 
 [dependencies]
+blake3 = { workspace = true }
+schemars = { version = "0.8", features = ["derive"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
-chrono = { workspace = true }
-tracing = { workspace = true }
+sysinfo = { version = "0.33", default-features = false, features = ["system"] }
+thiserror = { workspace = true }
 
 [lints]
 workspace = true
