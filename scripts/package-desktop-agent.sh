@@ -2,19 +2,21 @@
 set -euo pipefail
 
 # ─── package-desktop-agent.sh ──────────────────────────────────────────────────
-# Builds ledgrrr-desktop-agent and assembles a .mcpb directory for Claude Desktop.
+# Builds ledgrrr-mcp and assembles the ledgrrr-claude.mcpb bundle for Claude
+# Desktop, per PRD-10 §3.1.
 #
-# The desktop-agent MCPB is distinct from the ledgerr-mcp-server (domain server)
-# MCPB.  Use this package when you want Claude Desktop to control the l3dg3rr
-# desktop host, not the full ledger dataplane.
+# The desktop controller MCPB is distinct from the ledgerr-mcp-server (domain
+# server) MCPB built by `just bundle`: this one exposes the eleven ledgrrr_*
+# desktop-control tools (status/install/service/tray/render/simulate/office),
+# not the full ledger dataplane.
 #
-# Output: dist/ledgerr-desktop-agent.mcpb/
+# Output: dist/ledgrrr-claude.mcpb/
 # ────────────────────────────────────────────────────────────────────────────────
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DIST_DIR="$REPO_ROOT/dist"
-OUT_DIR="$DIST_DIR/ledgerr-desktop-agent.mcpb"
-BINARY_NAME="ledgerr-desktop-agent"
+OUT_DIR="$DIST_DIR/ledgrrr-claude.mcpb"
+BINARY_NAME="ledgrrr-mcp"
 
 echo "=== package-desktop-agent ==="
 
@@ -31,18 +33,18 @@ mkdir -p "$OUT_DIR/server"
 cp "$REPO_ROOT/target/release/$BINARY_NAME" "$OUT_DIR/server/$BINARY_NAME"
 chmod 755 "$OUT_DIR/server/$BINARY_NAME"
 
-# 4. Write manifest (clearly identifies as desktop-agent, NOT domain server)
+# 4. Write manifest (PRD-10 §3.1 shape)
 echo "[3/3] Writing manifest.json..."
 VERSION="${1:-$(cd "$REPO_ROOT" && (cog get-version 2>/dev/null || echo "0.0.0"))}"
 cat > "$OUT_DIR/manifest.json" <<MANIFEST_EOF
 {
   "manifest_version": "0.3",
-  "name": "ledgerr-desktop-agent",
+  "name": "${BINARY_NAME}",
   "version": "${VERSION}",
-  "description": "Claude Desktop controller for l3dg3rr — lightweight stdio agent for desktop host control.  NOT the ledgerr-mcp domain server (that is a separate .mcpb for the full tax ledger dataplane).",
+  "description": "Claude Desktop controller for l3dg3rr — stdio MCP server exposing the eleven ledgrrr_* desktop-control tools (PRD-10 §3.1). NOT the ledgerr-mcp-server domain server (that is a separate .mcpb for the full tax ledger dataplane, built by 'just bundle').",
   "author": {
     "name": "Prompt Execution Pty Ltd.",
-    "url": "https://github.com/PromptExecution/l3dg3rr"
+    "url": "https://github.com/PromptExecution/ledgrrr"
   },
   "server": {
     "type": "binary",
