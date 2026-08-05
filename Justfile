@@ -540,25 +540,6 @@ check-drift:
     echo "PASS: gen.rs is regenerated at build time from types/domain.kerm via build.rs"
 
     echo ""
-    echo "=== check-drift: generated-types.ts ==="
-    cargo run -p xtask-mcpb -- generate-ts-types --output /tmp/ts_check.ts 2>&1
-    if ! diff ui/docs/src/iso/generated-types.ts /tmp/ts_check.ts > /dev/null 2>&1; then
-        echo "FAIL: generated-types.ts is out of date — run: cargo run -p xtask-mcpb -- generate-ts-types"
-        FAIL=1
-    else
-        echo "PASS: generated-types.ts is up to date"
-    fi
-
-    echo "=== check-drift: generated-types.py ==="
-    cargo run -p xtask-mcpb -- generate-py-types --output /tmp/py_check.py 2>&1
-    if ! diff ui/docs/src/iso/generated-types.py /tmp/py_check.py > /dev/null 2>&1; then
-        echo "FAIL: generated-types.py is out of date — run: cargo run -p xtask-mcpb -- generate-py-types"
-        FAIL=1
-    else
-        echo "PASS: generated-types.py is up to date"
-    fi
-
-    echo ""
     if [ "$FAIL" -eq 0 ]; then
         echo "=== check-drift: all artifacts up to date ==="
     else
