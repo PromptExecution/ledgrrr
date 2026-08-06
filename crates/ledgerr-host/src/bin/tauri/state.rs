@@ -4,7 +4,7 @@ use ledgerr_host::chat::{ChatTurn, ReviewLog};
 use ledgerr_host::evidence::EvidenceState;
 use ledgerr_host::internal_openai::InternalOpenAiHandle;
 
-use crate::settings_client::SettingsClient;
+use ledgerr_host::settings_client::SettingsClient;
 
 pub struct AppState {
     pub store: Arc<SettingsClient>,
