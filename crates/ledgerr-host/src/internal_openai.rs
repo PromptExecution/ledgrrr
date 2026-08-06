@@ -1710,17 +1710,6 @@ mod tests {
     }
 }
 
-/// Resolve ChatSettings from the operator's model_provider choice.
-///
-/// Returns (resolved_settings, Option<ProviderReadiness>) where the second
-/// element is Some when a fallback occurred (e.g., WindowsAi selected but
-/// Foundry not installed). The caller decides whether to surface the warning.
-pub fn resolve_chat(
-    settings: &ledgrrr_settings::AppSettings,
-) -> (ChatSettings, Option<ProviderReadiness>) {
-    resolve_chat_settings(settings)
-}
-
 /// Resolve active ChatSettings from the AppSettings model_provider field.
 ///
 /// Returns the resolved settings and an optional warning if a fallback occurred.
