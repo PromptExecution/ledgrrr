@@ -5,7 +5,6 @@
 
 #[cfg(target_os = "windows")]
 mod commands;
-mod settings_client;
 #[cfg(target_os = "windows")]
 mod state;
 #[cfg(target_os = "windows")]
@@ -57,7 +56,7 @@ fn main() {
     use state::AppState;
     use std::sync::{Arc, Mutex};
 
-    let store = Arc::new(crate::settings_client::SettingsClient::new());
+    let store = Arc::new(ledgerr_host::settings_client::SettingsClient::new());
     let history: Arc<Mutex<Vec<ChatTurn>>> = Arc::new(Mutex::new(Vec::new()));
     let review_log: Arc<Mutex<ReviewLog>> = Arc::new(Mutex::new(ReviewLog::default()));
     let internal_endpoint: Arc<Mutex<Option<InternalOpenAiHandle>>> = Arc::new(Mutex::new(None));
