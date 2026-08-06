@@ -96,7 +96,7 @@ fn detect_service() -> ServiceStatus {
 
 /// Candidate tray binaries this repo already builds, checked next to the
 /// running controller binary and then on PATH.
-const TRAY_CANDIDATES: &[&str] = &["host-tray", "ledgerr-tauri"];
+const TRAY_CANDIDATES: &[&str] = &["host-tray", "host-tauri"];
 
 /// Finds a tray binary next to this controller's own executable, then on
 /// PATH. Shared by [`status::collect`] (reporting) and
@@ -168,5 +168,18 @@ pub fn collect() -> LedgrrrStatus {
         sharepoint_webpart: OfficeSurfaceStatus {
             state: "not_configured".to_string(),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tray_candidates_matches_the_real_host_tauri_binary_name() {
+        assert!(
+            TRAY_CANDIDATES.contains(&"host-tauri"),
+            "TRAY_CANDIDATES must list the real host-tauri bin target, not a nonexistent ledgerr-tauri binary: {TRAY_CANDIDATES:?}"
+        );
     }
 }
