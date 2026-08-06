@@ -13,20 +13,38 @@
 //! Catching SIGTERM to delete the heartbeat file a few seconds earlier
 //! isn't worth doing unsafe, signal-unsafe file I/O for.
 
-use std::time::Duration;
-
-use ledgerr_desktop_agent::state;
+use ledgerr_desktop_agent::{settings_server, state};
+use ledgrrr_settings::{default_settings_path, SettingsStore};
+use std::time::{Duration, Instant};
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
+const ACCEPT_POLL_INTERVAL: Duration = Duration::from_millis(25);
 
 fn main() {
     let pid = std::process::id();
     let started_at = state::now();
+    let store = SettingsStore::new(default_settings_path());
 
+    let listener = match settings_server::bind() {
+        Ok(listener) => Some(listener),
+        Err(error) => {
+            eprintln!(
+                "ledgrrr-service: failed to bind settings server on {}: {error} — heartbeat only, no settings HTTP surface this run",
+                settings_server::SETTINGS_SERVER_ADDR
+            );
+            None
+        }
+    };
+
+    let mut last_heartbeat = Instant::now() - HEARTBEAT_INTERVAL;
     loop {
-        // Best-effort: if the state dir is unwritable, retry on the next
-        // tick rather than crash a background daemon.
-        let _ = state::write_heartbeat(pid, started_at);
-        std::thread::sleep(HEARTBEAT_INTERVAL);
+        if last_heartbeat.elapsed() >= HEARTBEAT_INTERVAL {
+            let _ = state::write_heartbeat(pid, started_at);
+            last_heartbeat = Instant::now();
+        }
+        if let Some(listener) = &listener {
+            settings_server::accept_once(listener, &store);
+        }
+        std::thread::sleep(ACCEPT_POLL_INTERVAL);
     }
 }
