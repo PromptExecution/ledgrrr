@@ -198,7 +198,6 @@ const TRAY_CANDIDATES: &[&str] = &[
     "host-tauri.exe",
     "host-tray.exe",
     "host-tray",
-    "ledgerr-tauri",
 ];
 
 /// Finds a tray binary next to this controller's own executable, then on
@@ -285,5 +284,18 @@ pub fn collect() -> LedgrrrStatus {
         sharepoint_webpart: OfficeSurfaceStatus {
             state: "not_configured".to_string(),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tray_candidates_matches_the_real_host_tauri_binary_name() {
+        assert!(
+            TRAY_CANDIDATES.contains(&"host-tauri"),
+            "TRAY_CANDIDATES must list the real host-tauri bin target, not a nonexistent ledgerr-tauri binary: {TRAY_CANDIDATES:?}"
+        );
     }
 }
