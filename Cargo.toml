@@ -4,6 +4,7 @@ members = [
   "crates/ledger-core",
   "crates/ledger-attest",
   "crates/ledgerr-focus",
+  "crates/ledgrrr-settings",
   "crates/ledgerr-host",
   "crates/ledgerr-mcp",
   "crates/ledgerr-mcp-core",
