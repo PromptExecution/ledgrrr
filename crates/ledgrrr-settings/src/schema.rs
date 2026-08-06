@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use crate::internal_openai::ModelProviderLabel;
-use crate::notify::{NotificationBackend, NotificationTestResult};
+use crate::model_provider::ModelProviderLabel;
+use crate::notification::{NotificationBackend, NotificationTestResult};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -111,21 +111,5 @@ impl Default for AppSettings {
             enable_tray: true,
             last_test_result: None,
         }
-    }
-}
-
-impl AppSettings {
-    /// Resolve ChatSettings from the operator's model_provider choice.
-    ///
-    /// Returns (resolved_settings, Option<ProviderReadiness>) where the second
-    /// element is Some when a fallback occurred (e.g., WindowsAi selected but
-    /// Foundry not installed). The caller decides whether to surface the warning.
-    pub fn resolve_chat(
-        &self,
-    ) -> (
-        ChatSettings,
-        Option<crate::internal_openai::ProviderReadiness>,
-    ) {
-        crate::internal_openai::resolve_chat_settings(self)
     }
 }
