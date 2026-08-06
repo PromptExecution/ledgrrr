@@ -139,9 +139,12 @@ fn pipe_ingest_classify_ontology_flow_produces_deterministic_results() {
 
     // Step 3: Verify ontology was populated by ingest
     let store = OntologyStore::load(&ontology_path).expect("load ontology");
-    assert!(!store.entities.is_empty(), "ontology should have entities");
+    assert!(
+        !store.artifacts.is_empty(),
+        "ontology should have entities"
+    );
     let document_entities: Vec<_> = store
-        .entities
+        .artifacts
         .iter()
         .filter(|e| e.kind == OntologyEntityKind::Document)
         .collect();
@@ -151,7 +154,7 @@ fn pipe_ingest_classify_ontology_flow_produces_deterministic_results() {
         "one document entity from ingest"
     );
     let tx_entities: Vec<_> = store
-        .entities
+        .artifacts
         .iter()
         .filter(|e| e.kind == OntologyEntityKind::Transaction)
         .collect();
@@ -160,8 +163,12 @@ fn pipe_ingest_classify_ontology_flow_produces_deterministic_results() {
         1,
         "one transaction entity from ingest"
     );
-    assert_eq!(store.edges.len(), 1, "one edge from document to transaction");
-    assert_eq!(store.edges[0].relation, "documents_transaction");
+    assert_eq!(
+        store.relations.len(),
+        1,
+        "one edge from document to transaction"
+    );
+    assert_eq!(store.relations[0].relation, "documents_transaction");
 }
 
 // ── Viz-manifest entry count verification ────────────────────────────────────
