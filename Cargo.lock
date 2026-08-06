@@ -5921,6 +5921,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ledgrrr-settings"
+version = "1.9.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "windows-registry",
+]
+
+[[package]]
 name = "lexical-core"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
