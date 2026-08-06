@@ -2,9 +2,10 @@
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use ledgerr_desktop_agent::state;
+use ledgerr_desktop_agent::{settings_server, state};
+use ledgrrr_settings::{default_settings_path, SettingsStore};
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 
@@ -93,13 +94,24 @@ fn main() {
         return;
     }
     let _ = listener.set_nonblocking(true);
+    let settings_store = SettingsStore::new(default_settings_path());
+    let settings_listener = match settings_server::bind() {
+        Ok(listener) => Some(listener),
+        Err(error) => {
+            state::audit("runtime", "settings_bind", "unavailable", error.to_string());
+            None
+        }
+    };
     state::audit("runtime", "start", "ok", format!("mode={mode}"));
 
-    let mut last_heartbeat = std::time::Instant::now() - HEARTBEAT_INTERVAL;
+    let mut last_heartbeat = Instant::now() - HEARTBEAT_INTERVAL;
     loop {
         if last_heartbeat.elapsed() >= HEARTBEAT_INTERVAL {
             let _ = state::write_heartbeat(pid, started_at);
-            last_heartbeat = std::time::Instant::now();
+            last_heartbeat = Instant::now();
+        }
+        if let Some(settings_listener) = &settings_listener {
+            settings_server::accept_once(settings_listener, &settings_store);
         }
         match listener.accept() {
             Ok((stream, _)) => {
