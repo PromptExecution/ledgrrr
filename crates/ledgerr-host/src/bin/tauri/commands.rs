@@ -200,7 +200,7 @@ pub fn get_initial_state(state: tauri::State<'_, AppState>) -> Result<InitialSta
         settings.chat = internal_phi_chat_settings(settings.chat.system_prompt.clone());
     }
 
-    let status_text = format!("Editing {}", state.store.path().display());
+    let status_text = "Editing settings via ledgrrr-service".to_string();
 
     Ok(InitialState {
         version_text: format!("Version {}", env!("CARGO_PKG_VERSION")),
@@ -239,10 +239,7 @@ pub fn save_settings(
 
     state.store.save(&settings).map_err(|e| e.to_string())?;
 
-    Ok(format!(
-        "Saved chat settings to {}",
-        state.store.path().display()
-    ))
+    Ok("Saved chat settings via ledgrrr-service".to_string())
 }
 
 #[tauri::command]
