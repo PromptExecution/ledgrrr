@@ -13,6 +13,7 @@ pub mod playbook;
 pub mod render;
 pub mod runtime_client;
 pub mod service_control;
+pub mod settings_server;
 pub mod simulate;
 pub mod state;
 pub mod status;
