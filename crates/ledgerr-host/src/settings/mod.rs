@@ -1,7 +1,4 @@
-mod path;
-mod schema;
-mod store;
-
-pub use path::default_settings_path;
-pub use schema::{AppSettings, ChatSettings, SettingsSchemaVersion, ShowNotificationsFor};
-pub use store::{SettingsError, SettingsStore};
+pub use ledgrrr_settings::{
+    default_settings_path, AppSettings, ChatSettings, SettingsError, SettingsSchemaVersion,
+    SettingsStore, ShowNotificationsFor,
+};
