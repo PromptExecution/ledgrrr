@@ -1226,6 +1226,32 @@ fn default_phi4_model_path() -> Option<PathBuf> {
     d_drive_model.exists().then_some(d_drive_model)
 }
 
+/// Resolve active ChatSettings from the AppSettings model_provider field.
+///
+/// Returns the resolved settings and an optional warning if a fallback occurred.
+/// The caller decides whether to surface the warning or swallow it.
+pub fn resolve_chat_settings(
+    settings: &crate::settings::AppSettings,
+) -> (ChatSettings, Option<ProviderReadiness>) {
+    match settings
+        .model_provider
+        .chat_settings(settings.chat.system_prompt.clone())
+    {
+        Ok(cs) => (cs, None),
+        Err(_) => {
+            let fallback = local_demo_chat_settings(settings.chat.system_prompt.clone());
+            let warning = Some(ProviderReadiness::Diagnostic {
+                reason: format!(
+                    "{} unavailable, fell back to Local Demo. {}",
+                    settings.model_provider.display_name(),
+                    settings.model_provider.readiness(settings),
+                ),
+            });
+            (fallback, warning)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1426,7 +1452,7 @@ mod tests {
             stream: false,
         };
 
-        let response = Phi4LocalFallbackBackend::default()
+        let response = Phi4LocalFallbackBackend
             .complete(&request)
             .expect("fallback should respond");
 
@@ -1699,31 +1725,5 @@ mod tests {
         let (cs, warning) = resolve_chat_settings(&settings);
         assert!(!cs.endpoint_url.is_empty());
         assert!(warning.is_some());
-    }
-}
-
-/// Resolve active ChatSettings from the AppSettings model_provider field.
-///
-/// Returns the resolved settings and an optional warning if a fallback occurred.
-/// The caller decides whether to surface the warning or swallow it.
-pub fn resolve_chat_settings(
-    settings: &crate::settings::AppSettings,
-) -> (ChatSettings, Option<ProviderReadiness>) {
-    match settings
-        .model_provider
-        .chat_settings(settings.chat.system_prompt.clone())
-    {
-        Ok(cs) => (cs, None),
-        Err(_) => {
-            let fallback = local_demo_chat_settings(settings.chat.system_prompt.clone());
-            let warning = Some(ProviderReadiness::Diagnostic {
-                reason: format!(
-                    "{} unavailable, fell back to Local Demo. {}",
-                    settings.model_provider.display_name(),
-                    settings.model_provider.readiness(settings),
-                ),
-            });
-            (fallback, warning)
-        }
     }
 }
