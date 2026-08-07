@@ -1,5 +1,12 @@
-//! `HasVisualization` implementations for the 21 domain types that participate
+//! `HasVisualization` implementations for the 28 domain types that participate
 //! in the isometric pipeline view.
+//!
+//! Every `impl HasVisualization` added here must also be registered in
+//! `xtask/src/viz_manifest.rs::export_viz_manifest` and reflected in the
+//! checked-in `ui/docs/public/viz-manifest.json` (regenerate via
+//! `cargo run -p xtask-mcpb -- export-viz-manifest`), or the
+//! `pipe_viz_manifest_entry_count_matches_registered_types` test in
+//! `crates/ledgerr-mcp/tests/pipeline_e2e.rs` will drift out of sync.
 
 use crate::iso::{HasVisualization, RhaiDsl, SemanticType, VisualizationSpec, ZLayer};
 
