@@ -4560,6 +4560,7 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
+ "specta",
  "tempfile",
  "thiserror 2.0.18",
  "tracing",
