@@ -296,13 +296,13 @@ unsafe fn build_tray_menu(
     // ── helpers ──────────────────────────────────────────────────────────
     fn push_info(hmenu: HMENU, id: u32, text: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let wide: Vec<u16> = OsStr::new(text).encode_wide().chain(core::iter::once(0)).collect();
-        AppendMenuW(hmenu, MF_STRING | MF_GRAYED, id as usize, PCWSTR::from_raw(wide.as_ptr()))?;
+        unsafe { AppendMenuW(hmenu, MF_STRING | MF_GRAYED, id as usize, PCWSTR::from_raw(wide.as_ptr()))? };
         Ok(())
     }
 
     fn push_action(hmenu: HMENU, id: u32, text: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let wide: Vec<u16> = OsStr::new(text).encode_wide().chain(core::iter::once(0)).collect();
-        AppendMenuW(hmenu, MF_STRING, id as usize, PCWSTR::from_raw(wide.as_ptr()))?;
+        unsafe { AppendMenuW(hmenu, MF_STRING, id as usize, PCWSTR::from_raw(wide.as_ptr()))? };
         Ok(())
     }
 
@@ -313,7 +313,7 @@ unsafe fn build_tray_menu(
         } else {
             MF_STRING | MF_UNCHECKED
         };
-        AppendMenuW(hmenu, flags, id as usize, PCWSTR::from_raw(wide.as_ptr()))?;
+        unsafe { AppendMenuW(hmenu, flags, id as usize, PCWSTR::from_raw(wide.as_ptr()))? };
         Ok(())
     }
 
