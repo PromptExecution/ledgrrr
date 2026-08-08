@@ -73,6 +73,7 @@ Last activity: 2026-08-08 — Phase 22 (Release Automation Foundation) complete:
 - [Phase 22]: Extended the existing build-tauri-windows.yml in-place (outer `_b00t_` repo) rather than adding a second workflow file, since build and release share the same runner/artifacts — mirrors browser-ext-release.yml's single-file tag-gated pattern.
 - [Phase 22]: Chose `ledgrrr-desktop-v*` as the release tag prefix, pushed to the outer `_b00t_` repo (not the `ledgrrr` submodule), to avoid ambiguity with `_b00t_`'s own bare `v*` workspace-release tags and `ledgrrr`'s internal `cog bump` tags.
 - [Phase 22]: Declared explicit job-level `permissions: contents: write` on the release job (least-privilege), rather than relying on repo-default token permissions as browser-ext-release.yml does.
+- [Phase 22]: Submodule pointer bump prepared but not pushed — outer `_b00t_` repo local commit `5fd871380f375375a1607b5b8b24aba2945c104b` advances `vendor/ledgrrr` from `a233aa53` to `b84bf0f7` (includes the `crates/ledgerr-tauri` → `crates/ledgerr-host` rename). Workspace version at that commit is `1.9.0`. Operator still needs to run, from the outer `_b00t_` repo on the branch that should own the release (e.g. after merge to `main`, or directly on `task/31-windows-packaging` since its push trigger already matches): `git tag ledgrrr-desktop-v1.9.0 && git push origin <branch> --tags` to fire `build-tauri-windows.yml`'s tag-gated release job.
 
 ### Pending Todos
 
