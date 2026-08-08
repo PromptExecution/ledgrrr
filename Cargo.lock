@@ -5834,6 +5834,7 @@ version = "1.9.0"
 dependencies = [
  "agentmesh",
  "arc-kit-au",
+ "beankeeper-bridge",
  "blake3",
  "calamine",
  "cfg-if",
@@ -5845,6 +5846,7 @@ dependencies = [
  "ledgerr-mcp-core",
  "ledgerr-xero",
  "msft-agent-gov-ledgrrr",
+ "ofx-rs",
  "reqwest 0.12.28",
  "rust_decimal",
  "rust_xlsxwriter",
