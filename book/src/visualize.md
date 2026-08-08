@@ -9,6 +9,7 @@ The visualize module generates Mermaid diagrams and HTML exports for pipeline st
 - [Render](./render.md) - Screen coordinate mapping
 - [Slint Viz](./slint_viz.md) - Slint integration
 - [Match Visualization Plan](./match-visualization-plan.md) - future multi-arm branch semantics
+- [Desktop Agent and Office Playbook Surface](./desktop-agent-office-playbook.md) - MCPB, OneNote, SharePoint, and local simulation surface
 
 ## PipelineGraph
 
@@ -157,6 +158,27 @@ assert!(rhai.contains("next_state"));
 let html = to_html(&graph);
 // Returns complete HTML with Mermaid.js
 ```
+
+## Office Playbook Export
+
+The desktop agent treats diagrams as versioned playbook artifacts that can be inserted into OneNote/Office or rendered in SharePoint. A diagram export is therefore more than a screenshot: it must carry a typed playbook model, render metadata, simulation profile, and evidence refs.
+
+Minimum formats:
+
+| Format | Use |
+|---|---|
+| Mermaid | Source-level editable diagram and review diff. |
+| SVG | Preferred high-fidelity Office/SharePoint visual artifact where supported. |
+| PNG | Compatibility fallback for Office clients that do not preserve SVG behavior. |
+| HTML | Interactive playbook renderer for local desktop and SharePoint-hosted views. |
+| JSON | Canonical playbook model with typed nodes, edges, gates, b00t capability refs, ledgrrr evidence refs, and simulation state. |
+
+Refresh semantics:
+
+1. A refresh creates a new artifact version.
+2. The previous published artifact remains addressable.
+3. The evidence graph records source input, model/runtime profile, render hash, and approval state.
+4. OneNote/Office and SharePoint views render the artifact; ledgrrr remains the owner of source truth and provenance.
 
 ## LayoutSolver
 
