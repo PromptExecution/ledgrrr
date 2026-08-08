@@ -1,13 +1,12 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: Claude Connector Interop
+milestone: v1.3
+milestone_name: Windows Distribution & Winget Packaging
 status: planning
-stopped_at: Roadmap created for phases 19-21
-last_updated: "2026-03-29T21:42:28.000Z"
-last_activity: 2026-03-30
+last_updated: "2026-08-08T11:32:32.253Z"
+last_activity: 2026-08-08
 progress:
-  total_phases: 3
+  total_phases: 0
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -25,12 +24,10 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 
 ## Current Position
 
-Phase: 19 - Connector Capability Profile Contract
-Plan: Not started
-Status: Roadmap approved baseline ready for planning
-Last activity: 2026-03-30 — v1.2 roadmap created with phases 19-21
-
-Progress: [░░░░░░░░░░] 0%
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-08-08 — Milestone v1.3 started
 
 ## Performance Metrics
 

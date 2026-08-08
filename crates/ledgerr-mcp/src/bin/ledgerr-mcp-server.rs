@@ -281,29 +281,19 @@ fn handle_request(request: Value) -> Option<Value> {
     }
 }
 
-/// Build the service, spawn an actor, and leak a raw reference for the adapter path.
-fn build_service() -> (
-    &'static ledgerr_mcp::TurboLedgerService,
-    ledgerr_mcp::actor::ServiceHandle,
-) {
+/// Build the service and leak a raw reference for the adapter path.
+fn build_service() -> &'static ledgerr_mcp::TurboLedgerService {
     let manifest = std::env::var("LEDGERR_MCP_MANIFEST").unwrap_or_else(|_| {
         "[session]\nworkbook_path=\"tax-ledger.xlsx\"\nactive_year=2023\n\n[accounts]\nWF-BH-CHK = { institution = \"Wells Fargo\", type = \"checking\", currency = \"USD\" }\n".to_string()
     });
-    let service = ledgerr_mcp::TurboLedgerService::from_manifest_str(&manifest)
-        .expect("default manifest must parse");
-    let handle = service.spawn_actor();
     let raw = Box::new(
         ledgerr_mcp::TurboLedgerService::from_manifest_str(&manifest)
             .expect("default manifest must parse"),
     );
-    let leaked = Box::leak(raw);
-    (leaked, handle)
+    Box::leak(raw)
 }
 
 fn global_raw_service() -> &'static ledgerr_mcp::TurboLedgerService {
-    static PAIR: OnceLock<(
-        &'static ledgerr_mcp::TurboLedgerService,
-        ledgerr_mcp::actor::ServiceHandle,
-    )> = OnceLock::new();
-    PAIR.get_or_init(build_service).0
+    static SERVICE: OnceLock<&'static ledgerr_mcp::TurboLedgerService> = OnceLock::new();
+    *SERVICE.get_or_init(build_service)
 }

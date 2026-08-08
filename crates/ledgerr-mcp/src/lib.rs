@@ -22,14 +22,12 @@ use ledgerr_llm::{LlmClient, LlmConfig};
 #[cfg(feature = "xero")]
 use xero_service::XeroService;
 
-pub mod actor;
 pub mod batch_executor;
 use crate::batch_executor::BatchExecutor;
 pub mod calendar_tool;
 pub mod contract;
 pub mod events;
 pub mod focus_tool;
-pub mod gate;
 pub mod hsm;
 pub mod mcp_adapter;
 pub mod ontology;
@@ -696,11 +694,6 @@ impl TurboLedgerService {
             #[cfg(feature = "llm")]
             llm,
         })
-    }
-
-    /// Spawn the service behind a channel actor, returning a handle.
-    pub fn spawn_actor(self) -> crate::actor::ServiceHandle {
-        crate::actor::spawn_actor(self)
     }
 
     pub fn workbook_path(&self) -> &std::path::Path {

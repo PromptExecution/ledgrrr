@@ -8,14 +8,16 @@ tax-ledger is a local-first personal financial document intelligence system focu
 
 Convert raw historical financial PDFs into accountant-usable, auditable Excel tax records without sending private data to third-party SaaS.
 
-## Current Milestone: v1.2 Claude Connector Interop
+## Current Milestone: v1.3 Windows Distribution & Winget Packaging
 
-**Goal:** Align l3dg3rr MCP surfaces with Claude connector workflows so operators can safely install, activate, and use connector capabilities with deterministic, agent-native behavior.
+**Goal:** Ship an installable, unsigned ledgrrr desktop package via winget.
 
 **Target features:**
-- Connector-ready installation and activation flow aligned to Claude/Cowork connector UX.
-- Deterministic connector capability profiles (tool metadata, access scope, and run constraints).
-- End-to-end connector validation coverage for discovery, invocation, and failure semantics.
+- Public, hash-verified GitHub Release built from the existing MSI/NSIS CI pipeline.
+- Release automation: version tag → build → SHA256 → GitHub Release (unsigned).
+- winget-pkgs manifest (installer/locale/version) and submission path to microsoft/winget-pkgs.
+
+**Parked:** v1.2 Claude Connector Interop was roadmapped (phases 19-21) but never executed (0 phase directories created). It remains parked, not shipped or abandoned — resume later via `/gsd-plan-phase 19`. Its Active requirements below are unchanged and still belong to that parked milestone.
 
 ## Requirements
 
@@ -91,4 +93,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-30 for v1.2 milestone kickoff*
+*Last updated: 2026-08-08 for v1.3 milestone kickoff*
