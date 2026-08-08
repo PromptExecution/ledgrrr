@@ -1,14 +1,14 @@
-//! Legacy MCP adapter — direct TurboLedgerService dispatch.
+//! MCP adapter — direct TurboLedgerService dispatch.
 //!
-//! This module contains the original dispatch layer where each MCP tool
-//! call goes directly through `&TurboLedgerService` method calls.  It is
-//! gated behind the `legacy` feature flag for historical reference.
+//! Each MCP tool call goes directly through `&TurboLedgerService` method
+//! calls. Gated behind the `legacy` feature flag, which is on by default.
 //!
-//! New code should route through `actor::ServiceHandle` instead.
-//!
-//! ──ℹ── Historical snapshot ──ℹ──
-//! This code was the primary tool dispatch from 2025-Q3 through 2026-Q2.
-//! It was replaced by the actor/gate channel system in PRD-7 Phase 0-4.
+//! ──ℹ── Historical note ──ℹ──
+//! An actor/gate channel-based dispatch system (actor.rs/gate.rs) was
+//! built alongside this module but never wired into any of its handlers;
+//! it was retired (gh#119) rather than finished, since direct dispatch
+//! here already works and channel-based dispatch would have needed its
+//! own regression-risk migration plan to adopt safely.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;

@@ -22,14 +22,12 @@ use ledgerr_llm::{LlmClient, LlmConfig};
 #[cfg(feature = "xero")]
 use xero_service::XeroService;
 
-pub mod actor;
 pub mod batch_executor;
 use crate::batch_executor::BatchExecutor;
 pub mod calendar_tool;
 pub mod contract;
 pub mod events;
 pub mod focus_tool;
-pub mod gate;
 pub mod hsm;
 pub mod mcp_adapter;
 pub mod ontology;
@@ -696,11 +694,6 @@ impl TurboLedgerService {
             #[cfg(feature = "llm")]
             llm,
         })
-    }
-
-    /// Spawn the service behind a channel actor, returning a handle.
-    pub fn spawn_actor(self) -> crate::actor::ServiceHandle {
-        crate::actor::spawn_actor(self)
     }
 
     pub fn workbook_path(&self) -> &std::path::Path {
@@ -3204,10 +3197,12 @@ fn emit_ingest_ontology_edges(
             vec![
                 OntologyEntityInput {
                     kind: OntologyEntityKind::Document,
+                    custom_kind: None,
                     attrs: doc_attrs,
                 },
                 OntologyEntityInput {
                     kind: OntologyEntityKind::Transaction,
+                    custom_kind: None,
                     attrs: tx_attrs,
                 },
             ],
@@ -3897,7 +3892,14 @@ impl TurboLedgerService {
             attrs.insert("xero_id".into(), xero_id.clone());
             attrs.insert("display_name".into(), display_name.clone());
             attrs.insert("local_id".into(), local_id.clone());
-            let _ = ontology::upsert_entities(&mut store, vec![OntologyEntityInput { kind, attrs }]);
+            let _ = ontology::upsert_entities(
+                &mut store,
+                vec![OntologyEntityInput {
+                    kind,
+                    custom_kind: None,
+                    attrs,
+                }],
+            );
             let _ = ontology::persist_store(&store, &ont_path);
         }
 

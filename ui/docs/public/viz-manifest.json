@@ -1,4 +1,3193 @@
 {
-  "version": "dev",
-  "objects": []
+  "version": "1.9.0",
+  "objects": [
+    {
+      "type_name": "PipelineState<Ingested>",
+      "spec": {
+        "semantic_type": "pipeline",
+        "z_layer": "Pipeline",
+        "rhai_dsl": {
+          "source": "let tx = ingest(pdf_path);\ncheck_constraints(tx, constraint_set);",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "tx",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "ingest",
+              "span": {
+                "line": 1,
+                "col": 10
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "pdf_path",
+              "span": {
+                "line": 1,
+                "col": 17
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "check_constraints",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "tx",
+              "span": {
+                "line": 2,
+                "col": 19
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "constraint_set",
+              "span": {
+                "line": 2,
+                "col": 23
+              }
+            }
+          ]
+        },
+        "description": "Raw ingested transaction — structure validated, awaiting constraint pass"
+      }
+    },
+    {
+      "type_name": "PipelineState<Validated>",
+      "spec": {
+        "semantic_type": "pipeline",
+        "z_layer": "Pipeline",
+        "rhai_dsl": {
+          "source": "let validated = tx.validate(constraint_set);\nif validated.confidence >= MIN_CONF { route_to_legal(validated) }\nelse { flag(\"low_confidence\") }",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "validated",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "tx",
+              "span": {
+                "line": 1,
+                "col": 17
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "validate",
+              "span": {
+                "line": 1,
+                "col": 20
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "constraint_set",
+              "span": {
+                "line": 1,
+                "col": 29
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "if",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "validated",
+              "span": {
+                "line": 2,
+                "col": 4
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "confidence",
+              "span": {
+                "line": 2,
+                "col": 14
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "MIN_CONF",
+              "span": {
+                "line": 2,
+                "col": 28
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "route_to_legal",
+              "span": {
+                "line": 2,
+                "col": 39
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "validated",
+              "span": {
+                "line": 2,
+                "col": 54
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "else",
+              "span": {
+                "line": 3,
+                "col": 1
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "flag",
+              "span": {
+                "line": 3,
+                "col": 8
+              }
+            }
+          ]
+        },
+        "description": "Post-constraint validated transaction — all numerical bounds passed, awaiting legal verification"
+      }
+    },
+    {
+      "type_name": "PipelineState<Classified>",
+      "spec": {
+        "semantic_type": "pipeline",
+        "z_layer": "Pipeline",
+        "rhai_dsl": {
+          "source": "let classified = legal_verified_tx.classify(rules);\nset_category(classified, tax_category);\nemit_to_workbook(classified);",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "classified",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "legal_verified_tx",
+              "span": {
+                "line": 1,
+                "col": 18
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "classify",
+              "span": {
+                "line": 1,
+                "col": 36
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "rules",
+              "span": {
+                "line": 1,
+                "col": 45
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "set_category",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "classified",
+              "span": {
+                "line": 2,
+                "col": 14
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "tax_category",
+              "span": {
+                "line": 2,
+                "col": 26
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "emit_to_workbook",
+              "span": {
+                "line": 3,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "classified",
+              "span": {
+                "line": 3,
+                "col": 18
+              }
+            }
+          ]
+        },
+        "description": "Legal-verified transaction with tax category assigned — ready for workbook reconciliation"
+      }
+    },
+    {
+      "type_name": "PipelineState<Reconciled>",
+      "spec": {
+        "semantic_type": "pipeline",
+        "z_layer": "Pipeline",
+        "rhai_dsl": {
+          "source": "let reconciled = match_workbook(classified_tx, workbook);\nif reconciled.matched { open_commit_gate(reconciled) }\nelse { flag(\"unmatched_entry\") }",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "reconciled",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "match_workbook",
+              "span": {
+                "line": 1,
+                "col": 18
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "classified_tx",
+              "span": {
+                "line": 1,
+                "col": 33
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "workbook",
+              "span": {
+                "line": 1,
+                "col": 48
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "if",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "reconciled",
+              "span": {
+                "line": 2,
+                "col": 4
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "matched",
+              "span": {
+                "line": 2,
+                "col": 15
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "open_commit_gate",
+              "span": {
+                "line": 2,
+                "col": 25
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "reconciled",
+              "span": {
+                "line": 2,
+                "col": 42
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "else",
+              "span": {
+                "line": 3,
+                "col": 1
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "flag",
+              "span": {
+                "line": 3,
+                "col": 8
+              }
+            }
+          ]
+        },
+        "description": "Transaction matched against workbook entries — commit gate evaluation pending"
+      }
+    },
+    {
+      "type_name": "PipelineState<Committed>",
+      "spec": {
+        "semantic_type": "pipeline",
+        "z_layer": "Pipeline",
+        "rhai_dsl": {
+          "source": "let committed = commit_gate.approve(reconciled_tx);\nwrite_xlsx(committed);\nemit_audit_trail(committed.id);",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "committed",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "commit_gate",
+              "span": {
+                "line": 1,
+                "col": 17
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "approve",
+              "span": {
+                "line": 1,
+                "col": 29
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "reconciled_tx",
+              "span": {
+                "line": 1,
+                "col": 37
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "write_xlsx",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "committed",
+              "span": {
+                "line": 2,
+                "col": 12
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "emit_audit_trail",
+              "span": {
+                "line": 3,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "committed",
+              "span": {
+                "line": 3,
+                "col": 18
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "id",
+              "span": {
+                "line": 3,
+                "col": 28
+              }
+            }
+          ]
+        },
+        "description": "Committed to workbook — final immutable state, audit trail emitted"
+      }
+    },
+    {
+      "type_name": "PipelineState<NeedsReview>",
+      "spec": {
+        "semantic_type": "pipeline",
+        "z_layer": "Pipeline",
+        "rhai_dsl": {
+          "source": "let review = legal_fail(tx, z3_result);\nflag_operator(\"legal_violation\", review.rule_id);\nroute_to_review_queue(review);",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "review",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "legal_fail",
+              "span": {
+                "line": 1,
+                "col": 14
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "tx",
+              "span": {
+                "line": 1,
+                "col": 25
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "z3_result",
+              "span": {
+                "line": 1,
+                "col": 29
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "flag_operator",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "review",
+              "span": {
+                "line": 2,
+                "col": 34
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "rule_id",
+              "span": {
+                "line": 2,
+                "col": 41
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "route_to_review_queue",
+              "span": {
+                "line": 3,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "review",
+              "span": {
+                "line": 3,
+                "col": 23
+              }
+            }
+          ]
+        },
+        "description": "Legal verification failed — operator flag set, transaction held for manual review"
+      }
+    },
+    {
+      "type_name": "ConstraintEvaluation",
+      "spec": {
+        "semantic_type": "result",
+        "z_layer": "Constraint",
+        "rhai_dsl": {
+          "source": "let res = constraint_set.evaluate(amount, day, code, acct);\nif res.required_pass { classify_ok() } else { flag(\"constraint_fail\") }",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "res",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "constraint_set",
+              "span": {
+                "line": 1,
+                "col": 11
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "evaluate",
+              "span": {
+                "line": 1,
+                "col": 26
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "amount",
+              "span": {
+                "line": 1,
+                "col": 35
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "day",
+              "span": {
+                "line": 1,
+                "col": 43
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "code",
+              "span": {
+                "line": 1,
+                "col": 48
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "acct",
+              "span": {
+                "line": 1,
+                "col": 54
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "if",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "res",
+              "span": {
+                "line": 2,
+                "col": 4
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "required_pass",
+              "span": {
+                "line": 2,
+                "col": 8
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "classify_ok",
+              "span": {
+                "line": 2,
+                "col": 24
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "else",
+              "span": {
+                "line": 2,
+                "col": 40
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "flag",
+              "span": {
+                "line": 2,
+                "col": 47
+              }
+            }
+          ]
+        },
+        "description": "Numerical constraint evaluation result with pass/fail per-field scores"
+      }
+    },
+    {
+      "type_name": "VendorConstraintSet",
+      "spec": {
+        "semantic_type": "constraint",
+        "z_layer": "Constraint",
+        "rhai_dsl": {
+          "source": "let bounds = load_vendor_constraints(vendor_id);\nlet res = bounds.evaluate(amount, day_of_month, tax_code, account);\nemit_constraint_result(res);",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "bounds",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "load_vendor_constraints",
+              "span": {
+                "line": 1,
+                "col": 14
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "vendor_id",
+              "span": {
+                "line": 1,
+                "col": 38
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "res",
+              "span": {
+                "line": 2,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "bounds",
+              "span": {
+                "line": 2,
+                "col": 11
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "evaluate",
+              "span": {
+                "line": 2,
+                "col": 18
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "amount",
+              "span": {
+                "line": 2,
+                "col": 27
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "day_of_month",
+              "span": {
+                "line": 2,
+                "col": 35
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "tax_code",
+              "span": {
+                "line": 2,
+                "col": 49
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "account",
+              "span": {
+                "line": 2,
+                "col": 59
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "emit_constraint_result",
+              "span": {
+                "line": 3,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "res",
+              "span": {
+                "line": 3,
+                "col": 24
+              }
+            }
+          ]
+        },
+        "description": "Vendor-specific statistical bounds: amount percentiles, usual day-of-month, tax code, and account"
+      }
+    },
+    {
+      "type_name": "InvoiceConstraintSolver",
+      "spec": {
+        "semantic_type": "solver",
+        "z_layer": "Constraint",
+        "rhai_dsl": {
+          "source": "let solver = InvoiceConstraintSolver(gst_rate, expected_net);\nlet verification = solver.verify(gross, gst_amount);\nif verification.arithmetic_ok && verification.gst_rate_ok { pass() }",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "solver",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "InvoiceConstraintSolver",
+              "span": {
+                "line": 1,
+                "col": 14
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "gst_rate",
+              "span": {
+                "line": 1,
+                "col": 38
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "expected_net",
+              "span": {
+                "line": 1,
+                "col": 48
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "verification",
+              "span": {
+                "line": 2,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "solver",
+              "span": {
+                "line": 2,
+                "col": 20
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "verify",
+              "span": {
+                "line": 2,
+                "col": 27
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "gross",
+              "span": {
+                "line": 2,
+                "col": 34
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "gst_amount",
+              "span": {
+                "line": 2,
+                "col": 41
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "if",
+              "span": {
+                "line": 3,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "verification",
+              "span": {
+                "line": 3,
+                "col": 4
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "arithmetic_ok",
+              "span": {
+                "line": 3,
+                "col": 17
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "verification",
+              "span": {
+                "line": 3,
+                "col": 34
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "gst_rate_ok",
+              "span": {
+                "line": 3,
+                "col": 47
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "pass",
+              "span": {
+                "line": 3,
+                "col": 61
+              }
+            }
+          ]
+        },
+        "description": "Invoice GST arithmetic solver — checks gross/net/GST consistency and rate conformance"
+      }
+    },
+    {
+      "type_name": "InvoiceVerification",
+      "spec": {
+        "semantic_type": "result",
+        "z_layer": "Constraint",
+        "rhai_dsl": {
+          "source": "let v = invoice_solver.verify(gross, gst);\nif !v.arithmetic_ok { flag(\"arithmetic_mismatch\", v.audit_note) }\nif !v.gst_rate_ok   { flag(\"gst_rate_mismatch\", v.audit_note) }",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "v",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "invoice_solver",
+              "span": {
+                "line": 1,
+                "col": 9
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "verify",
+              "span": {
+                "line": 1,
+                "col": 24
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "gross",
+              "span": {
+                "line": 1,
+                "col": 31
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "gst",
+              "span": {
+                "line": 1,
+                "col": 38
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "if",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "v",
+              "span": {
+                "line": 2,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "arithmetic_ok",
+              "span": {
+                "line": 2,
+                "col": 7
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "flag",
+              "span": {
+                "line": 2,
+                "col": 23
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "v",
+              "span": {
+                "line": 2,
+                "col": 51
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "audit_note",
+              "span": {
+                "line": 2,
+                "col": 53
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "if",
+              "span": {
+                "line": 3,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "v",
+              "span": {
+                "line": 3,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "gst_rate_ok",
+              "span": {
+                "line": 3,
+                "col": 7
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "flag",
+              "span": {
+                "line": 3,
+                "col": 23
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "v",
+              "span": {
+                "line": 3,
+                "col": 49
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "audit_note",
+              "span": {
+                "line": 3,
+                "col": 51
+              }
+            }
+          ]
+        },
+        "description": "Invoice verification result — arithmetic_ok and gst_rate_ok flags with audit note"
+      }
+    },
+    {
+      "type_name": "Z3Result",
+      "spec": {
+        "semantic_type": "result",
+        "z_layer": "Legal",
+        "rhai_dsl": {
+          "source": "let result = legal_solver.verify(rule, facts);\nswitch result {\n    \"Satisfied\" => ok(),\n    \"Violated\"  => flag(\"legal_violation\"),\n    \"Unknown\"   => flag(\"legal_unknown\"),\n}",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "result",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "legal_solver",
+              "span": {
+                "line": 1,
+                "col": 14
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "verify",
+              "span": {
+                "line": 1,
+                "col": 27
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "rule",
+              "span": {
+                "line": 1,
+                "col": 34
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "facts",
+              "span": {
+                "line": 1,
+                "col": 40
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "switch",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "result",
+              "span": {
+                "line": 2,
+                "col": 8
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "ok",
+              "span": {
+                "line": 3,
+                "col": 20
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "flag",
+              "span": {
+                "line": 4,
+                "col": 20
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "flag",
+              "span": {
+                "line": 5,
+                "col": 20
+              }
+            }
+          ]
+        },
+        "description": "Symbolic satisfiability outcome from Z3-style legal predicate check: Satisfied/Violated/Unknown"
+      }
+    },
+    {
+      "type_name": "LegalRule",
+      "spec": {
+        "semantic_type": "legal",
+        "z_layer": "Legal",
+        "rhai_dsl": {
+          "source": "let rule = LegalRule(jurisdiction, \"au-gst-38-190\")\n    .with_formula(\"supply_type == 'GST_FREE' && vendor_jurisdiction == 'AU'\")\n    .with_category(\"GST\");\nlegal_solver.verify(rule, facts);",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "rule",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "LegalRule",
+              "span": {
+                "line": 1,
+                "col": 12
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "jurisdiction",
+              "span": {
+                "line": 1,
+                "col": 22
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "with_formula",
+              "span": {
+                "line": 2,
+                "col": 6
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "with_category",
+              "span": {
+                "line": 3,
+                "col": 6
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "legal_solver",
+              "span": {
+                "line": 4,
+                "col": 1
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "verify",
+              "span": {
+                "line": 4,
+                "col": 14
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "rule",
+              "span": {
+                "line": 4,
+                "col": 21
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "facts",
+              "span": {
+                "line": 4,
+                "col": 27
+              }
+            }
+          ]
+        },
+        "description": "Single jurisdiction-bound legal rule: threshold, exclusion, or benefit predicate"
+      }
+    },
+    {
+      "type_name": "LegalSolver",
+      "spec": {
+        "semantic_type": "solver",
+        "z_layer": "Legal",
+        "rhai_dsl": {
+          "source": "let solver = LegalSolver();\nlet result = solver.verify_all(jurisdiction.legal_ruleset(), facts);\nif result.issues.is_empty() { advance_pipeline() } else { route_review(result.issues) }",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "solver",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "LegalSolver",
+              "span": {
+                "line": 1,
+                "col": 14
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "result",
+              "span": {
+                "line": 2,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "solver",
+              "span": {
+                "line": 2,
+                "col": 14
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "verify_all",
+              "span": {
+                "line": 2,
+                "col": 21
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "jurisdiction",
+              "span": {
+                "line": 2,
+                "col": 32
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "legal_ruleset",
+              "span": {
+                "line": 2,
+                "col": 45
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "facts",
+              "span": {
+                "line": 2,
+                "col": 62
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "if",
+              "span": {
+                "line": 3,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "result",
+              "span": {
+                "line": 3,
+                "col": 4
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "issues",
+              "span": {
+                "line": 3,
+                "col": 11
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "is_empty",
+              "span": {
+                "line": 3,
+                "col": 18
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "advance_pipeline",
+              "span": {
+                "line": 3,
+                "col": 31
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "else",
+              "span": {
+                "line": 3,
+                "col": 52
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "route_review",
+              "span": {
+                "line": 3,
+                "col": 59
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "result",
+              "span": {
+                "line": 3,
+                "col": 72
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "issues",
+              "span": {
+                "line": 3,
+                "col": 79
+              }
+            }
+          ]
+        },
+        "description": "Runs all jurisdiction rules against TransactionFacts, returns aggregate confidence and issue list"
+      }
+    },
+    {
+      "type_name": "Jurisdiction",
+      "spec": {
+        "semantic_type": "legal",
+        "z_layer": "Legal",
+        "rhai_dsl": {
+          "source": "let j = Jurisdiction::AU;\nlet rules = j.legal_ruleset();\n// US -> FBAR/FEIE rules; AU -> GST/FBT rules\nlet code = j.code(); // \"US\" | \"AU\" | \"UK\"",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "j",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "Jurisdiction",
+              "span": {
+                "line": 1,
+                "col": 9
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "AU",
+              "span": {
+                "line": 1,
+                "col": 23
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "rules",
+              "span": {
+                "line": 2,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "j",
+              "span": {
+                "line": 2,
+                "col": 13
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "legal_ruleset",
+              "span": {
+                "line": 2,
+                "col": 15
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 4,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "code",
+              "span": {
+                "line": 4,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "j",
+              "span": {
+                "line": 4,
+                "col": 12
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "code",
+              "span": {
+                "line": 4,
+                "col": 14
+              }
+            }
+          ]
+        },
+        "description": "Jurisdiction enum controlling which legal ruleset applies: US (FBAR/FEIE), AU (GST/FBT), UK"
+      }
+    },
+    {
+      "type_name": "TransactionFacts",
+      "spec": {
+        "semantic_type": "legal",
+        "z_layer": "Legal",
+        "rhai_dsl": {
+          "source": "let facts = TransactionFacts()\n    .with_vendor(\"AU\")\n    .with_supply_type(\"TAXABLE\")\n    .with_tax_code(\"G1\")\n    .with_amount(\"1100.00\");\nlegal_solver.verify_all(rules, facts);",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "facts",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "TransactionFacts",
+              "span": {
+                "line": 1,
+                "col": 13
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "with_vendor",
+              "span": {
+                "line": 2,
+                "col": 6
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "with_supply_type",
+              "span": {
+                "line": 3,
+                "col": 6
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "with_tax_code",
+              "span": {
+                "line": 4,
+                "col": 6
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "with_amount",
+              "span": {
+                "line": 5,
+                "col": 6
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "legal_solver",
+              "span": {
+                "line": 6,
+                "col": 1
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "verify_all",
+              "span": {
+                "line": 6,
+                "col": 14
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "rules",
+              "span": {
+                "line": 6,
+                "col": 25
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "facts",
+              "span": {
+                "line": 6,
+                "col": 32
+              }
+            }
+          ]
+        },
+        "description": "Raw fact bundle fed to LegalSolver: vendor jurisdiction, supply type, tax code, amount, and activity flags"
+      }
+    },
+    {
+      "type_name": "CommitGate",
+      "spec": {
+        "semantic_type": "gate",
+        "z_layer": "Pipeline",
+        "rhai_dsl": {
+          "source": "let gate = evaluate_commit_gate(stage_result);\nswitch gate {\n    \"Approved\"        => commit_to_workbook(tx),\n    \"PendingOperator\" => route_to_operator(tx, gate.reason),\n    \"Blocked\"         => abort_commit(gate.issues),\n}",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "gate",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "evaluate_commit_gate",
+              "span": {
+                "line": 1,
+                "col": 12
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "stage_result",
+              "span": {
+                "line": 1,
+                "col": 33
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "switch",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "gate",
+              "span": {
+                "line": 2,
+                "col": 8
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "commit_to_workbook",
+              "span": {
+                "line": 3,
+                "col": 26
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "tx",
+              "span": {
+                "line": 3,
+                "col": 45
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "route_to_operator",
+              "span": {
+                "line": 4,
+                "col": 26
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "tx",
+              "span": {
+                "line": 4,
+                "col": 44
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "gate",
+              "span": {
+                "line": 4,
+                "col": 48
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "reason",
+              "span": {
+                "line": 4,
+                "col": 53
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "abort_commit",
+              "span": {
+                "line": 5,
+                "col": 26
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "gate",
+              "span": {
+                "line": 5,
+                "col": 39
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "issues",
+              "span": {
+                "line": 5,
+                "col": 44
+              }
+            }
+          ]
+        },
+        "description": "Approval gate before workbook commit: Approved/PendingOperator/Blocked based on confidence and issues"
+      }
+    },
+    {
+      "type_name": "Issue",
+      "spec": {
+        "semantic_type": "issue",
+        "z_layer": "Constraint",
+        "rhai_dsl": {
+          "source": "let issue = Issue::unrecoverable(\"AMT_NEG\", \"amount is negative\")\n    .with_field(\"amount\");\nstage_result.add_issue(issue);",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "issue",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "Issue",
+              "span": {
+                "line": 1,
+                "col": 13
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "unrecoverable",
+              "span": {
+                "line": 1,
+                "col": 20
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "with_field",
+              "span": {
+                "line": 2,
+                "col": 6
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "stage_result",
+              "span": {
+                "line": 3,
+                "col": 1
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "add_issue",
+              "span": {
+                "line": 3,
+                "col": 14
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "issue",
+              "span": {
+                "line": 3,
+                "col": 24
+              }
+            }
+          ]
+        },
+        "description": "Single typed validation issue with severity (Unrecoverable/Recoverable/Advisory), code, message, and field"
+      }
+    },
+    {
+      "type_name": "MetaFlag",
+      "spec": {
+        "semantic_type": "flag",
+        "z_layer": "Pipeline",
+        "rhai_dsl": {
+          "source": "if vendor_is_new(tx.vendor) {\n    let f = #{ type: \"NewVendor\", vendor: tx.vendor };\n    attach_flag(f);\n}\nif anomaly_score > THRESHOLD {\n    let f = #{ type: \"AnomalyDetected\", code: \"AMT_SPIKE\", impact: 0.9 };\n    attach_flag(f);\n}",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "if",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "vendor_is_new",
+              "span": {
+                "line": 1,
+                "col": 4
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "tx",
+              "span": {
+                "line": 1,
+                "col": 18
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "vendor",
+              "span": {
+                "line": 1,
+                "col": 21
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 2,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "f",
+              "span": {
+                "line": 2,
+                "col": 9
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "type",
+              "span": {
+                "line": 2,
+                "col": 16
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "vendor",
+              "span": {
+                "line": 2,
+                "col": 35
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "tx",
+              "span": {
+                "line": 2,
+                "col": 43
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "vendor",
+              "span": {
+                "line": 2,
+                "col": 46
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "attach_flag",
+              "span": {
+                "line": 3,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "f",
+              "span": {
+                "line": 3,
+                "col": 17
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "if",
+              "span": {
+                "line": 5,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "anomaly_score",
+              "span": {
+                "line": 5,
+                "col": 4
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "THRESHOLD",
+              "span": {
+                "line": 5,
+                "col": 20
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 6,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "f",
+              "span": {
+                "line": 6,
+                "col": 9
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "type",
+              "span": {
+                "line": 6,
+                "col": 16
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "code",
+              "span": {
+                "line": 6,
+                "col": 41
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "impact",
+              "span": {
+                "line": 6,
+                "col": 60
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "attach_flag",
+              "span": {
+                "line": 7,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "f",
+              "span": {
+                "line": 7,
+                "col": 17
+              }
+            }
+          ]
+        },
+        "description": "Classification meta-annotation: NewVendor, AnomalyDetected, RepairApplied, LowUpstreamConf, or ConstraintWeak"
+      }
+    },
+    {
+      "type_name": "StageResult<()>",
+      "spec": {
+        "semantic_type": "result",
+        "z_layer": "Pipeline",
+        "rhai_dsl": {
+          "source": "let result = StageResult::ok(data, confidence)\n    .with_issues(issues);\nif result.confidence >= MIN_CONF { next_stage(result.data) }\nelse { flag_low_confidence(result) }",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "result",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "StageResult",
+              "span": {
+                "line": 1,
+                "col": 14
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "ok",
+              "span": {
+                "line": 1,
+                "col": 27
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "data",
+              "span": {
+                "line": 1,
+                "col": 30
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "confidence",
+              "span": {
+                "line": 1,
+                "col": 36
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "with_issues",
+              "span": {
+                "line": 2,
+                "col": 6
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "issues",
+              "span": {
+                "line": 2,
+                "col": 18
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "if",
+              "span": {
+                "line": 3,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "result",
+              "span": {
+                "line": 3,
+                "col": 4
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "confidence",
+              "span": {
+                "line": 3,
+                "col": 11
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "MIN_CONF",
+              "span": {
+                "line": 3,
+                "col": 25
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "next_stage",
+              "span": {
+                "line": 3,
+                "col": 36
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "result",
+              "span": {
+                "line": 3,
+                "col": 47
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "data",
+              "span": {
+                "line": 3,
+                "col": 54
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "else",
+              "span": {
+                "line": 4,
+                "col": 1
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "flag_low_confidence",
+              "span": {
+                "line": 4,
+                "col": 8
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "result",
+              "span": {
+                "line": 4,
+                "col": 28
+              }
+            }
+          ]
+        },
+        "description": "Pipeline stage output wrapper: typed data payload, confidence score, issues, and meta context"
+      }
+    },
+    {
+      "type_name": "MetaCtx",
+      "spec": {
+        "semantic_type": "pipeline",
+        "z_layer": "Pipeline",
+        "rhai_dsl": {
+          "source": "let meta = MetaCtx();\nmeta.accumulated_confidence = 0.85;\nmeta.flags.push(#{ type: \"NewVendor\", vendor: \"ACME Corp\" });\nmeta.stage_trace.push(#{ stage: \"ingest\", confidence: 0.9 });\nmeta.stage_trace.push(#{ stage: \"validate\", confidence: 0.8 });",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "meta",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "MetaCtx",
+              "span": {
+                "line": 1,
+                "col": 12
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "meta",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "accumulated_confidence",
+              "span": {
+                "line": 2,
+                "col": 6
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "meta",
+              "span": {
+                "line": 3,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "flags",
+              "span": {
+                "line": 3,
+                "col": 6
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "push",
+              "span": {
+                "line": 3,
+                "col": 12
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "type",
+              "span": {
+                "line": 3,
+                "col": 20
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "vendor",
+              "span": {
+                "line": 3,
+                "col": 39
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "meta",
+              "span": {
+                "line": 4,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "stage_trace",
+              "span": {
+                "line": 4,
+                "col": 6
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "push",
+              "span": {
+                "line": 4,
+                "col": 18
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "stage",
+              "span": {
+                "line": 4,
+                "col": 26
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "confidence",
+              "span": {
+                "line": 4,
+                "col": 43
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "meta",
+              "span": {
+                "line": 5,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "stage_trace",
+              "span": {
+                "line": 5,
+                "col": 6
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "push",
+              "span": {
+                "line": 5,
+                "col": 18
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "stage",
+              "span": {
+                "line": 5,
+                "col": 26
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "confidence",
+              "span": {
+                "line": 5,
+                "col": 45
+              }
+            }
+          ]
+        },
+        "description": "Accumulated pipeline state flowing forward: confidence score, classification flags, and per-stage trace history"
+      }
+    },
+    {
+      "type_name": "Disposition",
+      "spec": {
+        "semantic_type": "result",
+        "z_layer": "Pipeline",
+        "rhai_dsl": {
+          "source": "switch issue.disposition {\n    \"Unrecoverable\" => halt_pipeline(\"critical failure\"),\n    \"Recoverable\"   => continue_with_degraded_confidence(),\n    \"Advisory\"      => log_and_continue(),\n}",
+          "symbols": [
+            {
+              "kind": "Variable",
+              "name": "switch",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "issue",
+              "span": {
+                "line": 1,
+                "col": 8
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "disposition",
+              "span": {
+                "line": 1,
+                "col": 14
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "halt_pipeline",
+              "span": {
+                "line": 2,
+                "col": 24
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "continue_with_degraded_confidence",
+              "span": {
+                "line": 3,
+                "col": 24
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "log_and_continue",
+              "span": {
+                "line": 4,
+                "col": 24
+              }
+            }
+          ]
+        },
+        "description": "Issue handling strategy: Unrecoverable halts pipeline, Recoverable continues with degraded confidence, Advisory is informational only"
+      }
+    },
+    {
+      "type_name": "KasuariSolver",
+      "spec": {
+        "semantic_type": "proof",
+        "z_layer": "FormalProof",
+        "rhai_dsl": {
+          "source": "let solver = KasuariSolver;\nlet score = solver.evaluate(\"amount\", value, [[min, max]]);\nlet strength = solver.strength(\"required\"); // Required | Strong | Medium | Weak\n// Bridges constraint satisfaction into formal layout verification",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "solver",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "KasuariSolver",
+              "span": {
+                "line": 1,
+                "col": 14
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "score",
+              "span": {
+                "line": 2,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "solver",
+              "span": {
+                "line": 2,
+                "col": 13
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "evaluate",
+              "span": {
+                "line": 2,
+                "col": 20
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "value",
+              "span": {
+                "line": 2,
+                "col": 39
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "min",
+              "span": {
+                "line": 2,
+                "col": 48
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "max",
+              "span": {
+                "line": 2,
+                "col": 53
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 3,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "strength",
+              "span": {
+                "line": 3,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "solver",
+              "span": {
+                "line": 3,
+                "col": 16
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "strength",
+              "span": {
+                "line": 3,
+                "col": 23
+              }
+            }
+          ]
+        },
+        "description": "Kasuari constraint layout solver — evaluates field values against (min, max) ranges, bridges constraint → formal verification layer"
+      }
+    },
+    {
+      "type_name": "AuRdActivity",
+      "spec": {
+        "semantic_type": "constraint",
+        "z_layer": "Constraint",
+        "rhai_dsl": {
+          "source": "let eligible = activity.satisfies(AuRdEligibility);\nif eligible.confidence >= 0.9 { route_to_offset(activity) }\nelse { flag(\"low_rd_confidence\") }",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "eligible",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "activity",
+              "span": {
+                "line": 1,
+                "col": 16
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "satisfies",
+              "span": {
+                "line": 1,
+                "col": 25
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "AuRdEligibility",
+              "span": {
+                "line": 1,
+                "col": 35
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "if",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "eligible",
+              "span": {
+                "line": 2,
+                "col": 4
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "confidence",
+              "span": {
+                "line": 2,
+                "col": 13
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "route_to_offset",
+              "span": {
+                "line": 2,
+                "col": 33
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "activity",
+              "span": {
+                "line": 2,
+                "col": 49
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "else",
+              "span": {
+                "line": 3,
+                "col": 1
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "flag",
+              "span": {
+                "line": 3,
+                "col": 8
+              }
+            }
+          ]
+        },
+        "description": "ITAA 1997 s.355-100 R&D activity — systematic hypothesis + technical uncertainty check"
+      }
+    },
+    {
+      "type_name": "AuRdOffset",
+      "spec": {
+        "semantic_type": "result",
+        "z_layer": "Constraint",
+        "rhai_dsl": {
+          "source": "let offset = rd_offset.calculate(eligible_expenditure, rate);\nemit_offset_claim(offset.amount, offset.tax_year);",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "offset",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "rd_offset",
+              "span": {
+                "line": 1,
+                "col": 14
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "calculate",
+              "span": {
+                "line": 1,
+                "col": 24
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "eligible_expenditure",
+              "span": {
+                "line": 1,
+                "col": 34
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "rate",
+              "span": {
+                "line": 1,
+                "col": 56
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "emit_offset_claim",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "offset",
+              "span": {
+                "line": 2,
+                "col": 19
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "amount",
+              "span": {
+                "line": 2,
+                "col": 26
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "offset",
+              "span": {
+                "line": 2,
+                "col": 34
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "tax_year",
+              "span": {
+                "line": 2,
+                "col": 41
+              }
+            }
+          ]
+        },
+        "description": "ITAA 1997 s.355-305 R&D offset — calculated tax offset from eligible expenditure"
+      }
+    },
+    {
+      "type_name": "QreActivity",
+      "spec": {
+        "semantic_type": "constraint",
+        "z_layer": "Constraint",
+        "rhai_dsl": {
+          "source": "let qualified = qre.satisfies(UsRdcEligibility);\nif qualified.four_part_test_pass { route_to_credit(qre) }",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "qualified",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "qre",
+              "span": {
+                "line": 1,
+                "col": 17
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "satisfies",
+              "span": {
+                "line": 1,
+                "col": 21
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "UsRdcEligibility",
+              "span": {
+                "line": 1,
+                "col": 31
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "if",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "qualified",
+              "span": {
+                "line": 2,
+                "col": 4
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "four_part_test_pass",
+              "span": {
+                "line": 2,
+                "col": 14
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "route_to_credit",
+              "span": {
+                "line": 2,
+                "col": 36
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "qre",
+              "span": {
+                "line": 2,
+                "col": 52
+              }
+            }
+          ]
+        },
+        "description": "IRC §41 QRE — four-part test: permitted purpose, technological uncertainty, process of experimentation, qualified research"
+      }
+    },
+    {
+      "type_name": "UsRdcCredit",
+      "spec": {
+        "semantic_type": "result",
+        "z_layer": "Constraint",
+        "rhai_dsl": {
+          "source": "let credit = rdc.calculate(qre_total, base_amount);\nemit_form6765(credit.regular_credit, credit.alt_simplified);",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "credit",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "rdc",
+              "span": {
+                "line": 1,
+                "col": 14
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "calculate",
+              "span": {
+                "line": 1,
+                "col": 18
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "qre_total",
+              "span": {
+                "line": 1,
+                "col": 28
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "base_amount",
+              "span": {
+                "line": 1,
+                "col": 39
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "emit_form6765",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "credit",
+              "span": {
+                "line": 2,
+                "col": 15
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "regular_credit",
+              "span": {
+                "line": 2,
+                "col": 22
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "credit",
+              "span": {
+                "line": 2,
+                "col": 38
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "alt_simplified",
+              "span": {
+                "line": 2,
+                "col": 45
+              }
+            }
+          ]
+        },
+        "description": "IRC §41 R&D tax credit — regular (20% above base) or alternative simplified (14% of excess QREs)"
+      }
+    },
+    {
+      "type_name": "CryptoTx",
+      "spec": {
+        "semantic_type": "pipeline",
+        "z_layer": "Pipeline",
+        "rhai_dsl": {
+          "source": "let gain = crypto_tx.realized_gain(cost_basis_method);\nclassify_event(crypto_tx.event_type); // Disposal, Swap, Income, Transfer",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "gain",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "crypto_tx",
+              "span": {
+                "line": 1,
+                "col": 12
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "realized_gain",
+              "span": {
+                "line": 1,
+                "col": 22
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "cost_basis_method",
+              "span": {
+                "line": 1,
+                "col": 36
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "classify_event",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "crypto_tx",
+              "span": {
+                "line": 2,
+                "col": 16
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "event_type",
+              "span": {
+                "line": 2,
+                "col": 26
+              }
+            }
+          ]
+        },
+        "description": "CGT event A1 / IRC §1001 disposal — realized gain/loss on crypto asset disposal or swap"
+      }
+    },
+    {
+      "type_name": "CryptoWallet",
+      "spec": {
+        "semantic_type": "pipeline",
+        "z_layer": "Pipeline",
+        "rhai_dsl": {
+          "source": "let balance = wallet.current_balance(as_of_date);\nlet lots = wallet.cost_basis_lots(method); // FIFO | HIFO | ACB",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "balance",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "wallet",
+              "span": {
+                "line": 1,
+                "col": 15
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "current_balance",
+              "span": {
+                "line": 1,
+                "col": 22
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "as_of_date",
+              "span": {
+                "line": 1,
+                "col": 38
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "lots",
+              "span": {
+                "line": 2,
+                "col": 5
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "wallet",
+              "span": {
+                "line": 2,
+                "col": 12
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "cost_basis_lots",
+              "span": {
+                "line": 2,
+                "col": 19
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "method",
+              "span": {
+                "line": 2,
+                "col": 35
+              }
+            }
+          ]
+        },
+        "description": "Crypto wallet — tracks asset lots, cost basis methods, and balance history for tax event attribution"
+      }
+    }
+  ]
 }

@@ -50,7 +50,7 @@ jobs:
       - name: Install just
         run: cargo install just --locked
 
-      - name: Check generated artifact drift (bindings.ts + mcp-capability-contract.md)
+      - name: Check generated artifact drift (bindings.ts + mcp-capability-contract.md + viz-manifest.json)
         run: just check-drift
 
       - name: Validate datum AST parser and linter
