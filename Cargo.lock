@@ -5459,6 +5459,7 @@ dependencies = [
  "thiserror 2.0.18",
  "toml 0.8.2",
  "trybuild",
+ "ufo-types",
  "xattr",
  "z3",
 ]
@@ -11575,6 +11576,17 @@ dependencies = [
  "memoffset",
  "tempfile",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "ufo-types"
+version = "0.10.1"
+source = "git+https://github.com/PromptExecution/ufo-types.git?tag=v0.10.1#2c919f247dae59d0a7e87435b46ee63b48265b9d"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

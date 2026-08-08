@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
+use ufo_types::stereotype::{Stereotyped, UfoStereotype};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -44,6 +45,55 @@ impl ArtifactKind {
             Self::ValidationIssue => "validation_issue",
             Self::DocumentChunk => "document_chunk",
             Self::ClassificationOutcome => "classification_outcome",
+        }
+    }
+}
+
+/// Realizes the architecture documented in `ufo_types`' own module docs:
+/// `ufo-types` (traits) -> `ledger-core` (domain impls) -> MCP actions.
+///
+/// Classifies every `ArtifactKind` variant according to Guizzardi's Unified
+/// Foundational Ontology so `record_is_a(subject, ufo_stereotype)` (NS-9,
+/// see `ufo_types::stereotype`) can produce audit-trail evidence with
+/// ontological provenance for ledger-core artifacts.
+impl Stereotyped for ArtifactKind {
+    fn ufo_stereotype(&self) -> UfoStereotype {
+        match self {
+            // Rigid, independent entities — UfoStereotype::Kind.
+            Self::Document => UfoStereotype::Kind("Document".into()),
+            Self::Account => UfoStereotype::Kind("Account".into()),
+            Self::Institution => UfoStereotype::Kind("Institution".into()),
+            Self::Transaction => UfoStereotype::Kind("Transaction".into()),
+            Self::TaxCategory => UfoStereotype::Kind("TaxCategory".into()),
+            Self::XeroContact => UfoStereotype::Kind("XeroContact".into()),
+            Self::ModelJob => UfoStereotype::Kind("ModelJob".into()),
+            Self::WorkbookRow => UfoStereotype::Kind("WorkbookRow".into()),
+
+            // Rigid subtypes of an existing Kind above — UfoStereotype::SubKind.
+            Self::XeroBankAccount => UfoStereotype::SubKind {
+                name: "XeroBankAccount".into(),
+                parent: "Account".into(),
+            },
+            Self::XeroInvoice => UfoStereotype::SubKind {
+                name: "XeroInvoice".into(),
+                parent: "Document".into(),
+            },
+            Self::DocumentChunk => UfoStereotype::SubKind {
+                name: "DocumentChunk".into(),
+                parent: "Document".into(),
+            },
+
+            // Moments that mediate between two or more artifacts —
+            // UfoStereotype::Relator.
+            Self::EvidenceReference => UfoStereotype::Relator("EvidenceReference".into()),
+            Self::ModelProposal => UfoStereotype::Relator("ModelProposal".into()),
+            Self::AuditEvent => UfoStereotype::Relator("AuditEvent".into()),
+
+            // Moments that are an intrinsic quality/state of a single
+            // artifact — UfoStereotype::Mode.
+            Self::WorkflowTag => UfoStereotype::Mode("WorkflowTag".into()),
+            Self::ValidationIssue => UfoStereotype::Mode("ValidationIssue".into()),
+            Self::ClassificationOutcome => UfoStereotype::Mode("ClassificationOutcome".into()),
         }
     }
 }
@@ -419,6 +469,71 @@ mod tests {
         };
 
         assert!(snapshot.to_rhai_dsl().contains("missing_provenance_"));
+    }
+
+    #[test]
+    fn artifact_kind_ufo_stereotype_labels() {
+        // Kind — rigid, independent entities.
+        assert_eq!(
+            ArtifactKind::Transaction.ufo_stereotype().to_string(),
+            "Kind:Transaction"
+        );
+        assert_eq!(
+            ArtifactKind::Document.ufo_stereotype().to_string(),
+            "Kind:Document"
+        );
+
+        // SubKind — rigid specializations of one of the Kinds above.
+        assert_eq!(
+            ArtifactKind::XeroBankAccount.ufo_stereotype().to_string(),
+            "SubKind:XeroBankAccount<Account"
+        );
+        assert_eq!(
+            ArtifactKind::DocumentChunk.ufo_stereotype().to_string(),
+            "SubKind:DocumentChunk<Document"
+        );
+
+        // Relator — moments that mediate between artifacts.
+        assert_eq!(
+            ArtifactKind::EvidenceReference.ufo_stereotype().to_string(),
+            "Relator:EvidenceReference"
+        );
+
+        // Mode — moments that are an intrinsic quality/state of one artifact.
+        assert_eq!(
+            ArtifactKind::ValidationIssue.ufo_stereotype().to_string(),
+            "Mode:ValidationIssue"
+        );
+    }
+
+    #[test]
+    fn artifact_kind_ufo_stereotype_covers_every_variant() {
+        // Every ArtifactKind must classify without panicking; this guards
+        // against a future variant being added and forgotten in the
+        // Stereotyped impl (the match above has no wildcard arm).
+        let all = [
+            ArtifactKind::Document,
+            ArtifactKind::Account,
+            ArtifactKind::Institution,
+            ArtifactKind::Transaction,
+            ArtifactKind::TaxCategory,
+            ArtifactKind::EvidenceReference,
+            ArtifactKind::XeroContact,
+            ArtifactKind::XeroBankAccount,
+            ArtifactKind::XeroInvoice,
+            ArtifactKind::WorkflowTag,
+            ArtifactKind::ModelJob,
+            ArtifactKind::ModelProposal,
+            ArtifactKind::WorkbookRow,
+            ArtifactKind::AuditEvent,
+            ArtifactKind::ValidationIssue,
+            ArtifactKind::DocumentChunk,
+            ArtifactKind::ClassificationOutcome,
+        ];
+        for kind in all {
+            let label = kind.ufo_stereotype().to_string();
+            assert!(!label.is_empty());
+        }
     }
 }
 
