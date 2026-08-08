@@ -65,4 +65,52 @@ mod tests {
         let gate = evaluate_commit_gate(&s, 0.85);
         assert!(matches!(gate, CommitGate::Blocked { .. }));
     }
+
+    // Exhaustive-style compliance sweep standing in for the abandoned symbolic
+    // proof: every confidence value on a dense grid across [0.0, 1.0] (5,000,001
+    // steps), checked against the threshold both with and without an unrecoverable
+    // issue present. Unlike the Kani harness, this genuinely exercises the
+    // PendingOperator branch's format!() call every time confidence < threshold —
+    // several million real string formats, which is exactly the workload that
+    // defeated CBMC's symbolic unwinding, run concretely here without issue.
+    // Deliberately excluded from the default fast test suite (`#[ignore]`); run
+    // explicitly via `just exhaustive-check` before a release or when auditing
+    // this invariant.
+    #[test]
+    #[ignore = "exhaustive confidence sweep — run via `just exhaustive-check`, not part of the default fast suite"]
+    fn commit_gate_exhaustive_confidence_sweep() {
+        const THRESHOLD: f32 = 0.85;
+        const STEPS: u32 = 5_000_000;
+        let mut checked: u64 = 0;
+
+        for i in 0..=STEPS {
+            let confidence = i as f32 / STEPS as f32;
+
+            match evaluate_commit_gate(&state(confidence), THRESHOLD) {
+                CommitGate::Approved { confidence: c } => {
+                    assert_eq!(c, confidence);
+                    assert!(confidence >= THRESHOLD, "Approved below threshold: {confidence}");
+                }
+                CommitGate::PendingOperator { confidence: c, reason } => {
+                    assert_eq!(c, confidence);
+                    assert!(confidence < THRESHOLD, "PendingOperator at/above threshold: {confidence}");
+                    assert!(!reason.is_empty());
+                }
+                CommitGate::Blocked { .. } => panic!("unexpected Blocked with no issues, confidence={confidence}"),
+            }
+
+            let mut blocked_state = state(confidence);
+            blocked_state
+                .issues
+                .push(Issue::unrecoverable("AMT_NEG", "amount is negative"));
+            match evaluate_commit_gate(&blocked_state, THRESHOLD) {
+                CommitGate::Blocked { issues } => assert_eq!(issues.len(), 1),
+                other => panic!("expected Blocked regardless of confidence={confidence}, got {other:?}"),
+            }
+
+            checked += 2;
+        }
+
+        println!("commit_gate exhaustive sweep: checked {checked} evaluations");
+    }
 }

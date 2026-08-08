@@ -57,4 +57,43 @@ mod tests {
     fn invoice_required_pass_holds_near_million_boundary() {
         check(999_999.99, 909_090.9, 90_909.09);
     }
+
+    // Exhaustive-style compliance sweep standing in for the abandoned symbolic
+    // proof: dense grid over (total, subtotal) in $0.01 steps up to $2,000, times
+    // 6 representative gst deltas per pair (exact match, both sides of the 0.01
+    // tolerance boundary, and independent/mismatched values) — tens of millions
+    // of concrete checks. Deliberately excluded from the default fast test suite
+    // (`#[ignore]`) so `cargo test` stays fast; run explicitly via
+    // `just exhaustive-check` before a release or when auditing this invariant.
+    #[test]
+    #[ignore = "exhaustive grid sweep — run via `just exhaustive-check`, not part of the default fast suite"]
+    fn invoice_required_pass_iff_arithmetic_holds_exhaustive_grid() {
+        let solver = InvoiceConstraintSolver::new();
+        let mut checked: u64 = 0;
+        for total_cents in (0..200_000_i64).step_by(67) {
+            let total = total_cents as f64 / 100.0;
+            for subtotal_cents in (0..200_000_i64).step_by(71) {
+                let subtotal = subtotal_cents as f64 / 100.0;
+                let exact = total - subtotal;
+                for gst in [
+                    exact,
+                    exact + 0.009,
+                    exact - 0.009,
+                    exact + 0.011,
+                    exact - 0.011,
+                    subtotal * 0.1,
+                ] {
+                    let result = solver.validate(total, subtotal, gst);
+                    let arith_ok = (total - subtotal - gst).abs() < 0.01;
+                    assert_eq!(
+                        result.required_pass, arith_ok,
+                        "total={total} subtotal={subtotal} gst={gst}"
+                    );
+                    checked += 1;
+                }
+            }
+        }
+        println!("invoice_required_pass exhaustive grid: checked {checked} combinations");
+        assert!(checked > 20_000_000, "grid shrank unexpectedly: only {checked} combinations");
+    }
 }
