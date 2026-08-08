@@ -18,6 +18,7 @@ use std::os::windows::ffi::OsStrExt;
 use std::sync::mpsc;
 use std::time::Duration;
 
+use windows::core::{w, BOOL, PCWSTR};
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -43,6 +44,11 @@ pub(crate) const CMD_TEST_TOAST: u32 = 111;
 pub(crate) const CMD_STATUS: u32 = 112;
 pub(crate) const CMD_SHOW_WINDOW: u32 = 113;
 pub(crate) const CMD_EXIT: u32 = 114;
+
+/// `Shell_NotifyIconW` callback message ID (`WM_APP + 1`), extracted to a
+/// named const so it can be used both as a `uCallbackMessage` value and as a
+/// match pattern (a bare `WM_APP + 1` expression is not a valid pattern).
+pub(crate) const WM_TRAYICON_CALLBACK: u32 = WM_APP + 1;
 
 /// Items rendered with a checkmark that toggle on click.
 pub(crate) const CHECK_ITEM_IDS: &[u32] = &[
@@ -141,7 +147,7 @@ unsafe fn create_icon_from_rgba(
     rgba: &[u8],
     width: i32,
     height: i32,
-) -> Result<HICON, Box<dyn std::error::Error>> {
+) -> Result<HICON, Box<dyn std::error::Error + Send + Sync>> {
     let hdc = GetDC(None);
     if hdc.is_invalid() {
         return Err("GetDC failed — no display device context".into());
@@ -154,7 +160,7 @@ unsafe fn create_icon_from_rgba(
             biHeight: -height, // top-down DIB
             biPlanes: 1,
             biBitCount: 32,
-            biCompression: BI_RGB,
+            biCompression: BI_RGB.0,
             ..Default::default()
         },
         bmiColors: [RGBQUAD::default(); 1],
@@ -171,7 +177,7 @@ unsafe fn create_icon_from_rgba(
     )?;
 
     if bits.is_null() {
-        let _ = DeleteObject(color_bmp);
+        let _ = DeleteObject(color_bmp.into());
         let _ = ReleaseDC(None, hdc);
         return Err("CreateDIBSection returned null pixel pointer".into());
     }
@@ -185,7 +191,7 @@ unsafe fn create_icon_from_rgba(
     let mask_data = vec![0u8; mask_size];
     let mask_bmp = CreateBitmap(width, height, 1, 1, Some(mask_data.as_ptr() as *const _));
     if mask_bmp.is_invalid() {
-        let _ = DeleteObject(color_bmp);
+        let _ = DeleteObject(color_bmp.into());
         let _ = ReleaseDC(None, hdc);
         return Err("CreateBitmap for monochrome mask failed".into());
     }
@@ -201,8 +207,8 @@ unsafe fn create_icon_from_rgba(
     let hicon = CreateIconIndirect(&icon_info as *const ICONINFO)?;
 
     // The icon handle owns its own copy; the originals can be freed.
-    let _ = DeleteObject(mask_bmp);
-    let _ = DeleteObject(color_bmp);
+    let _ = DeleteObject(mask_bmp.into());
+    let _ = DeleteObject(color_bmp.into());
     let _ = ReleaseDC(None, hdc);
 
     Ok(hicon)
@@ -212,8 +218,8 @@ unsafe fn create_icon_from_rgba(
 
 /// Static window procedure for the hidden tray message window.
 ///
-/// - [`WM_APP + 1`]: Shell_NotifyIcon callback — shows the context menu on
-///   right-click.
+/// - [`WM_TRAYICON_CALLBACK`]: Shell_NotifyIcon callback — shows the context
+///   menu on right-click.
 /// - [`WM_COMMAND`]: Menu item selection — forwards the command ID to the main
 ///   thread via [`WindowUserData.event_tx`].
 /// - [`WM_DESTROY`]: Posts [`WM_QUIT`] to terminate the message pump.
@@ -224,7 +230,7 @@ unsafe extern "system" fn tray_wnd_proc(
     lparam: LPARAM,
 ) -> LRESULT {
     match msg {
-        WM_APP + 1 => {
+        WM_TRAYICON_CALLBACK => {
             // Shell_NotifyIcon callback — LOWORD(lparam) holds the mouse message.
             match lparam.0 as u32 {
                 WM_RBUTTONUP => {
@@ -245,7 +251,7 @@ unsafe extern "system" fn tray_wnd_proc(
                             None,
                         );
                         // Required to properly dismiss the menu on selection.
-                        let _ = PostMessageW(hwnd, WM_NULL, WPARAM::default(), LPARAM::default());
+                        let _ = PostMessageW(Some(hwnd), WM_NULL, WPARAM::default(), LPARAM::default());
                     }
                     LRESULT(0)
                 }
@@ -284,23 +290,23 @@ unsafe extern "system" fn tray_wnd_proc(
 /// 4. Show window, Exit
 unsafe fn build_tray_menu(
     labels: &crate::tray::TrayMenuLabels,
-) -> Result<HMENU, Box<dyn std::error::Error>> {
+) -> Result<HMENU, Box<dyn std::error::Error + Send + Sync>> {
     let hmenu = CreatePopupMenu()?;
 
     // ── helpers ──────────────────────────────────────────────────────────
-    fn push_info(hmenu: HMENU, id: u32, text: &str) -> Result<(), Box<dyn std::error::Error>> {
+    fn push_info(hmenu: HMENU, id: u32, text: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let wide: Vec<u16> = OsStr::new(text).encode_wide().chain(core::iter::once(0)).collect();
         AppendMenuW(hmenu, MF_STRING | MF_GRAYED, id as usize, PCWSTR::from_raw(wide.as_ptr()))?;
         Ok(())
     }
 
-    fn push_action(hmenu: HMENU, id: u32, text: &str) -> Result<(), Box<dyn std::error::Error>> {
+    fn push_action(hmenu: HMENU, id: u32, text: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let wide: Vec<u16> = OsStr::new(text).encode_wide().chain(core::iter::once(0)).collect();
         AppendMenuW(hmenu, MF_STRING, id as usize, PCWSTR::from_raw(wide.as_ptr()))?;
         Ok(())
     }
 
-    fn push_check(hmenu: HMENU, id: u32, text: &str, checked: bool) -> Result<(), Box<dyn std::error::Error>> {
+    fn push_check(hmenu: HMENU, id: u32, text: &str, checked: bool) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let wide: Vec<u16> = OsStr::new(text).encode_wide().chain(core::iter::once(0)).collect();
         let flags = if checked {
             MF_STRING | MF_CHECKED
@@ -394,13 +400,16 @@ impl NativeTrayPlatform {
                         &labels_clone,
                         event_tx,
                         control_rx,
-                        ready_tx,
+                        &ready_tx,
                     )
                 } {
                     // Only report setup errors — pump errors are internal.
-                    if !ready_tx.is_closed() {
-                        let _ = ready_tx.send(Err(e.to_string()));
-                    }
+                    // `send` on a disconnected receiver (e.g. because
+                    // `run_tray_pump` already signalled success via
+                    // `ready_tx` before failing later) just returns `Err`,
+                    // which we discard — there is no `is_closed` probe on
+                    // `std::sync::mpsc::Sender`.
+                    let _ = ready_tx.send(Err(e.to_string()));
                 }
             })?;
 
@@ -440,18 +449,18 @@ unsafe fn run_tray_pump(
     labels: &crate::tray::TrayMenuLabels,
     event_tx: mpsc::Sender<TrayEvent>,
     control_rx: mpsc::Receiver<TrayControl>,
-    ready_tx: mpsc::Sender<Result<(), String>>,
+    ready_tx: &mpsc::Sender<Result<(), String>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let hinstance = GetModuleHandleW(None)?;
 
     // ── Register window class ────────────────────────────────────────────
-    let class_name = windows::core::w!("L3dg3rrTrayWindow");
+    let class_name = w!("L3dg3rrTrayWindow");
     let wc = WNDCLASSW {
         style: WNDCLASS_STYLES(0),
         lpfnWndProc: Some(tray_wnd_proc),
         cbClsExtra: 0,
         cbWndExtra: 0,
-        hInstance: hinstance,
+        hInstance: hinstance.into(),
         hIcon: HICON::default(),
         hCursor: HCURSOR::default(),
         hbrBackground: HBRUSH::default(),
@@ -483,7 +492,7 @@ unsafe fn run_tray_pump(
         0,
         None,
         None,
-        Some(hinstance),
+        Some(hinstance.into()),
         Some(user_data_ptr as *const _),
     ) {
         Ok(h) => h,
@@ -513,7 +522,7 @@ unsafe fn run_tray_pump(
         hWnd: hwnd,
         uID: 1,
         uFlags: NIF_ICON | NIF_MESSAGE | NIF_TIP | NIF_SHOWTIP,
-        uCallbackMessage: WM_APP + 1,
+        uCallbackMessage: WM_TRAYICON_CALLBACK,
         hIcon: hicon,
         szTip: [0u16; 128],
         ..Default::default()
