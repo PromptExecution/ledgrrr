@@ -4,6 +4,15 @@ The MCP surface is the agent-facing contract for l3dg3rr. It is intentionally sm
 
 The source of truth is `crates/ledgerr-mcp/src/contract.rs`. Generated operator docs live in `docs/mcp-capability-contract.md` and `docs/agent-mcp-runbook.md`; regenerate them with `cargo run -p xtask-mcpb -- generate-mcp-artifacts` after changing the published surface.
 
+There are two MCP layers in the roadmap:
+
+| Layer | Prefix | Role |
+|---|---|---|
+| Bookkeeping/domain MCP | `ledgerr_*` | Existing financial document, workflow, audit, ontology, Xero, and workbook capabilities. |
+| Desktop/controller MCP | `ledgrrr_*` | Claude Desktop MCPB controller for install/status/service/tray/diagram/simulation/Office actions. |
+
+The `ledgrrr_*` controller surface must stay thin. It should inspect and orchestrate installed components, then delegate domain work to the existing `ledgerr_*` service layer.
+
 ## Published Tool Families
 
 | Tool | Capability family | Typical actions |
@@ -16,6 +25,26 @@ The source of truth is `crates/ledgerr-mcp/src/contract.rs`. Generated operator 
 | `ledgerr_tax` | evidence, ambiguity review, workbook export | `assist`, `evidence_chain`, `ambiguity_review`, `export_workbook` |
 | `ledgerr_ontology` | graph/ontology query and write operations | `query_path`, `export_snapshot`, `upsert_entities`, `upsert_edges` |
 | `ledgerr_xero` | supervised Xero catalog and entity linkage | `get_auth_url`, `fetch_contacts`, `link_entity`, `sync_catalog` |
+
+## Desktop Controller Tools
+
+PRD-11 defines a Claude Desktop MCPB bundle that runs `ledgrrr-mcp` as the stdio controller. The controller is not the privileged installer. It exposes explicit tools that return plans, status, and local artifact outputs.
+
+| Tool | Responsibility |
+|---|---|
+| `ledgrrr_status` | Report desktop, service, tray, model runtime, Office add-in, SharePoint, and b00t state. |
+| `ledgrrr_install_plan` | Return dry-run install/repair actions and required privilege level. |
+| `ledgrrr_install_desktop` | Launch the native Windows installer. |
+| `ledgrrr_start_service` | Start the local ledgrrr service. |
+| `ledgrrr_stop_service` | Stop the local ledgrrr service. |
+| `ledgrrr_open_tray` | Launch or focus tray/taskbar UI. |
+| `ledgrrr_render_diagram` | Render typed playbook models into Mermaid/SVG/PNG/HTML. |
+| `ledgrrr_simulate_pipeline` | Run deterministic or local-CPU-model simulation and return evidence summary. |
+| `ledgrrr_export_office_artifact` | Produce OneNote/Office/SharePoint-safe playbook artifacts. |
+| `ledgrrr_repair` | Repair service, tray, model runtime, Office manifests, and b00t linkage. |
+| `ledgrrr_uninstall` | Launch native uninstall or return exact removal steps. |
+
+Every mutating controller action must support a plan-first flow and emit audit evidence. Privileged Windows operations cross the native installer/UAC boundary.
 
 ## Runtime Flow
 
@@ -49,3 +78,4 @@ Hidden legacy `l3dg3rr_*` and proxy names may continue to parse, but documentati
 - [Document Ingestion](./document-ingestion.md)
 - [Workbook & Audit](./workbook-audit.md)
 - [Xero Integration](./xero.md)
+- [Desktop Agent and Office Playbook Surface](./desktop-agent-office-playbook.md)

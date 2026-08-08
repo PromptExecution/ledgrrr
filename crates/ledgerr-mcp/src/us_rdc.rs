@@ -1,6 +1,5 @@
 //! Thin MCP handlers for US R&D Tax Credit / IRC § 41 (gh#516).
 
-use rust_decimal::Decimal;
 use serde_json::{json, Value};
 
 use ledger_core::us_rdc::{QreActivity, UsRdcFourPartTest};

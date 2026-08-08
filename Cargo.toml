@@ -4,6 +4,7 @@ members = [
   "crates/ledger-core",
   "crates/ledger-attest",
   "crates/ledgerr-focus",
+  "crates/ledgrrr-settings",
   "crates/ledgerr-host",
   "crates/ledgerr-mcp",
   "crates/ledgerr-mcp-core",
@@ -25,6 +26,7 @@ members = [
   "crates/b00t-reflect",
   "crates/holon-viz-wasm",
   "crates/beankeeper-bridge",
+  "crates/ledgerr-desktop-agent",
 ]
 resolver = "2"
 

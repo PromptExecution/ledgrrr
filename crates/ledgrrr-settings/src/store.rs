@@ -4,8 +4,8 @@ use std::sync::Mutex;
 
 use thiserror::Error;
 
-use super::schema::{AppSettings, SettingsSchemaVersion};
-use crate::settings_backend::{create_backend, SettingsBackend, SettingsBackendError};
+use crate::backend::{create_backend, SettingsBackend, SettingsBackendError};
+use crate::schema::{AppSettings, SettingsSchemaVersion};
 
 /// Errors that can occur during settings loading and saving.
 #[derive(Debug, Error)]

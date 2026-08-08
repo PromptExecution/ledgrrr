@@ -1,21 +1,26 @@
 //! Export the VisualizationSpec JSON manifest for the docs UI.
 //!
-//! Collects `HasVisualization::viz_spec()` from all 20 domain types and
-//! writes a `VizManifest` JSON file to the specified output path.
+//! Collects `HasVisualization::viz_spec()` from all 28 domain types (every
+//! `impl HasVisualization` in `ledger_core::iso_objects`, with the generic
+//! `StageResult<T>` represented once via `StageResult<()>`) and writes a
+//! `VizManifest` JSON file to the specified output path.
 
 use std::path::Path;
 
 use ledger_core::{
+    au_rd::{AuRdActivity, AuRdOffset},
     constraints::{
         ConstraintEvaluation, InvoiceConstraintSolver, InvoiceVerification, VendorConstraintSet,
     },
+    crypto::{CryptoTx, CryptoWallet},
     iso::{HasVisualization, VizManifest, VizManifestEntry},
     legal::{Jurisdiction, LegalRule, LegalSolver, TransactionFacts, Z3Result},
     pipeline::{
         Classified, Committed, Ingested, KasuariSolver, NeedsReview, PipelineState, Reconciled,
         Validated,
     },
-    validation::{CommitGate, Issue, MetaFlag, StageResult},
+    us_rdc::{QreActivity, UsRdcCredit},
+    validation::{CommitGate, Disposition, Issue, MetaCtx, MetaFlag, StageResult},
 };
 
 pub fn export_viz_manifest(output: &Path) -> Result<(), Box<dyn std::error::Error>> {
@@ -60,7 +65,15 @@ pub fn export_viz_manifest(output: &Path) -> Result<(), Box<dyn std::error::Erro
         VizManifestEntry::new("Issue", Issue::viz_spec()),
         VizManifestEntry::new("MetaFlag", MetaFlag::viz_spec()),
         VizManifestEntry::new("StageResult<()>", StageResult::<()>::viz_spec()),
+        VizManifestEntry::new("MetaCtx", MetaCtx::viz_spec()),
+        VizManifestEntry::new("Disposition", Disposition::viz_spec()),
         VizManifestEntry::new("KasuariSolver", KasuariSolver::viz_spec()),
+        VizManifestEntry::new("AuRdActivity", AuRdActivity::viz_spec()),
+        VizManifestEntry::new("AuRdOffset", AuRdOffset::viz_spec()),
+        VizManifestEntry::new("QreActivity", QreActivity::viz_spec()),
+        VizManifestEntry::new("UsRdcCredit", UsRdcCredit::viz_spec()),
+        VizManifestEntry::new("CryptoTx", CryptoTx::viz_spec()),
+        VizManifestEntry::new("CryptoWallet", CryptoWallet::viz_spec()),
     ];
 
     let count = objects.len();

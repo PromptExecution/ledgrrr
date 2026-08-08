@@ -2,9 +2,8 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use ledger_core::ontology::{
-    artifact_content_hash, relation_content_hash, Artifact, ArtifactInput, ArtifactKind,
-    ArtifactUpsertResult, OntologyError, OntologySnapshot, PathQueryResult, Relation,
-    RelationInput, RelationUpsertResult,
+    artifact_content_hash, relation_content_hash, Artifact, OntologySnapshot, PathQueryResult,
+    Relation, RelationInput, RelationUpsertResult,
 };
 use serde::{Deserialize, Serialize};
 
@@ -103,13 +102,6 @@ pub fn content_hash(canonical: &str) -> String {
     ledger_core::ontology::content_hash(canonical)
 }
 
-fn to_upsert_entities_response(result: ArtifactUpsertResult) -> OntologyUpsertEntitiesResponse {
-    OntologyUpsertEntitiesResponse {
-        inserted_count: result.inserted_count,
-        entity_ids: result.ids,
-    }
-}
-
 fn to_upsert_edges_response(result: RelationUpsertResult) -> OntologyUpsertEdgesResponse {
     OntologyUpsertEdgesResponse {
         inserted_count: result.inserted_count,
@@ -136,15 +128,36 @@ pub fn upsert_entities(
     store: &mut OntologyStore,
     inputs: Vec<OntologyEntityInput>,
 ) -> Result<OntologyUpsertEntitiesResponse, ToolError> {
-    let core_inputs = inputs
-        .into_iter()
-        .map(|i| ArtifactInput {
-            kind: i.kind,
-            attrs: i.attrs,
-        })
-        .collect();
-    let result = store.upsert_artifacts(core_inputs);
-    Ok(to_upsert_entities_response(result))
+    let mut inserted_count = 0usize;
+    let mut entity_ids = Vec::with_capacity(inputs.len());
+
+    for input in inputs {
+        let id = if let Some(user_id) = input.attrs.get("id") {
+            user_id.clone()
+        } else if let Some(custom_kind) = input.custom_kind.as_deref() {
+            entity_content_hash_str(custom_kind, &input.attrs)
+        } else {
+            entity_content_hash(input.kind, &input.attrs)
+        };
+
+        entity_ids.push(id.clone());
+        if store.artifacts.iter().any(|existing| existing.id == id) {
+            continue;
+        }
+
+        store.artifacts.push(Artifact {
+            id,
+            kind: input.kind,
+            attrs: input.attrs,
+        });
+        inserted_count += 1;
+    }
+
+    store.sort_deterministic();
+    Ok(OntologyUpsertEntitiesResponse {
+        inserted_count,
+        entity_ids,
+    })
 }
 
 pub fn upsert_edges(
