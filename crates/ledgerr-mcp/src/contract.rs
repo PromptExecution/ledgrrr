@@ -111,17 +111,18 @@ pub const PUBLISHED_TOOLS: [ToolContractSpec; 12] = [
     ToolContractSpec {
         name: AUDIT_TOOL,
         purpose: "append-only event and audit-log views",
-        actions: &["event_history", "event_replay", "query_audit_log"],
+        actions: &["event_history", "event_replay", "query_audit_log"        ],
     },
     ToolContractSpec {
         name: TAX_TOOL,
-        purpose: "tax summaries, evidence, ambiguity review, workbook export",
+        purpose: "tax summaries, evidence, ambiguity review, workbook export, FBAR/Form 8938",
         actions: &[
             "assist",
             "evidence_chain",
             "ambiguity_review",
             "schedule_summary",
             "export_workbook",
+            "compute_fbar",
         ],
     },
     ToolContractSpec {
@@ -636,6 +637,12 @@ pub enum TaxArgs {
     ExportWorkbook {
         workbook_path: PathBuf,
     },
+    ComputeFbar {
+        tax_year: u16,
+        filing_status: String,
+        living_abroad: bool,
+        accounts: Vec<FbarAccountInput>,
+    },
     // ── Tax-Lawyer Platform actions (gh#516) ──────────────────────────────
     /// Check AU R&D activity eligibility under ITAA 1997 s.355-100.
     AuRdCheckEligibility {
@@ -682,6 +689,24 @@ pub enum TaxArgs {
         jurisdiction: String,
         currency: String,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FbarDailyBalance {
+    pub date: String,
+    pub balance: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FbarAccountInput {
+    pub account_id: String,
+    pub institution: String,
+    pub country: String,
+    pub currency: String,
+    pub daily_balances: Vec<FbarDailyBalance>,
+    pub year_end_rate: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
