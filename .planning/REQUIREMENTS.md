@@ -59,10 +59,10 @@
 
 ### Release Automation
 
-- [ ] **REL-01**: Maintainer's build pipeline no longer references the stale `crates/ledgerr-tauri` path — fixed to `crates/ledgerr-host` in `build-tauri-windows.yml` before any submodule pointer bump.
-- [ ] **REL-02**: Maintainer can trigger a Windows desktop release by pushing a `ledgrrr-desktop-v*` tag to the outer `_b00t_` repo.
-- [ ] **REL-03**: Release pipeline computes SHA256 hashes for both the MSI and NSIS installer artifacts on tagged builds.
-- [ ] **REL-04**: Release pipeline creates an unsigned public GitHub Release with the installer and hash artifacts attached on tag push.
+- [x] **REL-01**: Maintainer's build pipeline no longer references the stale `crates/ledgerr-tauri` path — fixed to `crates/ledgerr-host` in `build-tauri-windows.yml` before any submodule pointer bump.
+- [x] **REL-02**: Maintainer can trigger a Windows desktop release by pushing a `ledgrrr-desktop-v*` tag to the outer `_b00t_` repo.
+- [x] **REL-03**: Release pipeline computes SHA256 hashes for both the MSI and NSIS installer artifacts on tagged builds.
+- [x] **REL-04**: Release pipeline creates an unsigned public GitHub Release with the installer and hash artifacts attached on tag push.
 
 ### Winget Manifest & Submission
 
@@ -119,10 +119,10 @@
 | CCONN-04 | Phase 19 | Pending |
 | CCONN-05 | Phase 21 | Pending |
 | CCONN-06 | Phase 20 | Pending |
-| REL-01 | Phase 22 | Pending |
-| REL-02 | Phase 22 | Pending |
-| REL-03 | Phase 22 | Pending |
-| REL-04 | Phase 22 | Pending |
+| REL-01 | Phase 22 | Complete |
+| REL-02 | Phase 22 | Complete |
+| REL-03 | Phase 22 | Complete |
+| REL-04 | Phase 22 | Complete |
 | WGT-01 | Phase 23 | Pending |
 | WGT-02 | Phase 23 | Pending |
 | WGT-03 | Phase 23 | Pending |
@@ -130,6 +130,7 @@
 | WGT-05 | Phase 24 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 18 total
 - v1.2 additional requirements: 6 total (parked, not yet phase-planned this cycle — Phases 19-21 reserved, untouched)
 - v1.3 additional requirements: 9 total (REL-01..04 -> Phase 22, WGT-01..04 -> Phase 23, WGT-05 -> Phase 24) — mapped to phases 22-24

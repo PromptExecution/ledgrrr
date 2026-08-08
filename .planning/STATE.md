@@ -7,10 +7,10 @@ last_updated: "2026-08-08T11:32:32.253Z"
 last_activity: 2026-08-08
 progress:
   total_phases: 3
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
+  percent: 33
 ---
 
 # Project State
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-30)
 
 **Core value:** Convert raw historical financial PDFs into accountant-usable, auditable Excel tax records without sending private data to third-party SaaS.
-**Current focus:** Phase 19 roadmap-to-plan transition (connector capability profile contract)
+**Current focus:** Phase 23 roadmap-to-plan transition (first winget submission)
 
 ## Current Position
 
-Phase: 22 (Release Automation Foundation) — roadmap created, not yet planned
+Phase: 23 (First Winget Submission) — up next, not yet planned
 Plan: —
-Status: Ready for `/gsd-plan-phase 22`
-Last activity: 2026-08-08 — v1.3 roadmap created (Phases 22-24; v1.2 Phases 19-21 remain parked)
+Status: Ready for `/gsd-plan-phase 23`
+Last activity: 2026-08-08 — Phase 22 (Release Automation Foundation) complete: build-tauri-windows.yml stale crates/ledgerr-tauri path fixed to crates/ledgerr-host, ledgrrr-desktop-v* tag trigger added, SHA256 hashing step added, unsigned public GitHub Release step added (REL-01..REL-04)
 
 ## Performance Metrics
 
@@ -70,6 +70,9 @@ Last activity: 2026-08-08 — v1.3 roadmap created (Phases 22-24; v1.2 Phases 19
 - [Phase 18]: Tax outputs remain blocked until reconciliation passes; ready outputs are ontology-derived and deterministic.
 - [Phase 18]: Evidence chains expose explicit source-events-current_state sections with preserved provenance and ambiguity links.
 - [Phase 18]: MCP transport now exposes l3dg3rr_tax_assist, l3dg3rr_tax_evidence_chain, and l3dg3rr_tax_ambiguity_review with deterministic envelopes.
+- [Phase 22]: Extended the existing build-tauri-windows.yml in-place (outer `_b00t_` repo) rather than adding a second workflow file, since build and release share the same runner/artifacts — mirrors browser-ext-release.yml's single-file tag-gated pattern.
+- [Phase 22]: Chose `ledgrrr-desktop-v*` as the release tag prefix, pushed to the outer `_b00t_` repo (not the `ledgrrr` submodule), to avoid ambiguity with `_b00t_`'s own bare `v*` workspace-release tags and `ledgrrr`'s internal `cog bump` tags.
+- [Phase 22]: Declared explicit job-level `permissions: contents: write` on the release job (least-privilege), rather than relying on repo-default token permissions as browser-ext-release.yml does.
 
 ### Pending Todos
 
