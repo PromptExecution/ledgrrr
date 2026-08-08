@@ -23,6 +23,12 @@ use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Shell::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
+use windows::core::w;
+
+/// Shell_NotifyIcon callback message. `WM_APP + 1` can't be used directly as
+/// a match pattern (Rust patterns must be constants, not expressions), so it
+/// is precomputed here and shared with the `NOTIFYICONDATAW` registration.
+const WM_TRAY_CALLBACK: u32 = WM_APP + 1;
 
 // ── Menu Command IDs ──────────────────────────────────────────────────────────
 // Each tray menu item is assigned a stable command ID dispatched via WM_COMMAND.
@@ -224,7 +230,7 @@ unsafe extern "system" fn tray_wnd_proc(
     lparam: LPARAM,
 ) -> LRESULT {
     match msg {
-        WM_APP + 1 => {
+        WM_TRAY_CALLBACK => {
             // Shell_NotifyIcon callback — LOWORD(lparam) holds the mouse message.
             match lparam.0 as u32 {
                 WM_RBUTTONUP => {
@@ -513,7 +519,7 @@ unsafe fn run_tray_pump(
         hWnd: hwnd,
         uID: 1,
         uFlags: NIF_ICON | NIF_MESSAGE | NIF_TIP | NIF_SHOWTIP,
-        uCallbackMessage: WM_APP + 1,
+        uCallbackMessage: WM_TRAY_CALLBACK,
         hIcon: hicon,
         szTip: [0u16; 128],
         ..Default::default()
