@@ -119,14 +119,23 @@
 | CCONN-04 | Phase 19 | Pending |
 | CCONN-05 | Phase 21 | Pending |
 | CCONN-06 | Phase 20 | Pending |
+| REL-01 | Phase 22 | Pending |
+| REL-02 | Phase 22 | Pending |
+| REL-03 | Phase 22 | Pending |
+| REL-04 | Phase 22 | Pending |
+| WGT-01 | Phase 23 | Pending |
+| WGT-02 | Phase 23 | Pending |
+| WGT-03 | Phase 23 | Pending |
+| WGT-04 | Phase 23 | Pending |
+| WGT-05 | Phase 24 | Pending |
 
 **Coverage:**
 - v1 requirements: 18 total
-- v1.2 additional requirements: 6 total (parked, not yet phase-planned this cycle)
-- v1.3 additional requirements: 9 total (REL-01..04, WGT-01..05) — not yet mapped to phases, pending roadmap
+- v1.2 additional requirements: 6 total (parked, not yet phase-planned this cycle — Phases 19-21 reserved, untouched)
+- v1.3 additional requirements: 9 total (REL-01..04 -> Phase 22, WGT-01..04 -> Phase 23, WGT-05 -> Phase 24) — mapped to phases 22-24
 - All requirements (v1 + v1.2 + v1.3): 33 total
-- Mapped to phases: 24
-- Unmapped: 9 (v1.3, pending `/gsd-plan-phase` roadmap)
+- Mapped to phases: 33
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-30*
