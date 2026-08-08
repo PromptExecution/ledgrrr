@@ -42,6 +42,7 @@ pub mod schema;
 pub mod shape_tool;
 pub mod au_rd;
 pub mod crypto;
+pub mod schedule_e;
 pub mod tax_assist;
 pub mod us_rdc;
 pub mod xero_service;
