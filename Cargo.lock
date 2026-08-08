@@ -5856,6 +5856,7 @@ version = "1.9.0"
 dependencies = [
  "agentmesh",
  "arc-kit-au",
+ "beankeeper-bridge",
  "blake3",
  "calamine",
  "cfg-if",
@@ -5868,6 +5869,7 @@ dependencies = [
  "ledgerr-mcp-core",
  "ledgerr-xero",
  "msft-agent-gov-ledgrrr",
+ "ofx-rs",
  "reqwest 0.12.28",
  "rust_decimal",
  "rust_xlsxwriter",
@@ -6748,26 +6750,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tracing",
-]
-
-[[package]]
-name = "muda"
-version = "0.17.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c9fec5a4e89860383d778d10563a605838f8f0b2f9303868937e5ff32e86177"
-dependencies = [
- "crossbeam-channel",
- "dpi",
- "gtk",
- "keyboard-types",
- "objc2 0.6.4",
- "objc2-app-kit 0.3.2",
- "objc2-core-foundation",
- "objc2-foundation 0.3.2",
- "once_cell",
- "png 0.17.16",
- "thiserror 2.0.18",
- "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -8984,7 +8966,7 @@ dependencies = [
 
 [[package]]
 name = "rotel-visual"
-version = "1.8.1"
+version = "1.9.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -11858,21 +11840,21 @@ dependencies = [
 
 [[package]]
 name = "tray-icon"
-version = "0.22.2"
+version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5e85aa143ceb072062fc4d6356c1b520a51d636e7bc8e77ec94be3608e5e80c"
+checksum = "15edbb0d80583e85ee8df283410038e17314df5cba30da2087a54a85216c0773"
 dependencies = [
  "crossbeam-channel",
  "dirs",
  "libappindicator",
- "muda 0.17.2",
+ "muda 0.19.1",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
  "objc2-core-foundation",
  "objc2-core-graphics",
  "objc2-foundation 0.3.2",
  "once_cell",
- "png 0.17.16",
+ "png 0.18.1",
  "serde",
  "thiserror 2.0.18",
  "windows-sys 0.60.2",

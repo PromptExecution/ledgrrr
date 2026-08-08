@@ -18,6 +18,7 @@ use std::os::windows::ffi::OsStrExt;
 use std::sync::mpsc;
 use std::time::Duration;
 
+use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -44,6 +45,9 @@ pub(crate) const CMD_STATUS: u32 = 112;
 pub(crate) const CMD_SHOW_WINDOW: u32 = 113;
 pub(crate) const CMD_EXIT: u32 = 114;
 
+/// Private Win32 message used for Shell_NotifyIcon callbacks.
+const TRAY_CALLBACK_MESSAGE: u32 = WM_APP + 1;
+
 /// Items rendered with a checkmark that toggle on click.
 pub(crate) const CHECK_ITEM_IDS: &[u32] = &[
     CMD_TOAST_ENABLED,
@@ -56,12 +60,7 @@ pub(crate) const CHECK_ITEM_IDS: &[u32] = &[
 ];
 
 /// Items whose text is updated dynamically at runtime (always greyed info rows).
-pub(crate) const DYNAMIC_TEXT_IDS: &[u32] = &[
-    CMD_VERSION,
-    CMD_BACKEND,
-    CMD_LAST_TEST,
-    CMD_STATUS,
-];
+pub(crate) const DYNAMIC_TEXT_IDS: &[u32] = &[CMD_VERSION, CMD_BACKEND, CMD_LAST_TEST, CMD_STATUS];
 
 // ── Channel Types ─────────────────────────────────────────────────────────────
 
@@ -141,7 +140,7 @@ unsafe fn create_icon_from_rgba(
     rgba: &[u8],
     width: i32,
     height: i32,
-) -> Result<HICON, Box<dyn std::error::Error>> {
+) -> Result<HICON, Box<dyn std::error::Error + Send + Sync>> {
     let hdc = GetDC(None);
     if hdc.is_invalid() {
         return Err("GetDC failed — no display device context".into());
@@ -154,7 +153,7 @@ unsafe fn create_icon_from_rgba(
             biHeight: -height, // top-down DIB
             biPlanes: 1,
             biBitCount: 32,
-            biCompression: BI_RGB,
+            biCompression: BI_RGB.0,
             ..Default::default()
         },
         bmiColors: [RGBQUAD::default(); 1],
@@ -171,7 +170,7 @@ unsafe fn create_icon_from_rgba(
     )?;
 
     if bits.is_null() {
-        let _ = DeleteObject(color_bmp);
+        let _ = DeleteObject(color_bmp.into());
         let _ = ReleaseDC(None, hdc);
         return Err("CreateDIBSection returned null pixel pointer".into());
     }
@@ -185,13 +184,13 @@ unsafe fn create_icon_from_rgba(
     let mask_data = vec![0u8; mask_size];
     let mask_bmp = CreateBitmap(width, height, 1, 1, Some(mask_data.as_ptr() as *const _));
     if mask_bmp.is_invalid() {
-        let _ = DeleteObject(color_bmp);
+        let _ = DeleteObject(color_bmp.into());
         let _ = ReleaseDC(None, hdc);
         return Err("CreateBitmap for monochrome mask failed".into());
     }
 
     let icon_info = ICONINFO {
-        fIcon: BOOL(1),
+        fIcon: true,
         xHotspot: 0,
         yHotspot: 0,
         hbmMask: mask_bmp,
@@ -201,8 +200,8 @@ unsafe fn create_icon_from_rgba(
     let hicon = CreateIconIndirect(&icon_info as *const ICONINFO)?;
 
     // The icon handle owns its own copy; the originals can be freed.
-    let _ = DeleteObject(mask_bmp);
-    let _ = DeleteObject(color_bmp);
+    let _ = DeleteObject(mask_bmp.into());
+    let _ = DeleteObject(color_bmp.into());
     let _ = ReleaseDC(None, hdc);
 
     Ok(hicon)
@@ -224,7 +223,7 @@ unsafe extern "system" fn tray_wnd_proc(
     lparam: LPARAM,
 ) -> LRESULT {
     match msg {
-        WM_APP + 1 => {
+        TRAY_CALLBACK_MESSAGE => {
             // Shell_NotifyIcon callback — LOWORD(lparam) holds the mouse message.
             match lparam.0 as u32 {
                 WM_RBUTTONUP => {
@@ -245,7 +244,7 @@ unsafe extern "system" fn tray_wnd_proc(
                             None,
                         );
                         // Required to properly dismiss the menu on selection.
-                        let _ = PostMessageW(hwnd, WM_NULL, WPARAM::default(), LPARAM::default());
+                        let _ = PostMessageW(hwnd, WM_NULL, None, None);
                     }
                     LRESULT(0)
                 }
@@ -284,24 +283,56 @@ unsafe extern "system" fn tray_wnd_proc(
 /// 4. Show window, Exit
 unsafe fn build_tray_menu(
     labels: &crate::tray::TrayMenuLabels,
-) -> Result<HMENU, Box<dyn std::error::Error>> {
+) -> Result<HMENU, Box<dyn std::error::Error + Send + Sync>> {
     let hmenu = CreatePopupMenu()?;
 
     // ── helpers ──────────────────────────────────────────────────────────
-    fn push_info(hmenu: HMENU, id: u32, text: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let wide: Vec<u16> = OsStr::new(text).encode_wide().chain(core::iter::once(0)).collect();
-        AppendMenuW(hmenu, MF_STRING | MF_GRAYED, id as usize, PCWSTR::from_raw(wide.as_ptr()))?;
+    fn push_info(
+        hmenu: HMENU,
+        id: u32,
+        text: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let wide: Vec<u16> = OsStr::new(text)
+            .encode_wide()
+            .chain(core::iter::once(0))
+            .collect();
+        AppendMenuW(
+            hmenu,
+            MF_STRING | MF_GRAYED,
+            id as usize,
+            PCWSTR::from_raw(wide.as_ptr()),
+        )?;
         Ok(())
     }
 
-    fn push_action(hmenu: HMENU, id: u32, text: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let wide: Vec<u16> = OsStr::new(text).encode_wide().chain(core::iter::once(0)).collect();
-        AppendMenuW(hmenu, MF_STRING, id as usize, PCWSTR::from_raw(wide.as_ptr()))?;
+    fn push_action(
+        hmenu: HMENU,
+        id: u32,
+        text: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let wide: Vec<u16> = OsStr::new(text)
+            .encode_wide()
+            .chain(core::iter::once(0))
+            .collect();
+        AppendMenuW(
+            hmenu,
+            MF_STRING,
+            id as usize,
+            PCWSTR::from_raw(wide.as_ptr()),
+        )?;
         Ok(())
     }
 
-    fn push_check(hmenu: HMENU, id: u32, text: &str, checked: bool) -> Result<(), Box<dyn std::error::Error>> {
-        let wide: Vec<u16> = OsStr::new(text).encode_wide().chain(core::iter::once(0)).collect();
+    fn push_check(
+        hmenu: HMENU,
+        id: u32,
+        text: &str,
+        checked: bool,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let wide: Vec<u16> = OsStr::new(text)
+            .encode_wide()
+            .chain(core::iter::once(0))
+            .collect();
         let flags = if checked {
             MF_STRING | MF_CHECKED
         } else {
@@ -320,7 +351,11 @@ unsafe fn build_tray_menu(
     push_action(hmenu, CMD_START_MINIMIZED, labels.start_minimized_to_tray)?;
     push_action(hmenu, CMD_WINDOW_VISIBLE, labels.window_visible_on_start)?;
     push_action(hmenu, CMD_NOTIFY_APPROVAL, labels.notify_approval_required)?;
-    push_action(hmenu, CMD_NOTIFY_SUBMITTED, labels.notify_transaction_submitted)?;
+    push_action(
+        hmenu,
+        CMD_NOTIFY_SUBMITTED,
+        labels.notify_transaction_submitted,
+    )?;
     push_action(hmenu, CMD_NOTIFY_FAILED, labels.notify_run_failed)?;
     push_action(hmenu, CMD_NOTIFY_COMPLETED, labels.notify_run_completed)?;
     push_action(hmenu, CMD_TEST_TOAST, labels.test_toast)?;
@@ -339,12 +374,22 @@ unsafe fn update_info_text(hmenu: HMENU, id: u32, text: &str) {
         .encode_wide()
         .chain(core::iter::once(0))
         .collect();
-    let _ = ModifyMenuW(hmenu, id, MF_BYCOMMAND | MF_STRING | MF_GRAYED, id as usize, PCWSTR::from_raw(wide.as_ptr()));
+    let _ = ModifyMenuW(
+        hmenu,
+        id,
+        MF_BYCOMMAND | MF_STRING | MF_GRAYED,
+        id as usize,
+        PCWSTR::from_raw(wide.as_ptr()),
+    );
 }
 
 /// Toggle the checkmark state of a menu item.
 unsafe fn set_menu_check(hmenu: HMENU, id: u32, checked: bool) {
-    let flag = if checked { MF_CHECKED.0 } else { MF_UNCHECKED.0 };
+    let flag = if checked {
+        MF_CHECKED.0
+    } else {
+        MF_UNCHECKED.0
+    };
     CheckMenuItem(hmenu, id, flag);
 }
 
@@ -381,6 +426,7 @@ impl NativeTrayPlatform {
 
         let tooltip_owned = tooltip.to_owned();
         let labels_clone = initial_labels.clone();
+        let pump_ready_tx = ready_tx.clone();
 
         let thread_handle = std::thread::Builder::new()
             .name("tray-msg-pump".into())
@@ -394,13 +440,10 @@ impl NativeTrayPlatform {
                         &labels_clone,
                         event_tx,
                         control_rx,
-                        ready_tx,
+                        pump_ready_tx,
                     )
                 } {
-                    // Only report setup errors — pump errors are internal.
-                    if !ready_tx.is_closed() {
-                        let _ = ready_tx.send(Err(e.to_string()));
-                    }
+                    let _ = ready_tx.send(Err(e.to_string()));
                 }
             })?;
 
@@ -445,13 +488,13 @@ unsafe fn run_tray_pump(
     let hinstance = GetModuleHandleW(None)?;
 
     // ── Register window class ────────────────────────────────────────────
-    let class_name = windows::core::w!("L3dg3rrTrayWindow");
+    let class_name = w!("L3dg3rrTrayWindow");
     let wc = WNDCLASSW {
         style: WNDCLASS_STYLES(0),
         lpfnWndProc: Some(tray_wnd_proc),
         cbClsExtra: 0,
         cbWndExtra: 0,
-        hInstance: hinstance,
+        hInstance: hinstance.into(),
         hIcon: HICON::default(),
         hCursor: HCURSOR::default(),
         hbrBackground: HBRUSH::default(),
@@ -483,7 +526,7 @@ unsafe fn run_tray_pump(
         0,
         None,
         None,
-        Some(hinstance),
+        Some(hinstance.into()),
         Some(user_data_ptr as *const _),
     ) {
         Ok(h) => h,
@@ -513,7 +556,7 @@ unsafe fn run_tray_pump(
         hWnd: hwnd,
         uID: 1,
         uFlags: NIF_ICON | NIF_MESSAGE | NIF_TIP | NIF_SHOWTIP,
-        uCallbackMessage: WM_APP + 1,
+        uCallbackMessage: TRAY_CALLBACK_MESSAGE,
         hIcon: hicon,
         szTip: [0u16; 128],
         ..Default::default()
@@ -538,7 +581,11 @@ unsafe fn run_tray_pump(
     let mut hicon_current = hicon;
 
     // Helper: tear down OS resources.
-    let mut cleanup = |nid: &NOTIFYICONDATAW, hicon: HICON, hwnd: HWND, hmenu: HMENU, ptr: *mut WindowUserData| {
+    let mut cleanup = |nid: &NOTIFYICONDATAW,
+                       hicon: HICON,
+                       hwnd: HWND,
+                       hmenu: HMENU,
+                       ptr: *mut WindowUserData| {
         let _ = Shell_NotifyIconW(NIM_DELETE, nid as *const NOTIFYICONDATAW);
         let _ = DestroyIcon(hicon);
         let _ = DestroyWindow(hwnd);
