@@ -576,6 +576,14 @@ kani-setup:
 kani-check:
     cd kani-proofs && cargo kani
 
+# Run the exhaustive/full-compliance test sweeps that stand in for the two
+# properties downgraded from symbolic Kani proofs (invoice_arithmetic,
+# commit_gate) — these are #[ignore]'d out of the default fast test suite
+# because they deliberately run tens of millions of concrete checks (~5-10s),
+# not milliseconds. Run before a release or when auditing those invariants.
+exhaustive-check:
+    cargo test -p kani-proofs -- --ignored --nocapture
+
 # ─── Push verification ────────────────────────────────────────────────────────
 
 # Confirm a local branch's commits actually reached the remote — don't just trust
