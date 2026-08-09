@@ -100,8 +100,8 @@ pub const PUBLISHED_TOOLS: [ToolContractSpec; 12] = [
     },
     ToolContractSpec {
         name: RECONCILIATION_TOOL,
-        purpose: "staged totals/postings guardrails",
-        actions: &["validate", "reconcile", "commit"],
+        purpose: "staged totals/postings guardrails and statement continuity assertion",
+        actions: &["validate", "reconcile", "commit", "assert_coverage"],
     },
     ToolContractSpec {
         name: WORKFLOW_TOOL,
@@ -563,6 +563,10 @@ pub enum ReconciliationArgs {
         source_total: String,
         extracted_total: String,
         posting_amounts: Vec<String>,
+    },
+    AssertCoverage {
+        account_ids: Vec<String>,
+        tax_year: i32,
     },
 }
 

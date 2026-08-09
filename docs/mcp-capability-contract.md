@@ -12,7 +12,7 @@ The default catalog is intentionally small: 12 top-level `ledgerr_*` tools. Each
 |---|---|---|
 | `ledgerr_documents` | document intake (PDF, image, CSV), tagging, filesystem metadata sync | `list_accounts`, `pipeline_status`, `validate_filename`, `ingest_pdf`, `ingest_image`, `ingest_rows`, `get_raw_context`, `document_inventory`, `apply_tags`, `remove_tags`, `list_tagged`, `sync_fs_metadata`, `normalize_filename` |
 | `ledgerr_review` | classification and human-review workflows | `run_rule`, `classify_ingested`, `query_flags`, `classify_transaction`, `reconcile_excel_classification`, `query_transactions`, `batch_classify`, `bulk_resolve_flags`, `apply_mapping_bulk`, `fetch_work_queue` |
-| `ledgerr_reconciliation` | staged totals/postings guardrails | `validate`, `reconcile`, `commit` |
+| `ledgerr_reconciliation` | staged totals/postings guardrails and statement continuity assertion | `validate`, `reconcile`, `commit`, `assert_coverage` |
 | `ledgerr_workflow` | lifecycle/HSM orchestration plus relocated plugin ops | `status`, `transition`, `resume`, `plugin_info` |
 | `ledgerr_audit` | append-only event and audit-log views | `event_history`, `event_replay`, `query_audit_log` |
 | `ledgerr_tax` | tax summaries, evidence, ambiguity review, workbook export | `assist`, `evidence_chain`, `ambiguity_review`, `schedule_summary`, `export_workbook`, `compute_feie` |
