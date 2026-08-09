@@ -73,7 +73,7 @@ fn coverage_03_detects_duplicate_source_refs() {
     );
     let report = assert_account_coverage(&request, &tx_rows).expect("coverage ok");
     assert!(report.has_duplicates, "expected duplicates for january");
-    assert!(!report.has_gaps, "no gaps -- rest are gaps!");
+    assert!(report.has_gaps, "the other 11 months of 2023 have no coverage");
     assert_eq!(report.gaps.len(), 11);
 }
 
