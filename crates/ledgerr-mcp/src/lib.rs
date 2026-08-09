@@ -22,6 +22,7 @@ use ledgerr_llm::{LlmClient, LlmConfig};
 #[cfg(feature = "xero")]
 use xero_service::XeroService;
 
+pub mod beankeeper_import;
 pub mod batch_executor;
 use crate::batch_executor::BatchExecutor;
 pub mod calendar_tool;
@@ -3948,6 +3949,25 @@ impl TurboLedgerService {
     ) -> Result<serde_json::Value, ToolError> {
         let mut store = OntologyStore::load(&ontology_path).unwrap_or_default();
         self.xero.sync_catalog(&mut store, &ontology_path)
+    }
+
+    pub fn import_ofx_tool(
+        &self,
+        ofx_path: &std::path::Path,
+        config: &beankeeper_bridge::ConversionConfig,
+        journal_path: &std::path::Path,
+        workbook_path: &std::path::Path,
+        ontology_path: Option<&std::path::Path>,
+    ) -> Result<IngestStatementRowsResponse, ToolError> {
+        let rows = crate::beankeeper_import::parse_ofx_to_rows(ofx_path, config)
+            .map_err(|e| ToolError::Internal(e.to_string()))?;
+        let ingested = self.ingest_statement_rows(IngestStatementRowsRequest {
+            journal_path: journal_path.to_path_buf(),
+            workbook_path: workbook_path.to_path_buf(),
+            ontology_path: ontology_path.map(|p| p.to_path_buf()),
+            rows,
+        })?;
+        Ok(ingested)
     }
 }
 

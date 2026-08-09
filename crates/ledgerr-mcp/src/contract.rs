@@ -80,6 +80,7 @@ pub const PUBLISHED_TOOLS: [ToolContractSpec; 12] = [
             "list_tagged",
             "sync_fs_metadata",
             "normalize_filename",
+            "import_ofx",
         ],
     },
     ToolContractSpec {
@@ -493,6 +494,18 @@ pub enum DocumentsArgs {
         recursive: bool,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         statuses: Vec<String>,
+    },
+    ImportOfx {
+        ofx_path: PathBuf,
+        journal_path: PathBuf,
+        workbook_path: PathBuf,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        ontology_path: Option<PathBuf>,
+        asset_code: String,
+        asset_name: String,
+        offset_code: String,
+        offset_name: String,
+        offset_kind: String,
     },
 }
 
