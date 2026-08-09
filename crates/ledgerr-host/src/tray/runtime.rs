@@ -8,7 +8,8 @@ use crate::notify::{
     NotificationBackend, NotificationEvent, NotificationSettings, NotificationStatus,
     NotificationTestResult, Notifier, NotifyError, PowerShellBurntToastNotifier,
 };
-use crate::settings::{AppSettings, SettingsStore};
+use crate::settings::AppSettings;
+use crate::settings_client::SettingsClient;
 
 use super::native::{
     make_icon_data, NativeTrayPlatform, TrayControl, TrayEvent, CMD_CYCLE_BACKEND,
@@ -18,7 +19,7 @@ use super::native::{
 };
 use super::{tray_menu_labels, TrayCommand, TrayState};
 
-pub fn run(store: SettingsStore) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(store: SettingsClient) -> Result<(), Box<dyn std::error::Error>> {
     let settings = store.load()?;
     let state = Arc::new(Mutex::new(TrayState::from_settings(&settings)));
     let labels = tray_menu_labels(&state.lock().expect("tray state poisoned"));
@@ -119,7 +120,7 @@ pub fn run(store: SettingsStore) -> Result<(), Box<dyn std::error::Error>> {
 
 fn handle_command(
     command: TrayCommand,
-    store: &SettingsStore,
+    store: &SettingsClient,
     state: &Arc<Mutex<TrayState>>,
     control_tx: &mpsc::Sender<TrayControl>,
 ) -> Result<bool, Box<dyn std::error::Error>> {

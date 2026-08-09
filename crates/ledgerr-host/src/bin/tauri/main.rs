@@ -53,11 +53,10 @@ fn main() {
     use ledgerr_host::chat::{ChatTurn, ReviewLog};
     use ledgerr_host::evidence::EvidenceState;
     use ledgerr_host::internal_openai::InternalOpenAiHandle;
-    use ledgerr_host::settings::{default_settings_path, SettingsStore};
     use state::AppState;
     use std::sync::{Arc, Mutex};
 
-    let store = Arc::new(SettingsStore::new(default_settings_path()));
+    let store = Arc::new(ledgerr_host::settings_client::SettingsClient::new());
     let history: Arc<Mutex<Vec<ChatTurn>>> = Arc::new(Mutex::new(Vec::new()));
     let review_log: Arc<Mutex<ReviewLog>> = Arc::new(Mutex::new(ReviewLog::default()));
     let internal_endpoint: Arc<Mutex<Option<InternalOpenAiHandle>>> = Arc::new(Mutex::new(None));

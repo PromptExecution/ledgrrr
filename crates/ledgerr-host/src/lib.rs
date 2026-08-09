@@ -9,7 +9,7 @@ pub mod local_llm;
 pub mod local_llm_mistral;
 pub mod notify;
 pub mod settings;
-pub mod settings_backend;
+pub mod settings_client;
 pub mod tray;
 pub use evidence::{EvidenceState, TodayQueue};
 pub use internal_openai::{
