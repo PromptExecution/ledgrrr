@@ -134,7 +134,11 @@ fn main() {
             .build()
             .expect("failed to build main window");
             let _: std::result::Result<(), _> = w.set_title(&title);
-            tray::setup_tray(app);
+            if let Ok(settings) = app.state::<AppState>().store.load() {
+                if settings.enable_tray {
+                    tray::setup_tray(app);
+                }
+            }
             Ok(())
         })
         .invoke_handler(specta_builder.invoke_handler())
