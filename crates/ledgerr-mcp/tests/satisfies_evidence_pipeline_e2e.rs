@@ -1,9 +1,12 @@
 mod common;
 
+use std::collections::BTreeMap;
+
 use ledger_core::ingest::TransactionInput;
 use ledger_core::SatisfiesResult;
 use ledgerr_mcp::{
-    ClassifyTransactionRequest, IngestStatementRowsRequest, ReplayLifecycleRequest,
+    ClassifyTransactionRequest, IngestStatementRowsRequest, OntologyEntityInput,
+    OntologyEntityKind, OntologyUpsertEntitiesRequest, ReplayLifecycleRequest,
     TaxEvidenceChainRequest, TurboLedgerService, TurboLedgerTools,
 };
 
@@ -59,10 +62,25 @@ fn satisfy_then_classify_then_evidence_chain_includes_all_stages() {
     })
     .expect("classify");
 
+    let mut tx_attrs = BTreeMap::new();
+    tx_attrs.insert("tx_id".to_string(), tx_id.clone());
+    let entities = svc
+        .ontology_upsert_entities(OntologyUpsertEntitiesRequest {
+            ontology_path: ontology_path.clone(),
+            entities: vec![OntologyEntityInput {
+                kind: OntologyEntityKind::Transaction,
+                attrs: tx_attrs,
+                custom_kind: None,
+            }],
+            schema_store_path: None,
+        })
+        .expect("ontology entities");
+    let tx_entity_id = entities.entity_ids[0].clone();
+
     let chain = svc
         .tax_evidence_chain_tool(TaxEvidenceChainRequest {
             ontology_path: ontology_path.clone(),
-            from_entity_id: "WF-EV-CHK".to_string(),
+            from_entity_id: tx_entity_id,
             tx_id: Some(tx_id.clone()),
             document_ref: Some("source/ev-2023-06.rkyv".to_string()),
         })
@@ -84,7 +102,8 @@ fn satisfy_then_classify_then_evidence_chain_includes_all_stages() {
         replay.event_count > 0,
         "lifecycle replay must include at least one event"
     );
-    assert_eq!(replay.reconstructed_state, "ingest→classification");
+    assert!(replay.reconstructed_state.contains("stage=classification"));
+    assert!(replay.reconstructed_state.contains("category=ScheduleC"));
 }
 
 #[test]
@@ -128,10 +147,25 @@ fn ontology_path_roundtrip_preserves_structure() {
     })
     .expect("classify");
 
+    let mut tx_attrs = BTreeMap::new();
+    tx_attrs.insert("tx_id".to_string(), tx_id.clone());
+    let entities = svc
+        .ontology_upsert_entities(OntologyUpsertEntitiesRequest {
+            ontology_path: ontology_path.clone(),
+            entities: vec![OntologyEntityInput {
+                kind: OntologyEntityKind::Transaction,
+                attrs: tx_attrs,
+                custom_kind: None,
+            }],
+            schema_store_path: None,
+        })
+        .expect("ontology entities");
+    let tx_entity_id = entities.entity_ids[0].clone();
+
     let chain = svc
         .tax_evidence_chain_tool(TaxEvidenceChainRequest {
             ontology_path: ontology_path.clone(),
-            from_entity_id: "WF-BH-CHK".to_string(),
+            from_entity_id: tx_entity_id,
             tx_id: Some(tx_id.clone()),
             document_ref: Some("source/wf-2023-03.rkyv".to_string()),
         })
