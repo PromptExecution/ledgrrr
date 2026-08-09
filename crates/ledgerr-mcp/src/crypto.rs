@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 use ledger_core::crypto::{
     Chain, CostBasisMethod, CryptoTx, CryptoWallet, CryptoCostBasisRules, TaxJurisdiction, TxType,
 };
-use ufo_types::{iso::Currency, satisfies::Satisfies};
+use ufo_types::{iso::{Currency, Lei}, satisfies::Satisfies};
 
 pub fn handle_crypto_cost_basis_check(
     lei: &str,

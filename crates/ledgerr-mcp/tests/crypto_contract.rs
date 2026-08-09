@@ -6,7 +6,7 @@ fn check(
     address: &str,
 ) -> serde_json::Value {
     ledgerr_mcp::crypto::handle_crypto_cost_basis_check(
-        "529900T8BMF4KJ2H7K41",
+        "HWUPKR0MPOU8FGXBT394",
         "0xabc123",
         "sell",
         "10000.00",
@@ -28,7 +28,7 @@ fn fifo_btc_no_address() {
     assert_eq!(v["method_used"], "FIFO");
     assert_eq!(v["chain"], "Bitcoin");
     assert_eq!(v["address"], "");
-    assert_eq!(v["gain_loss"], 4000.0);
+    assert_eq!(v["gain_loss"], "4000.00");
 }
 
 #[test]
@@ -76,7 +76,7 @@ fn unrecognized_chain_returns_error() {
 #[test]
 fn au_discount_eligible_long_hold() {
     let v = ledgerr_mcp::crypto::handle_crypto_cost_basis_check(
-        "529900T8BMF4KJ2H7K41",
+        "HWUPKR0MPOU8FGXBT394",
         "0xdef",
         "sell",
         "20000.00",
@@ -97,7 +97,7 @@ fn au_discount_eligible_long_hold() {
 #[test]
 fn au_no_discount_short_hold() {
     let v = ledgerr_mcp::crypto::handle_crypto_cost_basis_check(
-        "529900T8BMF4KJ2H7K41",
+        "HWUPKR0MPOU8FGXBT394",
         "0xdef",
         "sell",
         "20000.00",
@@ -112,5 +112,5 @@ fn au_no_discount_short_hold() {
     );
     assert!(v["error"].is_null());
     assert!(!v["au_discount_eligible"].as_bool().unwrap_or(true));
-    assert_eq!(v["au_taxable_gain"].as_f64().unwrap_or(0.0), 15000.0);
+    assert_eq!(v["au_taxable_gain"], "15000.00");
 }
