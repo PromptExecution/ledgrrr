@@ -42,7 +42,6 @@ pub mod schema;
 pub mod shape_tool;
 pub mod au_rd;
 pub mod crypto;
-pub mod schedule_e;
 pub mod feie;
 pub mod tax_assist;
 pub mod us_rdc;
@@ -3206,13 +3205,11 @@ fn emit_ingest_ontology_edges(
                     kind: OntologyEntityKind::Document,
                     custom_kind: None,
                     attrs: doc_attrs,
-                    custom_kind: None,
                 },
                 OntologyEntityInput {
                     kind: OntologyEntityKind::Transaction,
                     custom_kind: None,
                     attrs: tx_attrs,
-                    custom_kind: None,
                 },
             ],
         )?
