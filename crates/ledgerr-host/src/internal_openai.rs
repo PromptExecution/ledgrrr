@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::settings::ChatSettings;
+pub use ledgrrr_settings::{ModelProviderLabel, ProviderReadiness};
 
 pub const INTERNAL_OPENAI_ADDR: &str = "127.0.0.1:15115";
 pub const INTERNAL_OPENAI_CHAT_URL: &str = "http://127.0.0.1:15115/v1/chat/completions";
@@ -37,39 +38,14 @@ pub const FOUNDRY_LOCAL_MODEL: &str = "phi-4-mini";
 pub const FOUNDRY_LOCAL_API_KEY: &str = "local-foundry";
 pub const FOUNDRY_LOCAL_DEFAULT_CHAT_URL: &str = "http://localhost:5272/v1/chat/completions";
 
-/// Operator-facing model provider label.
-///
-/// This label is shown in the host UI instead of the technical backend name.
-/// Each label maps to a readiness state and a setup path.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
-#[serde(rename_all = "snake_case")]
-pub enum ModelProviderLabel {
-    /// Private local inference. Works immediately. May use a deterministic stub if no GGUF is configured.
-    LocalDemo,
-    /// Private local inference via Windows AI / Foundry Local. Requires setup first.
-    WindowsAi,
-    /// Explicit external API call. Requires operator-supplied endpoint and key.
-    Cloud,
+/// Extension trait for ModelProviderLabel methods that depend on this module's types.
+pub trait ModelProviderExt {
+    fn chat_settings(&self, system_prompt: impl Into<String>) -> Result<ChatSettings, String>;
+    fn readiness(&self, settings: &crate::settings::AppSettings) -> ProviderReadiness;
 }
 
-impl ModelProviderLabel {
-    pub fn display_name(&self) -> &'static str {
-        match self {
-            Self::LocalDemo => "Local Demo",
-            Self::WindowsAi => "Windows AI",
-            Self::Cloud => "Cloud",
-        }
-    }
-
-    pub fn description(&self) -> &'static str {
-        match self {
-            Self::LocalDemo => "Works immediately. Private. May use a deterministic fallback if no GGUF model is configured.",
-            Self::WindowsAi => "Private. Requires Windows AI / Foundry Local setup first.",
-            Self::Cloud => "Explicit external call. Requires endpoint and API key.",
-        }
-    }
-
-    pub fn chat_settings(&self, system_prompt: impl Into<String>) -> Result<ChatSettings, String> {
+impl ModelProviderExt for ModelProviderLabel {
+    fn chat_settings(&self, system_prompt: impl Into<String>) -> Result<ChatSettings, String> {
         match self {
             Self::LocalDemo => Ok(local_demo_chat_settings(system_prompt)),
             Self::WindowsAi => windows_ai_chat_settings(system_prompt),
@@ -77,8 +53,7 @@ impl ModelProviderLabel {
         }
     }
 
-    /// Readiness for this provider. Requires AppSettings for accurate cloud detection.
-    pub fn readiness(&self, settings: &crate::settings::AppSettings) -> ProviderReadiness {
+    fn readiness(&self, settings: &crate::settings::AppSettings) -> ProviderReadiness {
         match self {
             Self::LocalDemo => local_demo_readiness(),
             Self::WindowsAi => windows_ai_readiness(),
@@ -87,30 +62,6 @@ impl ModelProviderLabel {
     }
 }
 
-/// Readiness state for a model provider.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
-#[serde(rename_all = "snake_case")]
-pub enum ProviderReadiness {
-    /// Provider can send requests now.
-    Ready,
-    /// Provider needs one setup step before use.
-    SetupNeeded { next_command: String },
-    /// Provider cannot be used in the current environment.
-    Unavailable { reason: String },
-    /// Provider endpoint exists but a smoke test or model load failed.
-    Diagnostic { reason: String },
-}
-
-impl std::fmt::Display for ProviderReadiness {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Ready => write!(f, "Ready"),
-            Self::SetupNeeded { next_command } => write!(f, "Setup Needed — run: {next_command}"),
-            Self::Unavailable { reason } => write!(f, "Unavailable — {reason}"),
-            Self::Diagnostic { reason } => write!(f, "Diagnostic — {reason}"),
-        }
-    }
-}
 
 /// Combined provider info for the host UI.
 ///
@@ -1275,6 +1226,32 @@ fn default_phi4_model_path() -> Option<PathBuf> {
     d_drive_model.exists().then_some(d_drive_model)
 }
 
+/// Resolve active ChatSettings from the AppSettings model_provider field.
+///
+/// Returns the resolved settings and an optional warning if a fallback occurred.
+/// The caller decides whether to surface the warning or swallow it.
+pub fn resolve_chat_settings(
+    settings: &crate::settings::AppSettings,
+) -> (ChatSettings, Option<ProviderReadiness>) {
+    match settings
+        .model_provider
+        .chat_settings(settings.chat.system_prompt.clone())
+    {
+        Ok(cs) => (cs, None),
+        Err(_) => {
+            let fallback = local_demo_chat_settings(settings.chat.system_prompt.clone());
+            let warning = Some(ProviderReadiness::Diagnostic {
+                reason: format!(
+                    "{} unavailable, fell back to Local Demo. {}",
+                    settings.model_provider.display_name(),
+                    settings.model_provider.readiness(settings),
+                ),
+            });
+            (fallback, warning)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1475,7 +1452,7 @@ mod tests {
             stream: false,
         };
 
-        let response = Phi4LocalFallbackBackend::default()
+        let response = Phi4LocalFallbackBackend
             .complete(&request)
             .expect("fallback should respond");
 
@@ -1748,31 +1725,5 @@ mod tests {
         let (cs, warning) = resolve_chat_settings(&settings);
         assert!(!cs.endpoint_url.is_empty());
         assert!(warning.is_some());
-    }
-}
-
-/// Resolve active ChatSettings from the AppSettings model_provider field.
-///
-/// Returns the resolved settings and an optional warning if a fallback occurred.
-/// The caller decides whether to surface the warning or swallow it.
-pub fn resolve_chat_settings(
-    settings: &crate::settings::AppSettings,
-) -> (ChatSettings, Option<ProviderReadiness>) {
-    match settings
-        .model_provider
-        .chat_settings(settings.chat.system_prompt.clone())
-    {
-        Ok(cs) => (cs, None),
-        Err(_) => {
-            let fallback = local_demo_chat_settings(settings.chat.system_prompt.clone());
-            let warning = Some(ProviderReadiness::Diagnostic {
-                reason: format!(
-                    "{} unavailable, fell back to Local Demo. {}",
-                    settings.model_provider.display_name(),
-                    settings.model_provider.readiness(settings),
-                ),
-            });
-            (fallback, warning)
-        }
     }
 }

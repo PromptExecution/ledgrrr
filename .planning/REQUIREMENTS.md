@@ -55,6 +55,23 @@
 - [ ] **CCONN-05**: Operator can audit connector interaction outcomes (success, blocked, error class) with deterministic reason keys for troubleshooting.
 - [ ] **CCONN-06**: Team/enterprise deployment can declare organization-level connector readiness checks and compatibility notes without changing core ledger invariants.
 
+## v1.3 Requirements
+
+### Release Automation
+
+- [x] **REL-01**: Maintainer's build pipeline no longer references the stale `crates/ledgerr-tauri` path — fixed to `crates/ledgerr-host` in `build-tauri-windows.yml` before any submodule pointer bump.
+- [x] **REL-02**: Maintainer can trigger a Windows desktop release by pushing a `ledgrrr-desktop-v*` tag to the outer `_b00t_` repo.
+- [x] **REL-03**: Release pipeline computes SHA256 hashes for both the MSI and NSIS installer artifacts on tagged builds.
+- [x] **REL-04**: Release pipeline creates an unsigned public GitHub Release with the installer and hash artifacts attached on tag push.
+
+### Winget Manifest & Submission
+
+- [ ] **WGT-01**: Maintainer has a decided, verified-available `PackageIdentifier` (`PromptExecution.ledgrrr`) before manifest authoring begins.
+- [ ] **WGT-02**: Maintainer can author a 3-file winget manifest (version, `locale.en-US`, installer) covering both MSI and NSIS installers at x64, including `ReleaseNotesUrl` and `AppMoniker` fields.
+- [ ] **WGT-03**: Maintainer validates the manifest locally (`winget validate` / `Tools/SandboxTest.ps1`) before opening a submission PR.
+- [ ] **WGT-04**: Maintainer submits a manual first-listing PR to `microsoft/winget-pkgs` (fork + PR) and responds to bot/moderator feedback until merged.
+- [ ] **WGT-05**: Maintainer has `winget-releaser` wired into the release pipeline for automated future-release manifest updates, gated on WGT-04 having merged.
+
 ## v2 Requirements
 
 ### Extended Intelligence
@@ -69,6 +86,10 @@
 | Replacing CPA review with full autonomous filing | Human-in-the-loop accountant signoff remains mandatory |
 | Multi-tenant cloud SaaS deployment | Current milestone remains local-first and operator-controlled |
 | Non-tax personal finance dashboards as primary objective | Milestone scope is integrity and tax-assist knowledge workflows |
+| ARM64 installer + manifest architecture entry | Requires a new CI build target (`aarch64-pc-windows-msvc`); separate scope from packaging the existing x64 build |
+| Code-signing certificate (EV or standard) | None available; winget-pkgs accepts unsigned installers today — signing is a UX/reputation improvement, not a submission requirement. Revisit as a later differentiator |
+| Additional locale manifests beyond en-US | No real (non-machine-translated) localized strings exist for the app yet |
+| Automating the winget-pkgs PR before WGT-04 has merged | `winget-releaser` cannot bootstrap a brand-new package identifier — confirmed by two independent research passes; the first submission must be manual |
 
 ## Traceability
 
@@ -98,14 +119,25 @@
 | CCONN-04 | Phase 19 | Pending |
 | CCONN-05 | Phase 21 | Pending |
 | CCONN-06 | Phase 20 | Pending |
+| REL-01 | Phase 22 | Complete |
+| REL-02 | Phase 22 | Complete |
+| REL-03 | Phase 22 | Complete |
+| REL-04 | Phase 22 | Complete |
+| WGT-01 | Phase 23 | Pending |
+| WGT-02 | Phase 23 | Pending |
+| WGT-03 | Phase 23 | Pending |
+| WGT-04 | Phase 23 | Pending |
+| WGT-05 | Phase 24 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 18 total
-- v1.2 additional requirements: 6 total
-- All requirements (v1 + v1.2): 24 total
-- Mapped to phases: 24
-- Unmapped: 0 ✓
+- v1.2 additional requirements: 6 total (parked, not yet phase-planned this cycle — Phases 19-21 reserved, untouched)
+- v1.3 additional requirements: 9 total (REL-01..04 -> Phase 22, WGT-01..04 -> Phase 23, WGT-05 -> Phase 24) — mapped to phases 22-24
+- All requirements (v1 + v1.2 + v1.3): 33 total
+- Mapped to phases: 33
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-30*
-*Last updated: 2026-03-30 for v1.2 milestone kickoff*
+*Last updated: 2026-08-08 for v1.3 milestone requirements*

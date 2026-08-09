@@ -40,6 +40,8 @@ The workbook remains the human and accounting interface. The graph, sidecar stat
 | Agent autonomy vs operator control | MCP exposes capability families; host policy, audit, approvals, notifications, and credentials remain owned by `l3dg3rr`. |
 | Rich visual workflows vs stable execution | A narrow Rhai diagram DSL renders Mermaid and isometric views while typed Rust workflow structs own execution contracts. |
 | Xero integration vs local-first privacy | Xero is a supervised capability reached through worker tools and reconciled evidence, not raw credential leakage to a model. |
+| Claude/Desktop installability vs privileged Windows control | MCPB installs only the Claude-facing controller; a native Windows installer owns service, tray, repair, update, and UAC boundaries. |
+| Office-native diagrams vs local evidence ownership | OneNote/Office and SharePoint publish versioned playbook artifacts; ledgrrr remains the source of truth for evidence, simulation, and refresh provenance. |
 
 MECE module grouping keeps the logic approachable:
 
@@ -53,6 +55,8 @@ MECE module grouping keeps the logic approachable:
 | Visualization | Mermaid, isometric docs renderer, live Rhai editor | `crates/mdbook-rhai-mermaid/`, `book/theme/rhai-live-core.js`, `visualize.rs` |
 | Agent boundary | published MCP capability families and deterministic argument contracts | `crates/ledgerr-mcp/src/contract.rs`, `mcp_adapter.rs`, `docs/mcp-capability-contract.md` |
 | Operator host | desktop settings, notifications, local chat endpoint, tray/window control | `crates/ledgerr-host/src/` |
+| Desktop packaging | Claude MCPB controller, Windows service/tray installer, local runtime status | `PRD-11.md`, `book/src/desktop-agent-office-playbook.md`, `crates/ledgerr-host/src/` |
+| Microsoft 365 surface | OneNote/Office diagram task pane and SharePoint playbook rendering | `PRD-11.md`, future Office add-in manifest, future SPFx package |
 
 ## Bookkeeping Flow
 
@@ -128,6 +132,11 @@ See [Capability Map](book/src/capability-map.md) for the full component table.
 | VZ panel — Cytoscape.js + dagre layout | Active | hierarchical type/trait graph in Tauri sidebar; dagre TB layout; CDP observable on port 19222 |
 | Slint desktop host | Legacy | fallback window, settings, local endpoint, notifications |
 | Evidence traceability (arc-kit-au) | Implemented | petgraph-backed provenance graph with deterministic node identity |
+| Claude Desktop MCPB bundle | Implemented (Phase 1) | `ledgrrr-claude.mcpb` packages the `ledgrrr-mcp` controller via `just package-desktop-mcpb`; all eleven `ledgrrr_*` tools live |
+| Native Windows installer | Missing | future MSIX/external-location package installs service, tray, controller, model config, repair/uninstall |
+| OneNote/Office add-in | Missing | future task pane generates, previews, inserts, and refreshes versioned diagram/playbook artifacts |
+| SharePoint SPFx web part | Missing | future web part renders published playbook artifacts in SharePoint pages/libraries |
+| Local CPU model runtime | Planned | future profile supports offline playbook generation, mutation, and simulation |
 | Docling extraction bridge | Missing | planned local extraction sidecar |
 | File watcher | Missing | `notify` not yet wired as an end-to-end inbox loop |
 
@@ -165,6 +174,18 @@ Key harnesses planned:
 Core idea: the Excel workbook gains a `_invariants` sheet where every type-level claim (e.g., "this invoice GST arithmetic is valid", "this pipeline state has passed legal review") is a persistent, Blake3-chained record linking the runtime verification result to the Kani proof that held at build time. New invariants can be registered by any crate at runtime without modifying `ledger-core`, making the knowledge system self-extensible.
 
 This closes the gap between structural type safety (what the Rust type system currently enforces) and semantic correctness (what a CPA needs to trust the output).
+
+### PRD-11: Desktop Agent, MCPB Bootstrapper, Office Playbook, and Local Simulation Runtime
+
+[PRD-11.md](PRD-11.md) defines the Windows and Microsoft 365 product packaging target. Claude Desktop receives a MCPB bundle containing a small `ledgrrr-mcp` controller (Phase 1 implemented — see [MCPB Binary Distinction](#mcpb-binary-distinction)). The privileged desktop stack will be installed by a native Windows package, which owns `ledgrrr-service.exe`, `ledgrrr-tray.exe`, local model/runtime assets, repair/uninstall, and update metadata.
+
+The same ledgrrr playbook model is exposed through Claude, b00t, OneNote/Office, and SharePoint:
+
+- Claude calls explicit MCP tools such as `ledgrrr_status`, `ledgrrr_install_plan`, `ledgrrr_render_diagram`, and `ledgrrr_simulate_pipeline`.
+- b00t discovers ledgrrr through typed datums and stable `status`, `install --dry-run`, `render`, `simulate`, and `export-office` JSON contracts.
+- OneNote/Office add-ins insert and refresh versioned Mermaid/SVG/PNG/HTML playbook artifacts.
+- SharePoint SPFx renders the same published playbook artifacts.
+- The local service supports deterministic simulation and local CPU fine-tuned inference without cloud dependency.
 
 ## <|🥾|> b00t — Capability Surface
 
@@ -302,6 +323,17 @@ just mcp-start
 ```
 
 Use `Justfile` as the executable workflow contract. When a command changes, update the recipe first and reference the recipe name from docs.
+
+## MCPB Binary Distinction
+
+This project produces **two distinct `.mcpb` bundles** for different use cases:
+
+| Binary | MCPB name | Purpose | Output |
+|--------|-----------|---------|--------|
+| `ledgerr-mcp-server` (domain server) | `ledgerr-mcp-*.mcpb` | Full tax ledger dataplane: PDF ingest, transaction classification, Rhai rules, Xero, reconciliation, workbook export. Runs as a stdio MCP server for general agent use. | `dist/ledgerr-mcp-<target>.mcpb` (ZIP — built by `just bundle`) |
+| `ledgrrr-mcp` (desktop controller) | `ledgrrr-claude.mcpb` | Claude Desktop controller per PRD-11 §3.1: the eleven `ledgrrr_*` tools for status, install planning, service/tray control, diagram render, simulation, and Office artifact export. | `dist/ledgrrr-claude.mcpb/` (directory — built by `just package-desktop-mcpb`) |
+
+Use `just bundle` for the domain server MCPB and `just package-desktop-mcpb` for the desktop controller. The desktop controller `.mcpb` directory can be referenced directly in Claude Desktop's MCP config.
 
 ## Agent And MCP Guide
 
