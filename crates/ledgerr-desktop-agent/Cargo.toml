@@ -1,0 +1,16 @@
+[package]
+name = "ledgerr-desktop-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+blake3 = { workspace = true }
+schemars = { version = "0.8", features = ["derive"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sysinfo = { version = "0.33", default-features = false, features = ["system"] }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true
