@@ -681,6 +681,9 @@ pub enum TaxArgs {
         acquisition_date: Option<String>,
         jurisdiction: String,
         currency: String,
+        cost_basis_method: String,
+        chain: String,
+        address: String,
     },
 }
 
