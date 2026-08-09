@@ -40,10 +40,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-c072d1a1.js";
+            window.path_to_searchindex_js = "searchindex-bd5b0fe2.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-f88c394d.js"></script>
+        <script src="toc-8264d5c0.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -194,6 +194,7 @@
 <li><a href="./render.html">Render</a> - Screen coordinate mapping</li>
 <li><a href="./slint_viz.html">Slint Viz</a> - Slint integration</li>
 <li><a href="./match-visualization-plan.html">Match Visualization Plan</a> - future multi-arm branch semantics</li>
+<li><a href="./desktop-agent-office-playbook.html">Desktop Agent and Office Playbook Surface</a> - MCPB, OneNote, SharePoint, and local simulation surface</li>
 </ul>
 <h2 id="pipelinegraph"><a class="header" href="#pipelinegraph">PipelineGraph</a></h2>
 <pre><code class="language-rhai">fn workflow_toml() -&gt; pipeline_graph
@@ -395,6 +396,30 @@ assert!(rhai.contains("next_state"));
 </span>let html = to_html(&amp;graph);
 // Returns complete HTML with Mermaid.js
 <span class="boring">}</span></code></pre>
+<h2 id="office-playbook-export"><a class="header" href="#office-playbook-export">Office Playbook Export</a></h2>
+<p>The desktop agent treats diagrams as versioned playbook artifacts that can be inserted into OneNote/Office or rendered in SharePoint. A diagram export is therefore more than a screenshot: it must carry a typed playbook model, render metadata, simulation profile, and evidence refs.</p>
+<p>Minimum formats:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Format</th><th>Use</th></tr>
+</thead>
+<tbody>
+<tr><td>Mermaid</td><td>Source-level editable diagram and review diff.</td></tr>
+<tr><td>SVG</td><td>Preferred high-fidelity Office/SharePoint visual artifact where supported.</td></tr>
+<tr><td>PNG</td><td>Compatibility fallback for Office clients that do not preserve SVG behavior.</td></tr>
+<tr><td>HTML</td><td>Interactive playbook renderer for local desktop and SharePoint-hosted views.</td></tr>
+<tr><td>JSON</td><td>Canonical playbook model with typed nodes, edges, gates, b00t capability refs, ledgrrr evidence refs, and simulation state.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Refresh semantics:</p>
+<ol>
+<li>A refresh creates a new artifact version.</li>
+<li>The previous published artifact remains addressable.</li>
+<li>The evidence graph records source input, model/runtime profile, render hash, and approval state.</li>
+<li>OneNote/Office and SharePoint views render the artifact; ledgrrr remains the owner of source truth and provenance.</li>
+</ol>
 <h2 id="layoutsolver"><a class="header" href="#layoutsolver">LayoutSolver</a></h2>
 <p>Kasuari-backed constraint solver for node positioning:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
