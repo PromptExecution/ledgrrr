@@ -57,7 +57,7 @@ fn aggregate_threshold_multiple_accounts() {
                 currency: "EUR".to_string(),
                 daily_balances: vec![DailyBalance {
                     date: "2024-12-31".to_string(),
-                    balance: "3000".to_string(),
+                    balance: "8000".to_string(),
                 }],
                 year_end_rate: Some("1.05".to_string()),
             },
@@ -80,7 +80,7 @@ fn aggregate_threshold_multiple_accounts() {
 
     assert_eq!(result.accounts.len(), 2);
     let total_usd: f64 = result.aggregate_max_usd.parse().unwrap();
-    let expected_eur = 3000.0 * 1.05;
+    let expected_eur = 8000.0 * 1.05;
     let expected_jpy = 500000.0 * 0.0067;
     assert!((total_usd - (expected_eur + expected_jpy)).abs() < 0.01);
     assert!(result.filing_required);

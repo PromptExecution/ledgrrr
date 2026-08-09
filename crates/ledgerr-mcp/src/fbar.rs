@@ -139,9 +139,10 @@ pub fn compute_fbar(input: &FbarInput) -> FbarDetermination {
     let fbar_threshold = Decimal::from_str("10000").unwrap();
     let filing_required = aggregate_usd > fbar_threshold;
 
-    let (form_8938_filing_required, form_8938_threshold_used) = if accounts.is_empty()
-        && incomplete_accounts.is_empty()
-    {
+    let (form_8938_filing_required, form_8938_threshold_used) = if accounts.is_empty() {
+        // No complete accounts to sum — either nothing was submitted, or every
+        // submitted account is missing data. Either way there's no aggregate
+        // balance to test against a threshold, so no determination is possible.
         (None, None)
     } else {
         let required =

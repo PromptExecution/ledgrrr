@@ -15,7 +15,7 @@ The default catalog is intentionally small: 12 top-level `ledgerr_*` tools. Each
 | `ledgerr_reconciliation` | staged totals/postings guardrails and statement continuity assertion | `validate`, `reconcile`, `commit`, `assert_coverage` |
 | `ledgerr_workflow` | lifecycle/HSM orchestration plus relocated plugin ops | `status`, `transition`, `resume`, `plugin_info` |
 | `ledgerr_audit` | append-only event and audit-log views | `event_history`, `event_replay`, `query_audit_log` |
-| `ledgerr_tax` | tax summaries, evidence, ambiguity review, workbook export | `assist`, `evidence_chain`, `ambiguity_review`, `schedule_summary`, `export_workbook`, `compute_feie`, `compute_depreciation` |
+| `ledgerr_tax` | tax summaries, evidence, ambiguity review, workbook export, FBAR/Form 8938 | `assist`, `evidence_chain`, `ambiguity_review`, `schedule_summary`, `export_workbook`, `compute_feie`, `compute_fbar` |
 | `ledgerr_ontology` | ontology query/export/write operations | `query_path`, `export_snapshot`, `upsert_entities`, `upsert_edges` |
 | `ledgerr_xero` | Xero accounting integration: contacts, accounts, bank accounts, entity linking | `get_auth_url`, `exchange_code`, `fetch_contacts`, `search_contacts`, `fetch_accounts`, `fetch_bank_accounts`, `fetch_invoices`, `link_entity`, `sync_catalog` |
 | `ledgerr_focus` | FOCUS (FinOps Cost Usage Spec) v1.3 cost/usage records, FocusDelta comparison, experiment scoring | `append_focus_record`, `query_focus_summary`, `compute_focus_delta`, `experiment_score` |
