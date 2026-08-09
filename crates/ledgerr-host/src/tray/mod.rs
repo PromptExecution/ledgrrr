@@ -2,7 +2,7 @@ mod menu;
 mod state;
 
 #[cfg(windows)]
-mod native;
+pub mod native;
 
 #[cfg(windows)]
 pub mod runtime;
