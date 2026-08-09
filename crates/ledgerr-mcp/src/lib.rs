@@ -44,6 +44,7 @@ pub mod shape_tool;
 pub mod au_rd;
 pub mod coverage;
 pub mod crypto;
+pub mod capital_loss;
 pub mod feie;
 pub mod schedule_e;
 pub mod fbar;
