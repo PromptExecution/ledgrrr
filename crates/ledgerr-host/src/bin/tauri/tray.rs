@@ -8,7 +8,7 @@
 //!   which handles platform differences internally.
 
 use std::time::Duration;
-use tauri::Emitter;
+use tauri::Manager;
 
 /// Setup the system tray icon for the application.
 ///
@@ -60,7 +60,7 @@ pub fn setup_tray(app: &tauri::App) {
                     match event {
                         TrayEvent::MenuCommand(cmd) => match cmd {
                             CMD_SHOW_WINDOW => {
-                                if let Some(window) = app_handle.get_window("main") {
+                                if let Some(window) = app_handle.get_webview_window("main") {
                                     let _ = window.show();
                                     let _ = window.set_focus();
                                 }
