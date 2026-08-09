@@ -98,6 +98,7 @@ fn build_description(txn: &ofx_rs::aggregates::StatementTransaction) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use beankeeper_bridge::OffsetKind;
 
     #[test]
     fn parse_ofx_to_rows_produces_transaction_inputs() {
