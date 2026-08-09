@@ -3230,13 +3230,11 @@ fn emit_ingest_ontology_edges(
                     kind: OntologyEntityKind::Document,
                     custom_kind: None,
                     attrs: doc_attrs,
-                    custom_kind: None,
                 },
                 OntologyEntityInput {
                     kind: OntologyEntityKind::Transaction,
                     custom_kind: None,
                     attrs: tx_attrs,
-                    custom_kind: None,
                 },
             ],
         )?
