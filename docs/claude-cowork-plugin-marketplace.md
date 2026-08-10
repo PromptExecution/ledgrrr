@@ -21,7 +21,7 @@ This repo now includes a Claude plugin marketplace and a plugin entry intended f
 ## Install in Cowork
 
 ```text
-/plugin marketplace add https://github.com/PromptExecution/l3dg3rr
+/plugin marketplace add https://github.com/PromptExecution/ledgrrr
 /plugin install l3dg3rr-plugin-create@promptexecution-fdkms
 ```
 

@@ -4,15 +4,15 @@
   "title": "l3dg3rr Tax Ledger",
   "description": "Local-first U.S. expat tax document intelligence MCP server. Ingests PDF statements, classifies transactions, and produces CPA-auditable Excel workbooks — no data leaves your machine.",
   "repository": {
-    "url": "https://github.com/PromptExecution/l3dg3rr",
+    "url": "https://github.com/PromptExecution/ledgrrr",
     "source": "github"
   },
-  "version": "v0.1.0",
+  "version": "v1.9.0",
   "packages": [
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/PromptExecution/l3dg3rr/releases/download/v0.1.0/ledgerr-mcp-x86_64-unknown-linux-musl.mcpb",
-      "fileSha256": "a21ca4312f18da93fd715716ccd207168496a15625c1c71854973e1a7e180ed1",
+      "identifier": "https://github.com/PromptExecution/ledgrrr/releases/download/v1.9.0/ledgerr-mcp-x86_64-unknown-linux-gnu.mcpb",
+      "fileSha256": "906a19a9071a35ea1a9ad6fea4631418f758d50473a8a13b9c7f3f90219614e2",
       "transport": {
         "type": "stdio"
       },

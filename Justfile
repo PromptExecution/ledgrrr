@@ -69,15 +69,15 @@ wsl2-pwsh-docserve:
 #        just mcp-podman-run v0.2.0 — specific release tag
 mcp-podman-run tag="main":
     @command -v podman >/dev/null || { echo "error: podman not found — install podman first"; exit 1; }
-    podman pull ghcr.io/promptexecution/l3dg3rr:{{tag}}
+    podman pull ghcr.io/promptexecution/ledgrrr:{{tag}}
     podman run --rm -i \
       -v "${LEDGER_DATA_DIR:-$PWD/data}:/data" \
-      ghcr.io/promptexecution/l3dg3rr:{{tag}}
+      ghcr.io/promptexecution/ledgrrr:{{tag}}
 
 # Verify the GHCR image exists for a given tag without pulling the full image
 mcp-podman-verify tag="main":
     @command -v podman >/dev/null || { echo "error: podman not found"; exit 1; }
-    podman manifest inspect ghcr.io/promptexecution/l3dg3rr:{{tag}}
+    podman manifest inspect ghcr.io/promptexecution/ledgrrr:{{tag}}
 
 mcp-e2e:
     ./scripts/mcp_e2e.sh
@@ -277,11 +277,11 @@ gh-secrets-help:
     @echo ""
     @echo "Recipes:"
     @echo "  just gh-secrets-set-repo"
-    @echo "  just gh-secrets-set-repo repo=PromptExecution/l3dg3rr force=true"
-    @echo "  just gh-secrets-set-org org=PromptExecution repos=l3dg3rr"
-    @echo "  just gh-secrets-set-org org=PromptExecution repos=l3dg3rr force=true"
+    @echo "  just gh-secrets-set-repo repo=PromptExecution/ledgrrr force=true"
+    @echo "  just gh-secrets-set-org org=PromptExecution repos=ledgrrr"
+    @echo "  just gh-secrets-set-org org=PromptExecution repos=ledgrrr force=true"
 
-gh-secrets-set-repo repo="PromptExecution/l3dg3rr" force="false":
+gh-secrets-set-repo repo="PromptExecution/ledgrrr" force="false":
     @command -v gh >/dev/null || { echo "gh CLI not found"; exit 1; }
     @gh auth status >/dev/null
     @for name in CRATES_IO_TOKEN PYPI_API_TOKEN; do \
@@ -379,7 +379,7 @@ update-server-json artifact sha256="":
     cargo xtask-mcpb update-server-json \
         --version "$VERSION" \
         --sha256 "$SHA" \
-        --artifact-url "https://github.com/PromptExecution/l3dg3rr/releases/download/$VERSION/$FILENAME"
+        --artifact-url "https://github.com/PromptExecution/ledgrrr/releases/download/$VERSION/$FILENAME"
 
 # Build release binary and assemble the desktop controller .mcpb directory for Claude Desktop.
 # Distinct from `just bundle` (the ledgerr-mcp-server domain-server MCPB):
@@ -460,7 +460,7 @@ release version="patch": ensure-cog
             --title "${TAG} (stable)" \
             --notes "${NOTES:-See CHANGELOG.md for details.}" \
             --latest
-        echo "GitHub release created: https://github.com/PromptExecution/l3dg3rr/releases/tag/${TAG}"
+        echo "GitHub release created: https://github.com/PromptExecution/ledgrrr/releases/tag/${TAG}"
     else
         echo "Dev release — no GitHub release created for odd minor ${TAG}."
         echo "Tag ${TAG} pushed. Use 'just release minor' again to reach next stable even minor."

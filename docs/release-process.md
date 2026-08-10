@@ -88,5 +88,5 @@ If GitHub Pages is stale after a release:
 
 ```bash
 # Trigger a manual docs redeploy from GitHub Actions UI, or:
-gh workflow run docs.yml --repo PromptExecution/l3dg3rr
+gh workflow run docs.yml --repo PromptExecution/ledgrrr
 ```

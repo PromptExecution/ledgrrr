@@ -2,13 +2,13 @@
 
 > **Note on naming:** This project uses multiple names (`l3dg3rr`, `ledgerr-mcp`, `ledgrrr`, `ledg3rr`) depending on context. See [POLYSEME-MAP.md](docs/POLYSEME-MAP.md) for the mapping.
 
-[![CI](https://github.com/PromptExecution/l3dg3rr/actions/workflows/ci.yml/badge.svg)](https://github.com/PromptExecution/l3dg3rr/actions/workflows/ci.yml)
-[![Release](https://github.com/PromptExecution/l3dg3rr/actions/workflows/release.yml/badge.svg)](https://github.com/PromptExecution/l3dg3rr/actions/workflows/release.yml)
-[![Documentation](https://img.shields.io/badge/docs-github.io-blue)](https://promptexecution.github.io/l3dg3rr/)
+[![CI](https://github.com/PromptExecution/ledgrrr/actions/workflows/ci.yml/badge.svg)](https://github.com/PromptExecution/ledgrrr/actions/workflows/ci.yml)
+[![Release](https://github.com/PromptExecution/ledgrrr/actions/workflows/release.yml/badge.svg)](https://github.com/PromptExecution/ledgrrr/actions/workflows/release.yml)
+[![Documentation](https://img.shields.io/badge/docs-github.io-blue)](https://promptexecution.github.io/ledgrrr/)
 
 `l3dg3rr` is a local-first bookkeeping application for turning financial documents into an accountant-usable, CPA-auditable source of truth. Its core shape is a strongly typed, ontologically linked graph of scriptable, visual-first workflows: Rust owns financial invariants, Rhai owns editable classification and workflow rules, and AI/LLM agents drive supervised ETL through MCP tools without taking custody of credentials or approval authority.
 
-Read the live book: <https://promptexecution.github.io/l3dg3rr/>
+Read the live book: <https://promptexecution.github.io/ledgrrr/>
 
 **Primary bookkeeping outcome:** ingest raw historical statements, classify and reconcile transactions, preserve evidence and mutation history, then export a CPA-reviewable Excel workbook without requiring private data to leave the local machine.
 
@@ -102,7 +102,7 @@ Current behavior:
 
 Deep references:
 
-- Live docs: <https://promptexecution.github.io/l3dg3rr/>
+- Live docs: <https://promptexecution.github.io/ledgrrr/>
 - [Match Visualization Plan](book/src/match-visualization-plan.md)
 - [Visualization](book/src/visualize.md)
 - [Workflow](book/src/workflow.md)
@@ -274,7 +274,7 @@ The workbook remains the canonical human/accountant artifact. But the system beh
 
 The published book is the detailed reference and should be preferred over expanding the README indefinitely:
 
-- <https://promptexecution.github.io/l3dg3rr/>: live GitHub Pages book
+- <https://promptexecution.github.io/ledgrrr/>: live GitHub Pages book
 - [Introduction](book/src/intro.md): product guarantees and primary surfaces
 - [MCP Surface](book/src/mcp-surface.md): published `ledgerr_*` tool families
 - [Document Ingestion](book/src/document-ingestion.md): source routing and extraction assumptions
@@ -376,6 +376,22 @@ just test-fast
 6. **Odd minor** — creates a GitHub pre-release (`gh release create --prerelease`)
 
 Pushing the tag triggers `.github/workflows/docs.yml`, which redeploys GitHub Pages regardless of minor parity.
+
+### Downloading a release
+
+All release artifacts are attached to the corresponding [GitHub Release](https://github.com/PromptExecution/ledgrrr/releases) once `.github/workflows/mcpb-publish.yml` (MCP server bundles) and `.github/workflows/msi-publish.yml` (desktop app installer) finish running for that tag:
+
+| Platform | Artifact | Purpose | Produced by |
+|---|---|---|---|
+| Linux (x86_64) | `ledgerr-mcp-x86_64-unknown-linux-musl.mcpb` | Domain server (`ledgerr-mcp-server`) — see [MCPB Binary Distinction](#mcpb-binary-distinction) | `mcpb-publish.yml` |
+| macOS (Intel) | `ledgerr-mcp-x86_64-apple-darwin.mcpb` | Domain server | `mcpb-publish.yml` |
+| macOS (Apple Silicon) | `ledgerr-mcp-aarch64-apple-darwin.mcpb` | Domain server | `mcpb-publish.yml` |
+| Windows (x86_64) | `ledgerr-mcp-x86_64-pc-windows-msvc.mcpb` | Domain server | `mcpb-publish.yml` |
+| Windows (x86_64) | `ledgrrr_<version>_x64_en-US.msi` | **Desktop host app** — tray icon, settings UI, local chat (`host-tauri`, see [PRD-11](#prd-11-desktop-agent-mcpb-bootstrapper-office-playbook-and-local-simulation-runtime)) | `msi-publish.yml` |
+
+If a given release page is missing an artifact you expect, check that workflow's run for that tag — matrix legs can fail independently without blocking the others (`mcpb-publish.yml`'s upload job only requires at least one platform to succeed).
+
+To install the desktop app on Windows: download the `.msi` from the latest [stable release](https://github.com/PromptExecution/ledgrrr/releases/latest) and run it. To run the domain MCP server locally instead of downloading a binary, see `just mcp-podman-run` above or build from source with `just bundle`.
 
 ## Docker
 
