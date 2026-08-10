@@ -46,7 +46,7 @@ enum Commands {
         release_tag: String,
         #[arg(long)]
         artifact: PathBuf,
-        /// Override repository (e.g. PromptExecution/l3dg3rr)
+        /// Override repository (e.g. PromptExecution/ledgrrr)
         #[arg(long)]
         repo: Option<String>,
     },
@@ -371,7 +371,7 @@ fn ledgerr_manifest(version: &str, binary_name: &str) -> McpbManifest {
         author: ManifestAuthor {
             name: "Prompt Execution Pty Ltd.".into(),
             email: None,
-            url: Some("https://github.com/PromptExecution/l3dg3rr".into()),
+            url: Some("https://github.com/PromptExecution/ledgrrr".into()),
         },
         server: ManifestServer {
             server_type: ServerType::Binary,

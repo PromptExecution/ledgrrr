@@ -27,7 +27,7 @@ ledgrrr is a **local agentic governance proxy**: a memory-safe, deterministicall
 - **KV cache** — rkyv sidecar archives per source document; JSON state sidecar for restart-visible service state (atomic rename pattern, fail-closed on corruption)
 - **Memory-safe Rust package** — workspace-wide `forbid(unsafe_code)` except Tauri/Slint macro boundaries; `rust_decimal` for all monetary values; no f64 in domain paths
 - **Rhai scripting** — classification rules via `fn classify(tx)`, workflow FSM compiler output, docs visualization DSL
-- **Introspectable docs** — `mdbook-rhai-mermaid` preprocessor; live Rhai diagram editor in browser; executable code examples as integration tests; deployed at promptexecution.github.io/l3dg3rr
+- **Introspectable docs** — `mdbook-rhai-mermaid` preprocessor; live Rhai diagram editor in browser; executable code examples as integration tests; deployed at promptexecution.github.io/ledgrrr
 
 **Current phase: entering dogfood/integration.** Architecture is substantially complete. Next step is running ledgrrr inside the Hermes OpenAgent harness as the governance control surface (see roadmap below).
 
@@ -426,7 +426,7 @@ Treat this as a standing operational gate, not a one-time migration task.
   - Multi-model verification loop: LLM proposes, second model reviews, operator approves.
   - Multi-jurisdiction: US/AU/UK with rules keyed by Jurisdiction.
 - 2026-04-20: mdbook documentation with executable code examples.
-  - Live at https://promptexecution.github.io/l3dg3rr/
+  - Live at https://promptexecution.github.io/ledgrrr/
   - Every chapter includes executable Rust code examples that can run as integration tests.
   - Include rhai code blocks that parse to Mermaid diagrams: ` ```rhai ` code fences.
   - Keep auto-diagram Rhai blocks to the supported mini-DSL only: `fn source() -> target`, `if expr -> target`, and `match expr => Arm -> target`. Do not drop general imperative Rhai examples into diagram sections unless they are fenced with another language or explicitly meant to render no diagram.

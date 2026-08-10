@@ -8,7 +8,7 @@ Use this skill when setting up or troubleshooting `l3dg3rr` in Claude Cowork Plu
 ## Install and activate
 
 1. Add marketplace:
-   - `/plugin marketplace add https://github.com/PromptExecution/l3dg3rr`
+   - `/plugin marketplace add https://github.com/PromptExecution/ledgrrr`
 2. Install plugin:
    - `/plugin install l3dg3rr-plugin-create@promptexecution-fdkms`
 3. Validate install:
