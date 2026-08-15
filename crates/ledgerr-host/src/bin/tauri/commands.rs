@@ -16,7 +16,7 @@ use ledgerr_host::internal_openai::{
 use ledgerr_host::settings::ChatSettings;
 
 use super::state::AppState;
-use holon_viz::{CytoscapeGraph, TypeRelationshipGraph};
+use holon_viz::{Holon, HolonKind, TypeRelationshipGraph};
 
 fn desktop_json<T: serde::Serialize>(value: &T) -> Result<String, String> {
     serde_json::to_string(value).map_err(|error| error.to_string())
@@ -590,12 +590,12 @@ pub fn get_tx_provenance(
 
 /// Return the Cytoscape.js-compatible graph for the holonic pipeline.
 ///
-/// The frontend Viz panel calls this once on activation. `tauri-specta` generates
-/// typed TypeScript bindings from the `CytoscapeGraph` return type.
+/// The frontend Viz panel calls this once on activation. The graph crosses the
+/// webview boundary as JSON so the model-first visualization types do not gain
+/// a Rust-first `specta` dependency.
 #[tauri::command]
 #[specta::specta]
-pub fn get_holon_viz_graph() -> Result<CytoscapeGraph, String> {
-    use holon_viz::{Holon, HolonKind};
+pub fn get_holon_viz_graph() -> Result<String, String> {
     use std::collections::HashMap;
 
     let holons = vec![
@@ -694,7 +694,7 @@ pub fn get_holon_viz_graph() -> Result<CytoscapeGraph, String> {
         },
     ];
 
-    Ok(CytoscapeGraph::from_holons(&holons))
+    desktop_json(&holon_viz::CytoscapeGraph::from_holons(&holons))
 }
 
 /// Return the Rust type relationship graph for the Viz panel.
@@ -702,6 +702,6 @@ pub fn get_holon_viz_graph() -> Result<CytoscapeGraph, String> {
 /// Delegates to [`TypeRelationshipGraph::seed()`] in `holon-viz`.
 #[tauri::command]
 #[specta::specta]
-pub fn get_type_graph() -> Result<CytoscapeGraph, String> {
-    Ok(TypeRelationshipGraph::seed().to_cytoscape())
+pub fn get_type_graph() -> Result<String, String> {
+    desktop_json(&TypeRelationshipGraph::seed().to_cytoscape())
 }
