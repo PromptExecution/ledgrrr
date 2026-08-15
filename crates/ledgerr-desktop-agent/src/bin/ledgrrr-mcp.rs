@@ -13,6 +13,19 @@ use ledgerr_desktop_agent::contract;
 use serde_json::{json, Value};
 
 fn main() {
+    if std::env::args().any(|arg| arg == "--once") {
+        let mut input = String::new();
+        if std::io::stdin().read_line(&mut input).is_ok() {
+            if let Ok(request) = serde_json::from_str::<Value>(&input) {
+                if let Some(response) = handle_request(request) {
+                    if let Ok(serialized) = serde_json::to_string(&response) {
+                        println!("{serialized}");
+                    }
+                }
+            }
+        }
+        return;
+    }
     serve(io::stdin().lock(), io::stdout());
 }
 

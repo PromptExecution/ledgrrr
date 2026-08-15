@@ -45,9 +45,9 @@ function panelTemplate(id) {
   var t = {};
   t.chat = '<div class="panel-header"><span class="panel-title">Chat</span><div id="model-badge" class="model-badge phi"><span id="model-badge-icon">&#9889;</span><span id="model-badge-text">No model</span></div></div><div class="model-bar"><span class="model-bar-label">Model:</span><button id="pill-phi" class="model-pill">&#9889; Phi-4</button><button id="pill-foundry" class="model-pill">Windows AI</button><button id="pill-cloud" class="model-pill">&#9729; Cloud</button><span id="cloud-hint" class="cloud-hint hidden">edit in Settings</span></div><div id="transcript-wrap" class="transcript-wrap"><div class="log-label">Transcript</div><div id="transcript" class="transcript-content"></div></div><div class="input-area"><textarea id="draft-input" rows="5"></textarea><div class="input-actions"><button id="send-btn">Send</button><button id="rhai-btn">Rhai Rule</button></div></div>';
   t.logs = '<div class="panel-title-row"><span class="panel-title">Logs</span></div><div class="log-tabs"><button class="log-tab active" data-log="0">Transport</button><button class="log-tab" data-log="1">Review</button></div><div id="log-panel-0" class="log-subpanel transport-bg"><div class="log-label">Transport</div><div id="rig-log" class="log-content"></div></div><div id="log-panel-1" class="log-subpanel review-bg hidden"><div class="log-label review-label">Diffsets</div><div id="review-log" class="log-content"></div></div></div>';
-  t.dash = '<span class="panel-title">Dashboard</span><div id="evidence-summary" class="evidence-summary"><div class="ev-card ev-card-blocked"><div class="ev-card-value" id="blocked-value">-</div><div class="ev-card-label">Blocked</div></div><div class="ev-card ev-card-ready"><div class="ev-card-value" id="ready-value">-</div><div class="ev-card-label">Ready</div></div><div class="ev-card ev-card-exported"><div class="ev-card-value" id="exported-value">-</div><div class="ev-card-label">Exported</div></div><div class="ev-card ev-card-issues"><div class="ev-card-value" id="issues-value">-</div><div class="ev-card-label">Issues</div></div></div><div class="ev-section"><div class="ev-section-title">Last Action</div><div id="ev-last-action" class="ev-last-action">Loading...</div></div><div class="ev-section"><div class="ev-section-title">Next Actions</div><ul id="ev-next-actions" class="ev-next-actions"></ul></div><div class="ev-section"><div class="ev-section-title">Providers</div><div id="ev-provider-status" class="ev-provider-status">Loading...</div></div><div class="ev-refresh-row"><button id="btn-refresh-dashboard">Refresh</button></div>';
+  t.dash = '<span class="panel-title">Dashboard</span><div id="evidence-summary" class="evidence-summary"><div class="ev-card ev-card-blocked"><div class="ev-card-value" id="blocked-value">-</div><div class="ev-card-label">Blocked</div></div><div class="ev-card ev-card-ready"><div class="ev-card-value" id="ready-value">-</div><div class="ev-card-label">Ready</div></div><div class="ev-card ev-card-exported"><div class="ev-card-value" id="exported-value">-</div><div class="ev-card-label">Exported</div></div><div class="ev-card ev-card-issues"><div class="ev-card-value" id="issues-value">-</div><div class="ev-card-label">Issues</div></div></div><div class="ev-section"><div class="ev-section-title">Desktop health</div><div id="desktop-health" class="ev-provider-status">Loading...</div><div class="ev-refresh-row"><button id="btn-runtime-start">Start runtime</button><button id="btn-runtime-stop">Stop runtime</button><button id="btn-open-desktop-logs">Open logs</button><button id="btn-desktop-repair">Repair plan</button></div></div><div class="ev-section"><div class="ev-section-title">Last Action</div><div id="ev-last-action" class="ev-last-action">Loading...</div></div><div class="ev-section"><div class="ev-section-title">Next Actions</div><ul id="ev-next-actions" class="ev-next-actions"></ul></div><div class="ev-section"><div class="ev-section-title">Providers</div><div id="ev-provider-status" class="ev-provider-status">Loading...</div></div><div class="ev-refresh-row"><button id="btn-refresh-dashboard">Refresh</button></div>';
   t.settings = '<span class="panel-title">Settings</span><label class="field-label" for="input-endpoint">Endpoint</label><input id="input-endpoint" type="text" class="field-input"/><label class="field-label" for="input-model">Model</label><input id="input-model" type="text" class="field-input"/><label class="field-label" for="input-api-key">Key</label><input id="input-api-key" type="text" class="field-input"/><label class="field-label" for="input-system-prompt">System Prompt</label><textarea id="input-system-prompt" class="field-input system-prompt-area" rows="6"></textarea><div class="settings-actions"><button id="btn-use-phi">Use Phi-4</button><button id="btn-use-foundry">Use Win AI</button><button id="btn-use-cloud">Use Cloud</button><button id="btn-save-settings">Save</button></div>';
-  t.viz = '<div class="panel-title-row viz-title-row"><div class="viz-tabs"><button id="btn-viz-tab-type" class="viz-tab active">Type Graph</button><button id="btn-viz-tab-pipeline" class="viz-tab">Pipeline</button></div><span class="panel-title">Ontology Viz</span><div class="viz-toolbar"><button id="btn-viz-zoom-out" title="Zoom out">-</button><button id="btn-viz-zoom-in" title="Zoom in">+</button><button id="btn-viz-fit" title="Fit graph">Fit</button><button id="btn-viz-reset" title="Reset zoom">1:1</button><button id="btn-viz-layout" title="Run layout">Layout</button><button id="btn-viz-labels" title="Toggle node labels">Labels</button><button id="btn-viz-edge-labels" title="Toggle relationship labels">Edges</button><input id="viz-search" class="viz-search" type="search" placeholder="Find type"/><select id="viz-edge-filter" class="viz-select"><option value="">All relations</option></select><button id="btn-viz-clear" title="Clear filters">Clear</button><button id="btn-viz-refresh" title="Reload graph">Refresh</button></div></div><div class="viz-body"><div id="cy" class="viz-canvas"></div><aside id="viz-detail" class="viz-detail"><div class="viz-detail-title">Selection</div><div id="viz-detail-body" class="viz-detail-body">Select a node or relationship.</div></aside></div>';
+  t.viz = '<div class="panel-title-row viz-title-row"><div class="viz-tabs"><button id="btn-viz-tab-type" class="viz-tab active">Type Graph</button><button id="btn-viz-tab-pipeline" class="viz-tab">Pipeline</button></div><span class="panel-title">Ontology Viz</span><div class="viz-toolbar"><button id="btn-viz-zoom-out" title="Zoom out">-</button><button id="btn-viz-zoom-in" title="Zoom in">+</button><button id="btn-viz-fit" title="Fit graph">Fit</button><button id="btn-viz-reset" title="Reset zoom">1:1</button><button id="btn-viz-layout" title="Run layout">Layout</button><button id="btn-viz-labels" title="Toggle node labels" hidden aria-hidden="true" tabindex="-1">Labels</button><button id="btn-viz-edge-labels" title="Toggle relationship labels">Edges</button><input id="viz-search" class="viz-search" type="search" placeholder="Find type"/><select id="viz-edge-filter" class="viz-select"><option value="">All relations</option></select><button id="btn-viz-clear" title="Clear filters">Clear</button><button id="btn-viz-refresh" title="Reload graph">Refresh</button></div></div><div class="viz-body"><div id="cy" class="viz-canvas"></div><aside id="viz-detail" class="viz-detail"><div class="viz-detail-title">Selection</div><div id="viz-detail-body" class="viz-detail-body">Select a node or relationship.</div></aside></div>';
   t.docs = '<span class="panel-title">Docs Playbook</span><p id="docs-status-text" class="docs-status"></p><div class="docs-actions"><button id="btn-open-docs">Open Docs</button><button id="btn-load-rhai-mutation">Load Rhai</button></div><div class="docs-preview-wrap"><div id="docs-rig-log" class="log-content"></div></div>';
   return t[id] || "";
 }
@@ -74,10 +74,34 @@ function buildUI() {
       div.innerHTML = panelTemplate(p.id);
       pc.appendChild(div);
     });
+    if (VIZ_PANEL_INDEX !== -1) {
+      var vizMenu = document.createElement("details");
+      vizMenu.className = "viz-nav-menu";
+      vizMenu.innerHTML = '<summary>Viz views</summary><button class="viz-nav-option" data-viz-view="type">Type Graph</button><button class="viz-nav-option" data-viz-view="pipeline">Holonic Pipeline</button><div class="viz-nav-planned"><span>Mermaid 2D workflow</span><span>Isometric 3D workflow</span><span>SysML-v2 model</span><span>OWL2/Turtle ontology</span></div>';
+      nav.appendChild(vizMenu);
+      vizMenu.querySelectorAll(".viz-nav-option").forEach(function(button) {
+        button.addEventListener("click", function() {
+          selectVizGraph(button.dataset.vizView);
+        });
+      });
+    }
     showPanel(0);
   } catch (e) {
     console.error("[ui] buildUI err:", e);
   }
+}
+function selectVizGraph(graph) {
+  if (graph !== "type" && graph !== "pipeline") return;
+  _vizActiveGraph = graph;
+  _vizInitialized = false;
+  if (window._cy) window._cy.destroy();
+  window._cy = null;
+  showPanel(VIZ_PANEL_INDEX);
+  document.querySelectorAll(".viz-tab").forEach(function(button) {
+    button.classList.remove("active");
+  });
+  var tab = document.getElementById(graph === "type" ? "btn-viz-tab-type" : "btn-viz-tab-pipeline");
+  if (tab) tab.classList.add("active");
 }
 function readinessLabel(r) {
   if (!r) return "Unknown";
@@ -122,6 +146,33 @@ function refreshDashboard() {
   }).catch(function(err) {
     var sb = document.getElementById("status-bar");
     if (sb) sb.textContent = "Dashboard refresh failed: " + (err && err.message || err || "unknown error");
+  });
+}
+function desktopHealthLine(label, value) {
+  return label + ": " + (value == null || value === "" ? "not configured" : String(value));
+}
+function refreshDesktopHealth() {
+  var api = window.__TAURI__;
+  if (!api) return;
+  api.core.invoke("get_desktop_status").then(function(raw) {
+    var status = JSON.parse(raw);
+    var target = document.getElementById("desktop-health");
+    if (!target) return;
+    target.innerHTML = "";
+    [
+      desktopHealthLine("Runtime", status.service && status.service.readiness),
+      desktopHealthLine("Package", status.desktop_package && status.desktop_package.state),
+      desktopHealthLine("Model", status.model_runtime && status.model_runtime.profile),
+      desktopHealthLine("Claude controller", status.claude_controller && status.claude_controller.expected_tools + " tools"),
+      desktopHealthLine("b00t", status.b00t && (status.b00t.version || (status.b00t.cli_found ? "available" : "not found")))
+    ].forEach(function(text) {
+      var line = document.createElement("div");
+      line.className = "ev-provider-line";
+      line.textContent = text;
+      target.appendChild(line);
+    });
+  }).catch(function(err) {
+    setTextSafe(document.getElementById("desktop-health"), "Desktop health unavailable: " + (err && err.message || err || "unknown"));
   });
 }
 function setVal(id, v) {
@@ -217,8 +268,25 @@ document.addEventListener("DOMContentLoaded", function() {
     if (mark) mark.textContent = collapsed ? ">" : "<";
   });
   refreshDashboard();
+  refreshDesktopHealth();
   var dr = document.getElementById("btn-refresh-dashboard");
-  if (dr) dr.addEventListener("click", refreshDashboard);
+  if (dr) dr.addEventListener("click", function() { refreshDashboard(); refreshDesktopHealth(); });
+  var desktopAction = function(command, label) {
+    invoke(command).then(function(raw) {
+      setTextSafe(document.getElementById("status-bar"), label + ": " + raw);
+      refreshDesktopHealth();
+    }).catch(function(err) {
+      setTextSafe(document.getElementById("status-bar"), label + " failed: " + (err && err.message || err || "unknown"));
+    });
+  };
+  var runtimeStart = document.getElementById("btn-runtime-start");
+  if (runtimeStart) runtimeStart.addEventListener("click", function() { desktopAction("start_desktop_runtime", "Runtime start"); });
+  var runtimeStop = document.getElementById("btn-runtime-stop");
+  if (runtimeStop) runtimeStop.addEventListener("click", function() { desktopAction("stop_desktop_runtime", "Runtime stop"); });
+  var desktopLogs = document.getElementById("btn-open-desktop-logs");
+  if (desktopLogs) desktopLogs.addEventListener("click", function() { desktopAction("open_desktop_logs", "Logs"); });
+  var desktopRepair = document.getElementById("btn-desktop-repair");
+  if (desktopRepair) desktopRepair.addEventListener("click", function() { desktopAction("get_desktop_repair_plan", "Repair plan"); });
   var sendBtn = document.getElementById("send-btn");
   if (sendBtn) sendBtn.addEventListener("click", function() {
     invoke("send_message", {

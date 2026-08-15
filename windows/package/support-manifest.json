@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "package_family": "ventures.elastic.ledgrrr",
+  "application_id": "Ledgrrr",
+  "payload": {
+    "controller": "ledgrrr-mcp.exe",
+    "runtime": "ledgrrr-service.exe",
+    "tray": "ledgrrr-tray.exe",
+    "package_helper": "ledgrrr-package.ps1",
+    "docs": "docs/"
+  },
+  "state_contract": {
+    "runtime_descriptor": "runtime.json",
+    "package_install": "package-install.json",
+    "audit_log": "audit.jsonl",
+    "per_user_root": "%LOCALAPPDATA%\\ledgrrr"
+  },
+  "prerequisites": {
+    "minimum_windows_build": 19041,
+    "webview2": "Evergreen WebView2 Runtime",
+    "appx_powershell_module": true
+  }
+}

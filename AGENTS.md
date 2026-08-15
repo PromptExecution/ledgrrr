@@ -362,6 +362,11 @@ Treat this as a standing operational gate, not a one-time migration task.
 
 ### Validation Memo
 
+- 2026-08-12: Windows desktop dogfood uses a test-signed sparse MSIX/external-location identity package.
+  - `scripts/windows-package.ps1` builds the identity `.msix`, external Win32 payload, public test certificate, `INSTALL.json`, and provenance; `just wsl2-pwsh-msix-build` and `just wsl2-pwsh-msix-smoke` are the canonical commands.
+  - `ledgrrr-mcp` remains the unprivileged 11-tool controller. Package mutations require a plan plus explicit approval; the installed `ledgrrr-service` is an authenticated loopback runtime with a per-user fallback.
+  - Keep sparse-package identity metadata (`Name`, `Publisher`, application id) consistent with the external tray executable manifest. Do not put a test-signing `.pfx` in release artifacts.
+
 - 2026-04-02: executed post-commit plugin-doc validation against `https://code.claude.com/docs/en/plugins`.
   - Updated stale tool examples from `l3dg3rr_context_summary` to then-live MCP tools (`l3dg3rr_get_pipeline_status`, `l3dg3rr_list_accounts`, `l3dg3rr_get_raw_context`).
   - Added plugin skill frontmatter `name` for plugin-doc compatibility.
@@ -389,6 +394,16 @@ Treat this as a standing operational gate, not a one-time migration task.
   - Keep Cytoscape rendering in the webview JS; compile only deterministic graph transforms, catalog extraction, filtering, node detail, and process projection into WASM.
   - Run `just build-wasm` before `npm run build`/`just ui-build` when the Tauri UI should bundle the optional bridge assets; the UI still falls back to direct JS graph handling when the package is absent.
   - Treat `scripts/ledgrrr-viz-serve.py` as a behavioral prototype for process-catalog/state ideas, not as a Tauri runtime dependency.
+- 2026-08-14: Windows desktop dogfood package toolchain is explicit and reproducible.
+  - The authoritative delivery is `scripts/windows-package.ps1` / `just wsl2-pwsh-msix-*`, not a Tauri MSI. It emits a test-signed sparse MSIX, `.sha256`, provenance JSON, and external payload archive.
+  - A clean build machine needs Windows 10 2004+ (build 19041), PowerShell 7.2+ (`pwsh.exe`; install with `winget install --id Microsoft.PowerShell --source winget`), Visual Studio 2022 Build Tools with `Microsoft.VisualStudio.Workload.VCTools` plus recommended Windows SDK components, the Appx PowerShell module, and WebView2 Evergreen Runtime for tray installation.
+  - Install the compiler workload with `winget install --id Microsoft.VisualStudio.2022.BuildTools --exact --source winget --accept-package-agreements --accept-source-agreements --silent --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"`.
+  - Do not require operators to find a Developer PowerShell: `windows-package.ps1` imports `VsDevCmd.bat` itself when `link.exe` is absent. It probes `vswhere`, conventional Build Tools, and `C:\BuildTools`; set `LEDGRRR_VSDEVCMD` for another custom/repaired location. Use `-Action TestInstall` for the real build/install/status/start/render/stop/repair/uninstall acceptance path.
+  - Native Windows Cargo cannot build with a `\\wsl.localhost\...` directory as its working directory. Run the composable `just windows-package <Build|TestInstall> <windows-repo-root> <version>` from a local Windows checkout (for example, a repo under `C:\src`), or stage a temporary local copy excluding `.git`, `target`, `dist`, `.claude`, and `models`. This does not change package permissions; `TestInstall` keeps the whole dogfood flow behind one visible command/UAC boundary.
+  - Per-user dogfood registration uses `Add-AppxPackage -AllowUnsigned` for the test-signed MSIX, avoiding a self-signed root-CA install. Keep this strictly limited to the documented per-user test path; public signing and machine-wide production installation must not use it. The installer removes its exact `TrustedPeople` test certificate on uninstall.
+  - Persist the test-signing PFX and CER at `P:\ledgrrr\test-signing` when the private `P:` drive exists; `windows-package.ps1` falls back to per-user local state only when it does not. Never release the PFX. Prefer a WSLC Windows container for reproducible Windows build/test work when the installed `b00t` version exposes it; this checkout's current `b00t learn wslc` reports it unavailable, so retain the local-Windows-staging fallback.
+- 2026-08-15: Desktop Viz exposes the live Type Graph and Holonic Pipeline canvases. Keep the node-label control in the DOM for automation but hidden from operators. Mermaid 2D workflow, isometric 3D workflow, SysML-v2 model, and OWL2/Turtle ontology are known renderer/export surfaces that are not yet wired to an interactive desktop canvas; present them as such rather than advertising non-working controls.
+- 2026-08-15: Governed business processes use the desktop `PlaybookModel` state-machine projection. States may declare `execution_role`, `b00t_capability`, and `outcome`; `capability_refs` plus `role_authorizations` are fail-closed validation boundaries. Use the `b00t-learn-ooda.json` fixture to exercise Observe → Orient → Decide → Act through deterministic simulation and `state-machine` Mermaid rendering.
 - 2026-04-17: issue `#22` established a code-first MCP contract path.
   - The published MCP surface now lives in `crates/ledgerr-mcp/src/contract.rs`; treat it as the only source of truth for parser shapes, generated JSON Schema, and checked-in operator docs/examples.
   - Regenerate `docs/mcp-capability-contract.md`, `docs/agent-mcp-runbook.md`, and `scripts/mcp_cli_demo.sh` via `cargo run -p xtask-mcpb -- generate-mcp-artifacts` after changing the published MCP surface.
@@ -436,7 +451,7 @@ Treat this as a standing operational gate, not a one-time migration task.
   - PRD-4 Phase 6 semantic retrieval starts as a deterministic local lexical index in `RuleRegistry`; future embedding backends must preserve stable candidate IDs and keep `classify_waterfall` authoritative.
   - PRD-4 Phase 7 audit playbook must keep workbook rows, ontology facts, lifecycle events, and visual graph examples tied to the same deterministic transaction IDs.
   - `book/src/SUMMARY.md` must not list the same chapter file twice; mdBook fails closed on duplicate paths before diagram checks run.
-  - Current validated docs toolchain is `mdbook 0.4.52`, `mdbook-mermaid 0.16.0`, and `mdbook-admonish 1.20.0` with admonish assets version `3.1.0`.
+  - Current validated docs toolchain is `mdbook 0.5.x`, `mdbook-mermaid 0.17.x`, and `mdbook-admonish 1.20.0` with admonish assets version `3.1.0`, plus the repo-local `mdbook-rhai-mermaid` preprocessor. `just docgen` detects and repairs stale versions before building. Do not install legacy `mdbook-mermaid 0.16` or older: they target the incompatible mdBook 0.4 protocol.
 - 2026-04-22: docs Rhai mutation playground is model-prompt-first.
   - The browser-side mdBook playground prepares constrained prompts and deterministic example drafts; it does not call an LLM directly from the browser.
   - Keep the prompt contract limited to supported Rhai diagram DSL lines (`fn`, `if`, `match`) plus concise explanation text.

@@ -5769,6 +5769,7 @@ name = "ledgerr-desktop-agent"
 version = "1.9.0"
 dependencies = [
  "blake3",
+ "getrandom 0.3.4",
  "schemars 0.8.22",
  "serde",
  "serde_json",
@@ -5804,6 +5805,7 @@ dependencies = [
  "hf-hub 0.5.0",
  "holon-viz",
  "ledger-core",
+ "ledgerr-desktop-agent",
  "mistralrs",
  "reqwest 0.12.28",
  "rig-core",

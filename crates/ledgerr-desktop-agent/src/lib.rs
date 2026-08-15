@@ -11,6 +11,7 @@ pub mod install_plan;
 pub mod office_artifact;
 pub mod playbook;
 pub mod render;
+pub mod runtime_client;
 pub mod service_control;
 pub mod simulate;
 pub mod state;

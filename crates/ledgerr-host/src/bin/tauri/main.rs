@@ -84,6 +84,7 @@ fn main() {
     }
 
     use specta_typescript::Typescript;
+    use tauri::Manager;
     use tauri_specta::{collect_commands, Builder as SpectaBuilder};
 
     let specta_builder = SpectaBuilder::<tauri::Wry>::new().commands(collect_commands![
@@ -102,6 +103,11 @@ fn main() {
         commands::get_cargo_pkg_version,
         commands::get_holon_viz_graph,
         commands::get_type_graph,
+        commands::get_desktop_status,
+        commands::start_desktop_runtime,
+        commands::stop_desktop_runtime,
+        commands::open_desktop_logs,
+        commands::get_desktop_repair_plan,
     ]);
 
     #[cfg(debug_assertions)]

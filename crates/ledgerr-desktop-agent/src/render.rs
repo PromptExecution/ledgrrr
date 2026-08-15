@@ -10,7 +10,7 @@ use crate::playbook::PlaybookModel;
 
 #[derive(Debug, thiserror::Error)]
 pub enum RenderError {
-    #[error("unsupported diagram format: {0} (supported: mermaid, json, svg)")]
+    #[error("unsupported diagram format: {0} (supported: mermaid, state-machine, json, svg)")]
     UnsupportedFormat(String),
     #[error(transparent)]
     Playbook(#[from] crate::playbook::PlaybookError),
@@ -58,6 +58,37 @@ pub fn render_mermaid(model: &PlaybookModel) -> Result<String, RenderError> {
                 mermaid_escape_label(label)
             )),
             None => out.push_str(&format!("    {from} --> {to}\n")),
+        }
+    }
+    Ok(out)
+}
+
+/// State-machine projection of the same canonical playbook. This makes
+/// execution outcomes first-class labels rather than merely diagram arrows.
+pub fn render_state_machine(model: &PlaybookModel) -> Result<String, RenderError> {
+    model.validate()?;
+    let mut out = String::from("stateDiagram-v2\n");
+    for node in &model.nodes {
+        if node.kind == crate::playbook::NodeKind::Start {
+            out.push_str(&format!("    [*] --> {}\n", mermaid_node_id(&node.id)));
+        }
+    }
+    for edge in &model.edges {
+        let label = edge
+            .outcome
+            .as_deref()
+            .or(edge.label.as_deref())
+            .unwrap_or("transition");
+        out.push_str(&format!(
+            "    {} --> {} : {}\n",
+            mermaid_node_id(&edge.from),
+            mermaid_node_id(&edge.to),
+            mermaid_escape_label(label)
+        ));
+    }
+    for node in &model.nodes {
+        if node.kind == crate::playbook::NodeKind::End {
+            out.push_str(&format!("    {} --> [*]\n", mermaid_node_id(&node.id)));
         }
     }
     Ok(out)
@@ -126,6 +157,7 @@ pub fn render_svg(model: &PlaybookModel) -> Result<String, RenderError> {
 pub fn render(model: &PlaybookModel, format: &str) -> Result<String, RenderError> {
     match format {
         "mermaid" => render_mermaid(model),
+        "state-machine" | "state_machine" => render_state_machine(model),
         "json" => render_json(model),
         "svg" => render_svg(model),
         other => Err(RenderError::UnsupportedFormat(other.to_string())),

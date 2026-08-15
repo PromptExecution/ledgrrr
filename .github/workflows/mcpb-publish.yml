@@ -101,12 +101,62 @@ jobs:
           path: dist/ledgerr-mcp-${{ matrix.target }}.mcpb
           if-no-files-found: error
 
+  # ── Windows desktop dogfood package ────────────────────────────────────────
+  # This is intentionally separate from the domain `ledgerr-mcp-server` MCPB.
+  # The result is the test-signed sparse MSIX identity package plus the external
+  # Win32 payload, checksum, and provenance used by the 11-tool controller.
+  windows-desktop:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    name: Windows desktop MSIX dogfood
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Resolve release version
+        id: version
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $tag = "${{ github.event.inputs.tag }}"
+          } else {
+            $tag = gh release list --limit 1 --json tagName --jq '.[0].tagName'
+          }
+          if ($tag -notmatch '^v?\d+\.\d+\.\d+$') { $tag = "0.0.0" }
+          "version=$($tag.TrimStart('v'))" >> $env:GITHUB_OUTPUT
+
+      - name: Build test-signed sparse MSIX
+        shell: pwsh
+        run: ./scripts/windows-package.ps1 -Action Build -Version ${{ steps.version.outputs.version }}
+
+      - name: Validate installer PowerShell contract
+        shell: pwsh
+        run: ./scripts/windows-package.ps1 -Action TestInstall -Version ${{ steps.version.outputs.version }}
+
+      - name: Upload MSIX, external payload, checksum, and provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-desktop-dogfood
+          path: |
+            dist/windows/*.msix
+            dist/windows/*.cer
+            dist/windows/*.json
+            dist/windows/*.sha256
+            dist/windows/*.zip
+            dist/windows/payload/**
+          if-no-files-found: error
+
   # ── Upload all bundles to the GitHub release ────────────────────────────────
   publish-github:
     name: publish to GitHub release
-    # Run if at least one bundle succeeded (matrix failures on non-critical platforms don't block)
-    needs: build-bundle
-    if: always() && contains(needs.build-bundle.result, 'success')
+    # Both artifacts are release requirements: keep the Windows desktop package
+    # alongside the domain MCPB rather than accidentally publishing only one.
+    needs: [build-bundle, windows-desktop]
+    if: needs.build-bundle.result == 'success' && needs.windows-desktop.result == 'success'
     runs-on: ubuntu-latest
 
     steps:
@@ -122,11 +172,14 @@ jobs:
 
       - name: Resolve release tag
         id: tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+            TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName')
+            echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Download all bundles
@@ -136,11 +189,25 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: Download Windows desktop dogfood assets
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-desktop-dogfood
+          path: dist/windows
+
       - name: List bundles
         run: ls -lh dist/
 
-      - name: Upload all .mcpb artifacts to release
+      - name: Upload MCPB and Windows desktop assets to release
         run: just publish-mcpb ${{ steps.tag.outputs.tag }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload test-signed MSIX, checksum, and provenance to release
+        run: >-
+          gh release upload "${{ steps.tag.outputs.tag }}"
+          dist/windows/*.msix dist/windows/*.cer dist/windows/*.json dist/windows/*.sha256 dist/windows/*.zip
+          --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
