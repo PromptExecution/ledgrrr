@@ -403,7 +403,8 @@ function initVizPanel() {
   var cy_div = document.getElementById("cy");
   if (!cy_div || typeof cytoscape === "undefined") return;
   var graphCmd = _vizActiveGraph === "type" ? "get_type_graph" : "get_holon_viz_graph";
-  invoke(graphCmd).then(function(data) {
+  invoke(graphCmd).then(function(raw) {
+    var data = JSON.parse(raw);
     var elements = [];
     (data.nodes || []).forEach(function(n) {
       elements.push({ data: n.data });
