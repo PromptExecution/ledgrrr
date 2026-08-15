@@ -77,6 +77,29 @@ jobs:
           name: ledgerr-mcp
           path: target/release/ledgerr-mcp-server
 
+  windows-desktop-test-install:
+    name: Windows desktop TestInstall
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run complete dogfood acceptance flow
+        shell: pwsh
+        run: ./scripts/windows-package.ps1 -Action TestInstall -Version 0.1.0
+
+      - name: Upload package diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-desktop-dogfood-diagnostics
+          path: |
+            dist/windows/*.json
+            dist/windows/*.sha256
+          if-no-files-found: ignore
+
   publish-mcp-registry:
     needs: test-and-build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
