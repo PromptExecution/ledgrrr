@@ -659,7 +659,7 @@ docgen-pages-check:
     @test -f book/book/index.html || { echo "error: GitHub Pages publish payload missing book/book/index.html"; exit 1; }
     @compgen -G 'book/book/theme/rhai-live-core*.js' >/dev/null || { echo "error: GitHub Pages publish payload missing live editor core asset"; exit 1; }
     @compgen -G 'book/book/theme/rhai-live-*.js' >/dev/null || { echo "error: GitHub Pages publish payload missing live editor asset"; exit 1; }
-    @compgen -G 'book/book/mdbook-admonish*.css' >/dev/null || { echo "error: GitHub Pages publish payload missing admonish CSS"; exit 1; }
+    @if compgen -G 'book/book/mdbook-admonish*.css' >/dev/null || compgen -G 'book/book/theme/mdbook-admonish*.css' >/dev/null; then echo "✓ GitHub Pages publish payload includes admonish CSS"; else echo "error: GitHub Pages publish payload missing admonish CSS"; exit 1; fi
     @grep -q 'l3dg3rr Ledger Documentation' book/book/index.html || { echo "error: GitHub Pages index does not look like the hosted docs"; exit 1; }
     @echo "✓ GitHub Pages docs payload validated at book/book/"
 
