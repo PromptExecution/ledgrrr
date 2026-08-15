@@ -9,6 +9,7 @@ command = "mdbook-rhai-mermaid"
 before = ["mermaid"]
 
 [preprocessor.mermaid]
+command = "mdbook-mermaid"
 optional = true
 after = ["rhai-mermaid"]
 
@@ -19,5 +20,5 @@ assets_version = "3.1.0" # do not edit: managed by `mdbook-admonish install`
 [output.html]
 edit-url-template = "https://github.com/PromptExecution/l3dg3rr/edit/main/book/src/{path}#L{line}"
 git-repository-url = "https://github.com/PromptExecution/l3dg3rr"
-additional-js = ["theme/rhai-live-core.js", "theme/rhai-live.js", "theme/mdbook-nav-override.js"]
-additional-css = ["theme/rhai-live.css", "mdbook-admonish.css"]
+additional-js = ["theme/rhai-live-core.js", "theme/rhai-live.js", "theme/mdbook-nav-override.js", "mermaid.min.js", "mermaid-init.js"]
+additional-css = ["theme/rhai-live.css", "theme/mdbook-admonish.css"]

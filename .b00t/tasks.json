@@ -92,6 +92,34 @@
       ],
       "created_at": "2026-05-09T04:59:38Z",
       "updated_at": "2026-05-09T14:14:46Z"
+    },
+    {
+      "id": 8,
+      "title": "Windows desktop dogfood packaging and runtime boundary",
+      "description": "Implement reproducible test-signed MSIX contracts, desktop runtime lifecycle, controller/tray health, Windows CI artifacts, and documentation reconciliation.",
+      "status": "done",
+      "priority": 2,
+      "tags": [
+        "windows",
+        "dogfood",
+        "desktop",
+        "packaging"
+      ],
+      "acceptance_criteria": [
+        "Windows packaging commands are parameterized and documented",
+        "Desktop install/service lifecycle is contract-tested",
+        "CI publishes MSIX checksum and provenance alongside MCPB"
+      ],
+      "created_at": "2026-08-12T13:47:49Z",
+      "updated_at": "2026-08-15T02:13:20Z"
+    },
+    {
+      "id": 9,
+      "title": "research-soul: wslc",
+      "status": "pending",
+      "priority": 3,
+      "tags": [],
+      "created_at": "2026-08-15T02:16:08Z"
     }
   ],
   "version": "1"

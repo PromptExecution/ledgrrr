@@ -471,7 +471,7 @@ pub fn docs_playbook_status() -> String {
             "Docs playbook root exists but index.html is missing at {}. Run `just docgen` to rebuild the mdBook output.",
             root.display()
         ),
-        None => "Docs playbook is not built. Run `just docgen` to generate book/book before opening the local docs route.".to_string(),
+        None => "Docs playbook is unavailable. In a developer checkout run `just docgen`; in an installed package use Repair, then reload the local docs route.".to_string(),
     }
 }
 
@@ -1113,9 +1113,9 @@ fn docs_missing_response() -> String {
 <html>
 <head><meta charset="utf-8"><title>l3dg3rr docs playbook</title></head>
 <body style="font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.5;">
-<h1>Docs playbook is not built</h1>
-<p>The internal docs route is active, but <code>book/book/index.html</code> was not found.</p>
-<p>Run <code>just docgen</code>, then reload <code>http://127.0.0.1:15115/docs/</code>.</p>
+<h1>Docs playbook is unavailable</h1>
+<p>The internal docs route is active, but its generated docs payload was not found.</p>
+<p>In a developer checkout, run <code>just docgen</code>. In an installed package, use <strong>Repair</strong>, then reload <code>http://127.0.0.1:15115/docs/</code>.</p>
 </body>
 </html>"#,
     )
@@ -1250,11 +1250,19 @@ fn unix_timestamp() -> u64 {
 }
 
 fn default_docs_root() -> Option<PathBuf> {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    let configured = std::env::var_os("LEDGRRR_DOCS_ROOT").map(PathBuf::from);
+    let installed = std::env::current_exe()
+        .ok()
+        .and_then(|executable| executable.parent().map(|parent| parent.join("docs")));
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(|path| path.parent())
-        .map(|workspace| workspace.join("book/book"))?;
-    root.exists().then_some(root)
+        .map(|workspace| workspace.join("book/book"));
+
+    [configured, installed, workspace]
+        .into_iter()
+        .flatten()
+        .find(|root| root.join("index.html").is_file())
 }
 
 #[cfg(feature = "mistralrs-llm")]
@@ -1624,7 +1632,7 @@ mod tests {
 
         assert!(response.starts_with("HTTP/1.1 404 Not Found"));
         assert!(response.contains("text/html"));
-        assert!(response.contains("Docs playbook is not built"));
+        assert!(response.contains("Docs playbook is unavailable"));
     }
 
     #[test]

@@ -1,11 +1,9 @@
 //! `ledgrrr_start_service` / `ledgrrr_stop_service` / `ledgrrr_open_tray`.
 //!
-//! Phase 1 has no OS service manager (no systemd unit, no Windows Service
-//! Control Manager registration — that is native-installer territory, PRD-11
-//! §3.2). What Phase 1 *can* do honestly, without elevation, is spawn/kill a
-//! user-level `ledgrrr-service` child process and track it via the
-//! heartbeat file in [`crate::state`], and launch a tray binary if one is
-//! already built in this repo.
+//! The package may register the runtime with Windows Service Control Manager
+//! after an elevated install.  The controller still supports the required
+//! per-user fallback by launching the installed runtime and talking to its
+//! authenticated loopback endpoint.
 
 use std::process::{Command, Stdio};
 
@@ -13,6 +11,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use sysinfo::{Pid, ProcessesToUpdate, Signal, System};
 
+use crate::runtime_client;
 use crate::state;
 use crate::status::detect_tray_binary;
 
@@ -26,27 +25,46 @@ pub struct ServiceControlResult {
 
 fn service_binary_candidates() -> Vec<std::path::PathBuf> {
     let mut candidates = Vec::new();
+    if let Some(record) = state::read_package_install() {
+        candidates.push(std::path::PathBuf::from(record.external_payload_dir).join(
+            if cfg!(windows) {
+                "ledgrrr-service.exe"
+            } else {
+                "ledgrrr-service"
+            },
+        ));
+    }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            candidates.push(dir.join("ledgrrr-service"));
+            candidates.push(dir.join(if cfg!(windows) {
+                "ledgrrr-service.exe"
+            } else {
+                "ledgrrr-service"
+            }));
         }
     }
-    candidates.push(std::path::PathBuf::from("ledgrrr-service"));
+    candidates.push(std::path::PathBuf::from(if cfg!(windows) {
+        "ledgrrr-service.exe"
+    } else {
+        "ledgrrr-service"
+    }));
     candidates
 }
 
 pub fn start_service() -> ServiceControlResult {
-    if let Some(hb) = state::read_heartbeat() {
-        let mut sys = System::new();
-        sys.refresh_processes(ProcessesToUpdate::All, true);
-        if sys.process(Pid::from_u32(hb.pid)).is_some() {
-            return ServiceControlResult {
-                action: "start_service".to_string(),
-                ok: true,
-                pid: Some(hb.pid),
-                message: "service already running".to_string(),
-            };
-        }
+    if let Ok(health) = runtime_client::health() {
+        state::audit(
+            "controller",
+            "start_service",
+            "already_running",
+            "runtime health check passed",
+        );
+        return ServiceControlResult {
+            action: "start_service".to_string(),
+            ok: true,
+            pid: Some(health.pid),
+            message: format!("runtime already running ({})", health.mode),
+        };
     }
 
     for candidate in service_binary_candidates() {
@@ -62,15 +80,35 @@ pub fn start_service() -> ServiceControlResult {
 
         if let Ok(child) = spawned {
             let pid = child.id();
-            // The child writes its own heartbeat once running; record a
-            // provisional one immediately so `ledgrrr_status` has something
-            // to report even before the first self-write.
-            let _ = state::write_heartbeat(pid, state::now());
+            for _ in 0..25 {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                if let Ok(health) = runtime_client::health() {
+                    state::audit(
+                        "controller",
+                        "start_service",
+                        "ok",
+                        format!("pid={}", health.pid),
+                    );
+                    return ServiceControlResult {
+                        action: "start_service".to_string(),
+                        ok: true,
+                        pid: Some(health.pid),
+                        message: format!("started authenticated {} runtime", health.mode),
+                    };
+                }
+            }
+            state::audit(
+                "controller",
+                "start_service",
+                "failed",
+                "runtime did not become ready",
+            );
             return ServiceControlResult {
                 action: "start_service".to_string(),
-                ok: true,
+                ok: false,
                 pid: Some(pid),
-                message: format!("spawned {}", candidate.display()),
+                message: "runtime process started but readiness endpoint did not become available"
+                    .to_string(),
             };
         }
     }
@@ -79,11 +117,28 @@ pub fn start_service() -> ServiceControlResult {
         action: "start_service".to_string(),
         ok: false,
         pid: None,
-        message: "ledgrrr-service binary not found next to this controller or on PATH".to_string(),
+        message: "installed ledgrrr-service binary not found next to this controller or on PATH"
+            .to_string(),
     }
 }
 
 pub fn stop_service() -> ServiceControlResult {
+    if let Ok(health) = runtime_client::stop() {
+        state::remove_heartbeat();
+        state::remove_runtime_descriptor();
+        state::audit(
+            "controller",
+            "stop_service",
+            "ok",
+            format!("pid={}", health.pid),
+        );
+        return ServiceControlResult {
+            action: "stop_service".to_string(),
+            ok: true,
+            pid: Some(health.pid),
+            message: "requested graceful runtime shutdown through authenticated IPC".to_string(),
+        };
+    }
     let Some(hb) = state::read_heartbeat() else {
         return ServiceControlResult {
             action: "stop_service".to_string(),
@@ -100,6 +155,13 @@ pub fn stop_service() -> ServiceControlResult {
         None => false,
     };
     state::remove_heartbeat();
+    state::remove_runtime_descriptor();
+    state::audit(
+        "controller",
+        "stop_service",
+        "fallback",
+        format!("pid={}", hb.pid),
+    );
 
     ServiceControlResult {
         action: "stop_service".to_string(),

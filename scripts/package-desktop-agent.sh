@@ -33,6 +33,11 @@ mkdir -p "$OUT_DIR/server"
 cp "$REPO_ROOT/target/release/$BINARY_NAME" "$OUT_DIR/server/$BINARY_NAME"
 chmod 755 "$OUT_DIR/server/$BINARY_NAME"
 
+# The controller is the only MCPB payload.  The helper is a visible
+# PowerShell launcher for the separately installed MSIX package; it never
+# contains a private signing key or performs a silent install.
+cp "$REPO_ROOT/windows/package/ledgrrr-package.ps1" "$OUT_DIR/server/ledgrrr-package.ps1"
+
 # 4. Write manifest (PRD-11 §3.1 shape)
 echo "[3/3] Writing manifest.json..."
 VERSION="${1:-$(cd "$REPO_ROOT" && (cog get-version 2>/dev/null || echo "0.0.0"))}"

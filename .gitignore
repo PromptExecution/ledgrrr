@@ -26,8 +26,12 @@ _b00t_/
 .env.*
 
 # Claude Code runtime
+.claude/
 .claude/scheduled_tasks.lock
 .claude/worktrees/
+
+# Generated distribution bundles
+/dist/
 
 # Bouncer/review session artifacts
 .gap*-review.md

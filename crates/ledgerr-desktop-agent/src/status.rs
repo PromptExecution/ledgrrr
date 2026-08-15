@@ -11,6 +11,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use sysinfo::{Pid, System};
 
+use crate::runtime_client;
 use crate::state;
 
 /// A heartbeat older than this many seconds is treated as stale — the
@@ -28,6 +29,8 @@ pub struct ServiceStatus {
     pub running: bool,
     pub pid: Option<u32>,
     pub heartbeat_age_secs: Option<u64>,
+    pub readiness: String,
+    pub mode: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -43,6 +46,20 @@ pub struct ModelRuntimeStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PackageStatus {
+    pub installed: bool,
+    pub package_family: String,
+    pub install_location: Option<String>,
+    pub state: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ClaudeControllerStatus {
+    pub state: String,
+    pub expected_tools: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct OfficeSurfaceStatus {
     pub state: String,
 }
@@ -54,6 +71,8 @@ pub struct LedgrrrStatus {
     pub service: ServiceStatus,
     pub tray: TrayStatus,
     pub model_runtime: ModelRuntimeStatus,
+    pub desktop_package: PackageStatus,
+    pub claude_controller: ClaudeControllerStatus,
     pub office_addin: OfficeSurfaceStatus,
     pub sharepoint_webpart: OfficeSurfaceStatus,
 }
@@ -76,11 +95,23 @@ fn detect_b00t() -> B00tStatus {
 }
 
 fn detect_service() -> ServiceStatus {
+    if let Ok(health) = runtime_client::health() {
+        return ServiceStatus {
+            running: health.ready,
+            pid: Some(health.pid),
+            heartbeat_age_secs: state::read_heartbeat()
+                .map(|hb| state::now().saturating_sub(hb.last_beat_unix)),
+            readiness: "ready".to_string(),
+            mode: Some(health.mode),
+        };
+    }
     let Some(hb) = state::read_heartbeat() else {
         return ServiceStatus {
             running: false,
             pid: None,
             heartbeat_age_secs: None,
+            readiness: "not_running".to_string(),
+            mode: None,
         };
     };
     let age = state::now().saturating_sub(hb.last_beat_unix);
@@ -91,18 +122,93 @@ fn detect_service() -> ServiceStatus {
         running: process_alive && age <= HEARTBEAT_STALE_SECS,
         pid: Some(hb.pid),
         heartbeat_age_secs: Some(age),
+        readiness: if process_alive && age <= HEARTBEAT_STALE_SECS {
+            "heartbeat_only".to_string()
+        } else {
+            "stale".to_string()
+        },
+        mode: state::read_runtime_descriptor().map(|descriptor| descriptor.mode),
+    }
+}
+
+fn detect_package() -> PackageStatus {
+    if let Some(record) = state::read_package_install() {
+        let payload_present = std::path::Path::new(&record.external_payload_dir).is_dir();
+        return PackageStatus {
+            installed: payload_present,
+            package_family: record.package_family,
+            install_location: Some(record.external_payload_dir),
+            state: if payload_present {
+                "installed".to_string()
+            } else {
+                "payload_missing".to_string()
+            },
+        };
+    }
+    if let Ok(location) = std::env::var("LEDGRRR_PACKAGE_INSTALL_LOCATION") {
+        return PackageStatus {
+            installed: true,
+            package_family: crate::install_plan::PACKAGE_FAMILY_NAME.to_string(),
+            install_location: Some(location),
+            state: "installed".to_string(),
+        };
+    }
+    if !cfg!(windows) {
+        return PackageStatus {
+            installed: false,
+            package_family: crate::install_plan::PACKAGE_FAMILY_NAME.to_string(),
+            install_location: None,
+            state: "windows_required".to_string(),
+        };
+    }
+    let command = format!(
+        "(Get-AppxPackage -Name '{}' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty InstallLocation)",
+        crate::install_plan::PACKAGE_FAMILY_NAME
+    );
+    match Command::new("powershell.exe")
+        .args(["-NoProfile", "-Command", &command])
+        .output()
+    {
+        Ok(output) if output.status.success() => {
+            let location = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            PackageStatus {
+                installed: !location.is_empty(),
+                package_family: crate::install_plan::PACKAGE_FAMILY_NAME.to_string(),
+                install_location: (!location.is_empty()).then_some(location),
+                state: if output.stdout.is_empty() {
+                    "not_installed".to_string()
+                } else {
+                    "installed".to_string()
+                },
+            }
+        }
+        _ => PackageStatus {
+            installed: false,
+            package_family: crate::install_plan::PACKAGE_FAMILY_NAME.to_string(),
+            install_location: None,
+            state: "discovery_failed".to_string(),
+        },
     }
 }
 
 /// Candidate tray binaries this repo already builds, checked next to the
 /// running controller binary and then on PATH.
-const TRAY_CANDIDATES: &[&str] = &["host-tray", "ledgerr-tauri"];
+const TRAY_CANDIDATES: &[&str] = &[
+    "ledgrrr-tray.exe",
+    "host-tauri.exe",
+    "host-tray.exe",
+    "host-tray",
+    "ledgerr-tauri",
+];
 
 /// Finds a tray binary next to this controller's own executable, then on
 /// PATH. Shared by [`status::collect`] (reporting) and
 /// `service_control::open_tray` (launching).
 pub fn detect_tray_binary() -> Option<String> {
     let mut search_dirs = Vec::new();
+    if let Some(record) = state::read_package_install() {
+        search_dirs.push(std::path::PathBuf::from(record.external_payload_dir));
+    }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
             search_dirs.push(dir.to_path_buf());
@@ -117,9 +223,15 @@ pub fn detect_tray_binary() -> Option<String> {
         }
     }
     for name in TRAY_CANDIDATES {
-        if let Ok(out) = Command::new("which").arg(name).output() {
+        let locator = if cfg!(windows) { "where.exe" } else { "which" };
+        if let Ok(out) = Command::new(locator).arg(name).output() {
             if out.status.success() {
-                let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                let path = String::from_utf8_lossy(&out.stdout)
+                    .lines()
+                    .next()
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string();
                 if !path.is_empty() {
                     return Some(path);
                 }
@@ -162,6 +274,11 @@ pub fn collect() -> LedgrrrStatus {
         service: detect_service(),
         tray: detect_tray(),
         model_runtime: detect_model_runtime(),
+        desktop_package: detect_package(),
+        claude_controller: ClaudeControllerStatus {
+            state: "installed_with_mcpb_or_direct_stdio".to_string(),
+            expected_tools: 11,
+        },
         office_addin: OfficeSurfaceStatus {
             state: "not_configured".to_string(),
         },

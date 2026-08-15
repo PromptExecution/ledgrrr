@@ -1,0 +1,32 @@
+{
+  "playbook_id": "b00t-learn-ooda",
+  "title": "b00t learn ooda",
+  "version": "1",
+  "source": "b00t learn ooda",
+  "capability_refs": ["b00t.learn"],
+  "role_authorizations": [
+    {"role": "governance-agent", "capabilities": ["b00t.learn"]}
+  ],
+  "evidence_refs": ["b00t:ooda"],
+  "simulation_profile": "deterministic",
+  "nodes": [
+    {"id": "start", "label": "Start learning run", "kind": "start"},
+    {"id": "observe", "label": "Observe OODA knowledge", "kind": "task", "b00t_capability": "b00t.learn", "evidence_ref": "b00t:ooda", "execution_role": "governance-agent", "outcome": "observation_captured"},
+    {"id": "orient", "label": "Orient against active policy", "kind": "task", "b00t_capability": "b00t.learn", "execution_role": "governance-agent", "outcome": "context_normalized"},
+    {"id": "decide", "label": "Decide whether to memoize", "kind": "gate", "b00t_capability": "b00t.learn", "execution_role": "governance-agent", "outcome": "memoization_authorized"},
+    {"id": "act", "label": "Record governed learning memo", "kind": "task", "b00t_capability": "b00t.learn", "execution_role": "governance-agent", "outcome": "learning_memo_recorded"},
+    {"id": "end", "label": "Learning outcome recorded", "kind": "end", "outcome": "completed"}
+  ],
+  "edges": [
+    {"from": "start", "to": "observe", "outcome": "learning_requested"},
+    {"from": "observe", "to": "orient", "outcome": "observation_captured"},
+    {"from": "orient", "to": "decide", "outcome": "context_normalized"},
+    {"from": "decide", "to": "act", "outcome": "memoization_authorized"},
+    {"from": "act", "to": "end", "outcome": "learning_memo_recorded"}
+  ],
+  "approval_gates": [
+    {"id": "memoize-approval", "node_id": "decide", "description": "The deterministic fixture declares this memoization policy-approved.", "required": true, "auto_approve": true}
+  ],
+  "rollback_actions": [],
+  "office_artifacts": []
+}

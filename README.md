@@ -133,7 +133,7 @@ See [Capability Map](book/src/capability-map.md) for the full component table.
 | Slint desktop host | Legacy | fallback window, settings, local endpoint, notifications |
 | Evidence traceability (arc-kit-au) | Implemented | petgraph-backed provenance graph with deterministic node identity |
 | Claude Desktop MCPB bundle | Implemented (Phase 1) | `ledgrrr-claude.mcpb` packages the `ledgrrr-mcp` controller via `just package-desktop-mcpb`; all eleven `ledgrrr_*` tools live |
-| Native Windows installer | Missing | future MSIX/external-location package installs service, tray, controller, model config, repair/uninstall |
+| Native Windows dogfood package | Implemented (test-signed) | sparse MSIX/external-location identity package plus per-user Win32 payload; reproducibly built and install/repair/uninstall-smoked on Windows CI. Public signing is intentionally deferred. |
 | OneNote/Office add-in | Missing | future task pane generates, previews, inserts, and refreshes versioned diagram/playbook artifacts |
 | SharePoint SPFx web part | Missing | future web part renders published playbook artifacts in SharePoint pages/libraries |
 | Local CPU model runtime | Planned | future profile supports offline playbook generation, mutation, and simulation |

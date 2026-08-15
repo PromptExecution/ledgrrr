@@ -67,8 +67,9 @@ pub struct EmptyArgs {}
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct RenderDiagramArgs {
     pub playbook: PlaybookModel,
-    /// One of: mermaid, json, svg. PNG is not yet supported (PRD-11 §6.1
-    /// marks it a Future format, deferred until a rasterizer dep lands).
+    /// One of: mermaid, state-machine, json, svg. PNG is not yet supported
+    /// (PRD-11 §6.1 marks it a Future format, deferred until a rasterizer dep
+    /// lands). `state-machine` makes deterministic execution outcomes explicit.
     pub format: String,
 }
 
@@ -98,15 +99,15 @@ pub fn tool_descriptors() -> Vec<Value> {
     vec![
         json!({ "name": STATUS_TOOL, "inputSchema": schema_json::<EmptyArgs>() }),
         json!({ "name": INSTALL_PLAN_TOOL, "inputSchema": schema_json::<EmptyArgs>() }),
-        json!({ "name": INSTALL_DESKTOP_TOOL, "inputSchema": schema_json::<EmptyArgs>() }),
+        json!({ "name": INSTALL_DESKTOP_TOOL, "inputSchema": schema_json::<install_plan::PackageActionArgs>() }),
         json!({ "name": START_SERVICE_TOOL, "inputSchema": schema_json::<EmptyArgs>() }),
         json!({ "name": STOP_SERVICE_TOOL, "inputSchema": schema_json::<EmptyArgs>() }),
         json!({ "name": OPEN_TRAY_TOOL, "inputSchema": schema_json::<EmptyArgs>() }),
         json!({ "name": RENDER_DIAGRAM_TOOL, "inputSchema": schema_json::<RenderDiagramArgs>() }),
         json!({ "name": SIMULATE_PIPELINE_TOOL, "inputSchema": schema_json::<SimulatePipelineArgs>() }),
         json!({ "name": EXPORT_OFFICE_ARTIFACT_TOOL, "inputSchema": schema_json::<ExportOfficeArtifactArgs>() }),
-        json!({ "name": REPAIR_TOOL, "inputSchema": schema_json::<EmptyArgs>() }),
-        json!({ "name": UNINSTALL_TOOL, "inputSchema": schema_json::<EmptyArgs>() }),
+        json!({ "name": REPAIR_TOOL, "inputSchema": schema_json::<install_plan::PackageActionArgs>() }),
+        json!({ "name": UNINSTALL_TOOL, "inputSchema": schema_json::<install_plan::PackageActionArgs>() }),
     ]
 }
 
@@ -126,7 +127,11 @@ pub fn dispatch(tool_name: &str, arguments: &Value) -> Result<Value, ToolError> 
     match tool_name {
         STATUS_TOOL => Ok(to_json(&status::collect())),
         INSTALL_PLAN_TOOL => Ok(to_json(&install_plan::install_plan())),
-        INSTALL_DESKTOP_TOOL => Ok(to_json(&install_plan::install_plan())),
+        INSTALL_DESKTOP_TOOL => {
+            let args: install_plan::PackageActionArgs =
+                parse_args(INSTALL_DESKTOP_TOOL, arguments)?;
+            Ok(to_json(&install_plan::invoke("install_desktop", args)))
+        }
         START_SERVICE_TOOL => Ok(to_json(&service_control::start_service())),
         STOP_SERVICE_TOOL => Ok(to_json(&service_control::stop_service())),
         OPEN_TRAY_TOOL => Ok(to_json(&service_control::open_tray())),
@@ -146,12 +151,14 @@ pub fn dispatch(tool_name: &str, arguments: &Value) -> Result<Value, ToolError> 
             let bundle = office_artifact::export(&args.playbook)?;
             Ok(to_json(&bundle))
         }
-        REPAIR_TOOL => Ok(to_json(&install_plan::native_installer_required_plan(
-            "repair",
-        ))),
-        UNINSTALL_TOOL => Ok(to_json(&install_plan::native_installer_required_plan(
-            "uninstall",
-        ))),
+        REPAIR_TOOL => {
+            let args: install_plan::PackageActionArgs = parse_args(REPAIR_TOOL, arguments)?;
+            Ok(to_json(&install_plan::invoke("repair", args)))
+        }
+        UNINSTALL_TOOL => {
+            let args: install_plan::PackageActionArgs = parse_args(UNINSTALL_TOOL, arguments)?;
+            Ok(to_json(&install_plan::invoke("uninstall", args)))
+        }
         other => Err(ToolError::UnknownTool(other.to_string())),
     }
 }

@@ -31,6 +31,13 @@ pub struct PlaybookNode {
     /// ledgrrr evidence graph node this playbook node is backed by.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evidence_ref: Option<String>,
+    /// Role that owns deterministic execution of this state. A role becomes
+    /// enforceable when the node also declares a b00t capability.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_role: Option<String>,
+    /// Stable, human-readable outcome emitted after this state executes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -39,6 +46,20 @@ pub struct PlaybookEdge {
     pub to: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
+    /// Outcome that authorizes this state transition, for example
+    /// `observation_captured` or `approval_granted`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<String>,
+}
+
+/// Capability boundary for a named execution role. This turns a diagram into a
+/// governed process model: a state may not invoke a capability the role was
+/// not explicitly granted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct RoleAuthorization {
+    pub role: String,
+    #[serde(default)]
+    pub capabilities: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -81,6 +102,8 @@ pub struct PlaybookModel {
     #[serde(default)]
     pub capability_refs: Vec<String>,
     #[serde(default)]
+    pub role_authorizations: Vec<RoleAuthorization>,
+    #[serde(default)]
     pub evidence_refs: Vec<String>,
     pub simulation_profile: String,
     #[serde(default)]
@@ -99,6 +122,14 @@ pub enum PlaybookError {
     UnknownNode(String),
     #[error("no node of kind Start found; traversal needs an explicit entry point")]
     NoStartNode,
+    #[error("node {node_id} invokes undeclared capability: {capability}")]
+    UndeclaredCapability { node_id: String, capability: String },
+    #[error("role {role} is not authorized for capability {capability} at node {node_id}")]
+    UnauthorizedRole {
+        node_id: String,
+        role: String,
+        capability: String,
+    },
 }
 
 impl PlaybookModel {
@@ -130,6 +161,34 @@ impl PlaybookModel {
             }
             if self.node(&edge.to).is_none() {
                 return Err(PlaybookError::UnknownNode(edge.to.clone()));
+            }
+        }
+        for node in &self.nodes {
+            let Some(capability) = node.b00t_capability.as_deref() else {
+                continue;
+            };
+            if !self.capability_refs.iter().any(|known| known == capability) {
+                return Err(PlaybookError::UndeclaredCapability {
+                    node_id: node.id.clone(),
+                    capability: capability.to_string(),
+                });
+            }
+            let Some(role) = node.execution_role.as_deref() else {
+                continue;
+            };
+            let authorized = self.role_authorizations.iter().any(|authorization| {
+                authorization.role == role
+                    && authorization
+                        .capabilities
+                        .iter()
+                        .any(|granted| granted == capability)
+            });
+            if !authorized {
+                return Err(PlaybookError::UnauthorizedRole {
+                    node_id: node.id.clone(),
+                    role: role.to_string(),
+                    capability: capability.to_string(),
+                });
             }
         }
         Ok(())

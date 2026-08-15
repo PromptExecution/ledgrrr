@@ -18,6 +18,58 @@ use ledgerr_host::settings::ChatSettings;
 use super::state::AppState;
 use holon_viz::{CytoscapeGraph, TypeRelationshipGraph};
 
+fn desktop_json<T: serde::Serialize>(value: &T) -> Result<String, String> {
+    serde_json::to_string(value).map_err(|error| error.to_string())
+}
+
+/// Return the controller status as JSON so the webview and Claude MCPB read
+/// one shared desktop/runtime contract without duplicating probes in JS.
+#[tauri::command]
+#[specta::specta]
+pub fn get_desktop_status() -> Result<String, String> {
+    desktop_json(&ledgerr_desktop_agent::status::collect())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn start_desktop_runtime() -> Result<String, String> {
+    desktop_json(&ledgerr_desktop_agent::service_control::start_service())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn stop_desktop_runtime() -> Result<String, String> {
+    desktop_json(&ledgerr_desktop_agent::service_control::stop_service())
+}
+
+/// Opens only the per-user runtime log directory; no controller action can
+/// browse or alter arbitrary host paths.
+#[tauri::command]
+#[specta::specta]
+pub fn open_desktop_logs() -> Result<String, String> {
+    let path = ledgerr_desktop_agent::state::RuntimeConfig::per_user().log_dir;
+    std::fs::create_dir_all(&path).map_err(|error| error.to_string())?;
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer.exe")
+            .arg(&path)
+            .spawn()
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(path)
+}
+
+/// UI repair remains plan-only. The user must approve the matching controller
+/// operation in Claude, preserving the MCPB/UAC boundary.
+#[tauri::command]
+#[specta::specta]
+pub fn get_desktop_repair_plan() -> Result<String, String> {
+    desktop_json(&ledgerr_desktop_agent::install_plan::invoke(
+        "repair",
+        ledgerr_desktop_agent::install_plan::PackageActionArgs::default(),
+    ))
+}
+
 // ── Test harness config ───────────────────────────────────────────────────────
 
 #[derive(serde::Serialize, Clone, specta::Type)]

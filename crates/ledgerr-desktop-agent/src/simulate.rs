@@ -29,6 +29,14 @@ pub struct SimulationStep {
     pub node_id: String,
     pub status: StepStatus,
     pub evidence_id: String,
+    /// Deterministic outcome emitted by the state. A declared node outcome is
+    /// preserved verbatim; otherwise the execution status supplies the
+    /// canonical fallback.
+    pub outcome: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_role: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capability: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -152,6 +160,13 @@ pub fn simulate(model: &PlaybookModel, profile: &str) -> Result<SimulationTrace,
             node_id: node_id.to_string(),
             status,
             evidence_id: eid,
+            outcome: node.outcome.clone().unwrap_or_else(|| match status {
+                StepStatus::Executed => "executed".to_string(),
+                StepStatus::GateBlocked => "approval_required".to_string(),
+                StepStatus::Skipped => "skipped".to_string(),
+            }),
+            execution_role: node.execution_role.clone(),
+            capability: node.b00t_capability.clone(),
         });
 
         if status == StepStatus::GateBlocked || node.kind == NodeKind::End {

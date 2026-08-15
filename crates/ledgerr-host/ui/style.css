@@ -728,3 +728,9 @@ button:disabled {
 .viz-tab { background:#1e3a4a; color:#8ab4c8; border:1px solid #2a5068; border-radius:4px; padding:3px 10px; font-size:12px; cursor:pointer; }
 .viz-tab.active { background:#0073a8; color:#fff; border-color:#0073a8; }
 .viz-tab:hover:not(.active) { background:#2a5068; color:#fff; }
+.viz-nav-menu { margin: 6px 8px 0; color: var(--sidebar-text, #c7d6df); font-size: 12px; }
+.viz-nav-menu summary { cursor: pointer; padding: 6px 8px; user-select: none; }
+.viz-nav-option { display: block; width: 100%; border: 0; border-radius: 4px; background: transparent; color: inherit; cursor: pointer; padding: 5px 12px; text-align: left; }
+.viz-nav-option:hover { background: #1e3a4a; }
+.viz-nav-planned { border-left: 1px solid #2a5068; color: #7f96a3; display: grid; gap: 4px; margin: 6px 0 4px 12px; padding: 2px 8px; }
+.viz-nav-planned span::after { content: " (not wired)"; font-size: 10px; }

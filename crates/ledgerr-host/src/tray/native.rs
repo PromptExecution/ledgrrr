@@ -24,7 +24,6 @@ use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Shell::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
-use windows::core::w;
 
 // ── Menu Command IDs ──────────────────────────────────────────────────────────
 // Each tray menu item is assigned a stable command ID dispatched via WM_COMMAND.
@@ -191,7 +190,7 @@ unsafe fn create_icon_from_rgba(
     }
 
     let icon_info = ICONINFO {
-        fIcon: true,
+        fIcon: true.into(),
         xHotspot: 0,
         yHotspot: 0,
         hbmMask: mask_bmp,
@@ -245,7 +244,7 @@ unsafe extern "system" fn tray_wnd_proc(
                             None,
                         );
                         // Required to properly dismiss the menu on selection.
-                        let _ = PostMessageW(hwnd, WM_NULL, None, None);
+                        let _ = PostMessageW(Some(hwnd), WM_NULL, WPARAM(0), LPARAM(0));
                     }
                     LRESULT(0)
                 }
@@ -297,12 +296,14 @@ unsafe fn build_tray_menu(
             .encode_wide()
             .chain(core::iter::once(0))
             .collect();
-        AppendMenuW(
-            hmenu,
-            MF_STRING | MF_GRAYED,
-            id as usize,
-            PCWSTR::from_raw(wide.as_ptr()),
-        )?;
+        unsafe {
+            AppendMenuW(
+                hmenu,
+                MF_STRING | MF_GRAYED,
+                id as usize,
+                PCWSTR::from_raw(wide.as_ptr()),
+            )?;
+        }
         Ok(())
     }
 
@@ -315,12 +316,14 @@ unsafe fn build_tray_menu(
             .encode_wide()
             .chain(core::iter::once(0))
             .collect();
-        AppendMenuW(
-            hmenu,
-            MF_STRING,
-            id as usize,
-            PCWSTR::from_raw(wide.as_ptr()),
-        )?;
+        unsafe {
+            AppendMenuW(
+                hmenu,
+                MF_STRING,
+                id as usize,
+                PCWSTR::from_raw(wide.as_ptr()),
+            )?;
+        }
         Ok(())
     }
 
@@ -339,7 +342,9 @@ unsafe fn build_tray_menu(
         } else {
             MF_STRING | MF_UNCHECKED
         };
-        AppendMenuW(hmenu, flags, id as usize, PCWSTR::from_raw(wide.as_ptr()))?;
+        unsafe {
+            AppendMenuW(hmenu, flags, id as usize, PCWSTR::from_raw(wide.as_ptr()))?;
+        }
         Ok(())
     }
 

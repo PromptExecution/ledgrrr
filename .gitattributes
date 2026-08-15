@@ -1,0 +1,2 @@
+# Third-party renderer asset contains intentional whitespace in template literals.
+book/mermaid.min.js -whitespace

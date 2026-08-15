@@ -100,11 +100,24 @@ test:
 
 # ─── Tauri build (Windows host) ─────────────────────────────────────────────────
 
-# Pre-flight check: verify cargo-tauri is installed, then build ledgrrr.
-# Outputs binary + datum TOML with version and SHA256 hash.
-# Run from WSL. Uses the Windows toolchain from the host.
-wsl2-pwsh-tauri-build:
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\Projects\l3dg3rr\scripts\tauri-build.ps1"
+# One composable Windows package entry point. Supply `Build` for artifacts or
+# `TestInstall` for the complete per-user dogfood flow; the latter owns its
+# install/start/render/repair/uninstall sequence behind one explicit command.
+windows-package action repo_root version="0.1.0" output_dir="" certificate_store_path="":
+    pwsh.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "{{repo_root}}\scripts\windows-package.ps1" -Action "{{action}}" -RepoRoot "{{repo_root}}" -Version "{{version}}" -OutputDir "{{output_dir}}" -CertificateStorePath "{{certificate_store_path}}"
+
+# Build Tauri with no machine-specific paths. Pass repo_root when invoking from
+# WSL on a different Windows mount. The script emits a datum + SHA256.
+wsl2-pwsh-tauri-build repo_root configuration="release":
+    pwsh.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "{{repo_root}}\scripts\tauri-build.ps1" -RepoRoot "{{repo_root}}" -Configuration "{{configuration}}"
+
+# Build the authoritative test-signed MSIX/external-location dogfood package.
+wsl2-pwsh-msix-build repo_root version="0.1.0":
+    just windows-package Build "{{repo_root}}" "{{version}}"
+
+# Windows clean-machine smoke: build, test-sign, install, discover, uninstall.
+wsl2-pwsh-msix-smoke repo_root version="0.1.0":
+    just windows-package TestInstall "{{repo_root}}" "{{version}}"
 
 # Build host-tauri (Windows toolchain via PowerShell) then launch with CDP for viz demo.
 # Opens the tray app — click VZ in the sidebar to see the Cytoscape pipeline graph.
@@ -473,24 +486,19 @@ stats:
     @echo "Recent commits:"
     @git log --oneline -5
 
-# Build mdbook documentation locally
-# Requires: cargo install mdbook mdbook-mermaid && cargo install --path crates/mdbook-rhai-mermaid
-# mdbook-admonish: cargo install --git https://github.com/padamson/mdbook-admonish.git --branch feat/mdbook-0.5-compat mdbook-admonish
-# TODO: switch to a released version once tommilligan/mdbook-admonish#235 merges
+# Build mdbook documentation locally. The recipe detects and repairs stale
+# mdBook/admonish binaries before generating the checked-out playbook.
 docgen:
-    @if [ ! -x ~/.cargo/bin/mdbook ]; then echo "error: mdbook not found — run: cargo install mdbook mdbook-mermaid"; exit 1; fi
-    @if [ ! -x ~/.cargo/bin/mdbook-mermaid ]; then echo "error: mdbook-mermaid not found — run: cargo install mdbook-mermaid"; exit 1; fi
-    @if [ ! -x ~/.cargo/bin/mdbook-admonish ]; then echo "error: mdbook-admonish not found — see comment above docgen recipe in Justfile"; exit 1; fi
+    @if ! ~/.cargo/bin/mdbook --version 2>/dev/null | grep -q 'mdbook v0.5.'; then cargo install mdbook --version 0.5.1 --force; fi
+    @if ! ~/.cargo/bin/mdbook-mermaid --version 2>/dev/null | grep -q 'mdbook-mermaid 0.17.'; then cargo install mdbook-mermaid --version 0.17.1 --force; fi
+    @if ! ~/.cargo/bin/mdbook-admonish --version 2>/dev/null | grep -q 'mdbook-admonish 1.20.'; then cargo install --git https://github.com/padamson/mdbook-admonish.git --branch feat/mdbook-0.5-compat --force mdbook-admonish; fi
     @if [ ! -x ~/.cargo/bin/mdbook-rhai-mermaid ]; then cargo install --path crates/mdbook-rhai-mermaid --quiet; fi
     PATH="$HOME/.cargo/bin:$PATH" ~/.cargo/bin/mdbook build book
     @echo "Docs built in book/book/ — serve with: npx serve book/book"
 
 # Build and serve mdbook locally with the live Rhai editor enabled
 docserve host="127.0.0.1" port="3000":
-    @if [ ! -x ~/.cargo/bin/mdbook ]; then echo "error: mdbook not found — run: cargo install mdbook mdbook-mermaid"; exit 1; fi
-    @if [ ! -x ~/.cargo/bin/mdbook-mermaid ]; then echo "error: mdbook-mermaid not found — run: cargo install mdbook-mermaid"; exit 1; fi
-    @if [ ! -x ~/.cargo/bin/mdbook-rhai-mermaid ]; then cargo install --path crates/mdbook-rhai-mermaid --quiet; fi
-    PATH="$HOME/.cargo/bin:$PATH" ~/.cargo/bin/mdbook build book
+    just docgen
     @echo "Serving http://{{host}}:{{port}}"
     cd book/book && python3 -m http.server {{port}} --bind {{host}}
 
@@ -621,10 +629,7 @@ verify-pushed local=`git branch --show-current` remote=`git branch --show-curren
 
 # Verify docs build, rhai→mermaid injection happened, diagrams render, cross-references valid
 docgen-check:
-    @if [ ! -x ~/.cargo/bin/mdbook ]; then echo "error: mdbook not found — run: cargo install mdbook mdbook-mermaid"; exit 1; fi
-    @if [ ! -x ~/.cargo/bin/mdbook-mermaid ]; then echo "error: mdbook-mermaid not found — run: cargo install mdbook-mermaid"; exit 1; fi
-    @if [ ! -x ~/.cargo/bin/mdbook-rhai-mermaid ]; then cargo install --path crates/mdbook-rhai-mermaid --quiet; fi
-    PATH="$HOME/.cargo/bin:$PATH" ~/.cargo/bin/mdbook build book
+    just docgen
     @echo "Checking for generated Mermaid diagram blocks..."
     @grep -q 'class="mermaid"' book/book/theory.html && echo "✓ theory.html has generated Mermaid diagrams" || { echo "error: no Mermaid diagrams in theory.html"; exit 1; }
     @grep -q 'class="mermaid"' book/book/pipeline.html && echo "✓ pipeline.html has generated Mermaid diagrams" || { echo "error: no Mermaid diagrams in pipeline.html"; exit 1; }

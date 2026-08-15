@@ -8,7 +8,7 @@
 //!   which handles platform differences internally.
 
 use std::time::Duration;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 /// Setup the system tray icon for the application.
 ///
@@ -60,7 +60,7 @@ pub fn setup_tray(app: &tauri::App) {
                     match event {
                         TrayEvent::MenuCommand(cmd) => match cmd {
                             CMD_SHOW_WINDOW => {
-                                if let Some(window) = app_handle.get_window("main") {
+                                if let Some(window) = app_handle.get_webview_window("main") {
                                     let _ = window.show();
                                     let _ = window.set_focus();
                                 }
@@ -87,6 +87,41 @@ pub fn setup_tray(app: &tauri::App) {
     use tauri::tray::TrayIconBuilder;
 
     let version_text = format!("Version: {}", env!("CARGO_PKG_VERSION"));
+    let desktop = ledgerr_desktop_agent::status::collect();
+    let service_text = format!(
+        "Runtime: {}{}",
+        desktop.service.readiness,
+        desktop
+            .service
+            .mode
+            .as_deref()
+            .map(|mode| format!(" ({mode})"))
+            .unwrap_or_default()
+    );
+    let package_text = format!("Package: {}", desktop.desktop_package.state);
+    let model_text = format!(
+        "Model: {}",
+        desktop
+            .model_runtime
+            .profile
+            .as_deref()
+            .unwrap_or("not configured")
+    );
+    let controller_text = format!(
+        "Claude controller: {} tools",
+        desktop.claude_controller.expected_tools
+    );
+    let b00t_text = if desktop.b00t.cli_found {
+        format!(
+            "b00t: {}",
+            desktop
+                .b00t
+                .version
+                .unwrap_or_else(|| "available".to_string())
+        )
+    } else {
+        "b00t: not found".to_string()
+    };
 
     let show = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)
         .expect("failed to build Show Window menu item");
@@ -94,11 +129,51 @@ pub fn setup_tray(app: &tauri::App) {
         .expect("failed to build Version menu item");
     let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)
         .expect("failed to build Settings menu item");
+    let service_status =
+        MenuItem::with_id(app, "runtime-status", &service_text, false, None::<&str>)
+            .expect("failed to build runtime status menu item");
+    let package_status =
+        MenuItem::with_id(app, "package-status", &package_text, false, None::<&str>)
+            .expect("failed to build package status menu item");
+    let model_status = MenuItem::with_id(app, "model-status", &model_text, false, None::<&str>)
+        .expect("failed to build model status menu item");
+    let controller_status = MenuItem::with_id(
+        app,
+        "controller-status",
+        &controller_text,
+        false,
+        None::<&str>,
+    )
+    .expect("failed to build controller status menu item");
+    let b00t_status = MenuItem::with_id(app, "b00t-status", &b00t_text, false, None::<&str>)
+        .expect("failed to build b00t status menu item");
+    let pending_privileged = MenuItem::with_id(
+        app,
+        "pending-privileged",
+        "Privileged actions: use Install/Repair in Claude (plan + UAC)",
+        false,
+        None::<&str>,
+    )
+    .expect("failed to build pending privileged status menu item");
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)
         .expect("failed to build Quit menu item");
 
-    let menu = Menu::with_items(app, &[&show, &version, &settings, &quit])
-        .expect("failed to build tray menu");
+    let menu = Menu::with_items(
+        app,
+        &[
+            &show,
+            &version,
+            &service_status,
+            &package_status,
+            &model_status,
+            &controller_status,
+            &b00t_status,
+            &pending_privileged,
+            &settings,
+            &quit,
+        ],
+    )
+    .expect("failed to build tray menu");
 
     TrayIconBuilder::new()
         .icon(app.default_window_icon().unwrap().clone())
