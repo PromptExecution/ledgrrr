@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 
-use windows_registry::*;
+use windows_registry::{Key, CURRENT_USER};
 
 use super::{SettingsBackend, SettingsBackendError};
 

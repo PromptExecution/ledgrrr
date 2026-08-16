@@ -34,6 +34,7 @@ COPY kani-proofs ./kani-proofs
 COPY docs ./docs
 COPY rules ./rules
 COPY scripts ./scripts
+COPY windows ./windows
 
 RUN cargo test --workspace --features 'audit,autoresearch,b00t,classification,core,default,events,full,hsm,legacy,legal-z3,llm,local-llm,mistralrs-llm,ontology,reconciliation,self-update,tax,xero'
 RUN cargo build -p ledgerr-mcp --release --bin ledgerr-mcp-server --features 'audit,b00t,classification,core,events,full,hsm,legacy,llm,ontology,reconciliation,self-update,tax,xero'
