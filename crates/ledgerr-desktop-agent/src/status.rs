@@ -196,6 +196,7 @@ fn detect_package() -> PackageStatus {
 const TRAY_CANDIDATES: &[&str] = &[
     "ledgrrr-tray.exe",
     "host-tauri.exe",
+    "host-tauri",
     "host-tray.exe",
     "host-tray",
 ];
