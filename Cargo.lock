@@ -5770,10 +5770,12 @@ version = "1.9.0"
 dependencies = [
  "blake3",
  "getrandom 0.3.4",
+ "ledgrrr-settings",
  "schemars 0.8.22",
  "serde",
  "serde_json",
  "sysinfo 0.33.1",
+ "tempfile",
  "thiserror 2.0.18",
 ]
 
@@ -5806,6 +5808,7 @@ dependencies = [
  "holon-viz",
  "ledger-core",
  "ledgerr-desktop-agent",
+ "ledgrrr-settings",
  "mistralrs",
  "reqwest 0.12.28",
  "rig-core",
@@ -5927,6 +5930,7 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
+ "specta",
  "tempfile",
  "thiserror 2.0.18",
  "windows-registry",
