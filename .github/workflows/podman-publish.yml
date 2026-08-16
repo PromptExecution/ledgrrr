@@ -29,6 +29,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y podman
 
+      - name: Reclaim runner storage and verify build capacity
+        run: |
+          sudo docker system prune --all --force || true
+          podman system reset --force || true
+          available_gib=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
+          minimum_gib=20
+          df -h /
+          if [ "$available_gib" -lt "$minimum_gib" ]; then
+            echo "Insufficient disk for a reliable container build: ${available_gib} GiB available; ${minimum_gib} GiB required."
+            exit 1
+          fi
+
       - name: Compute image tags
         run: |
           echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
@@ -40,6 +52,7 @@ jobs:
       - name: Build image with Podman
         run: |
           podman build \
+            --layers=false \
             -t "${IMAGE}:main" \
             -t "${IMAGE}:${SHA_TAG}" \
             .

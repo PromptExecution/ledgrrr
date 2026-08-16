@@ -36,7 +36,14 @@ COPY rules ./rules
 COPY scripts ./scripts
 COPY windows ./windows
 
+# The workspace test suite is available as an explicit build target. It is not
+# part of the release-image path: main CI has already run it before this
+# publish workflow starts, and retaining its debug artifacts exhausts runner
+# storage while Podman snapshots intermediate layers.
+FROM builder AS test
 RUN cargo test --workspace --features 'audit,autoresearch,b00t,classification,core,default,events,full,hsm,legacy,legal-z3,llm,local-llm,mistralrs-llm,ontology,reconciliation,self-update,tax,xero'
+
+FROM builder AS release
 RUN cargo build -p ledgerr-mcp --release --bin ledgerr-mcp-server --features 'audit,b00t,classification,core,events,full,hsm,legacy,llm,ontology,reconciliation,self-update,tax,xero'
 
 # ── runtime ───────────────────────────────────────────────────────────────────
@@ -44,7 +51,7 @@ FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
-COPY --from=builder /app/target/release/ledgerr-mcp-server /usr/local/bin/ledgerr-mcp-server
+COPY --from=release /app/target/release/ledgerr-mcp-server /usr/local/bin/ledgerr-mcp-server
 
 ENV LEDGERR_WORKBOOK_PATH=/data/tax-ledger.xlsx
 ENV LEDGER_PDF_INBOX=/data/inbox
