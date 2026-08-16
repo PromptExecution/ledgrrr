@@ -33,7 +33,7 @@
 
         <!-- Custom theme stylesheets -->
         <link rel="stylesheet" href="theme/rhai-live-bb027f47.css">
-        <link rel="stylesheet" href="mdbook-admonish-306a1c37.css">
+        <link rel="stylesheet" href="theme/mdbook-admonish-306a1c37.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -41,7 +41,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-bd5b0fe2.js";
+            window.path_to_searchindex_js = "searchindex-f28ac4e2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-8264d5c0.js"></script>
@@ -2225,15 +2225,15 @@ if action == export_workbook -&gt; workbook_projection
 <tbody>
 <tr><td>MCP server</td><td><code>ledgerr-mcp-server</code> exposes ledgrrr capability families over stdio.</td></tr>
 <tr><td>Claude plugin</td><td>The repo has a Claude plugin marketplace entry for Cowork/plugin workflows.</td></tr>
-<tr><td><code>ledgrrr-mcp</code> controller</td><td>Implemented (<code>crates/ledgerr-desktop-agent</code>). Real stdio JSON-RPC server exposing all 11 <code>ledgrrr_*</code> tools; <code>ledgrrr_status</code> measures actual local state (b00t CLI, service heartbeat/pid liveness, tray binary presence), no mocked fields.</td></tr>
-<tr><td>Claude Desktop MCPB bundle</td><td>Implemented (Phase 1). <code>scripts/package-desktop-agent.sh</code> / <code>just package-desktop-mcpb</code> builds <code>dist/ledgrrr-claude.mcpb/</code> (manifest + binary); not yet wired into a released Claude Desktop install flow.</td></tr>
-<tr><td><code>ledgrrr-service</code></td><td>Implemented as a Phase 1 user-level heartbeat process (<code>crates/ledgerr-desktop-agent/src/bin/ledgrrr-service.rs</code>), spawned/killed by <code>ledgrrr_start_service</code>/<code>ledgrrr_stop_service</code>. Not an OS service registration — that is native-installer scope.</td></tr>
-<tr><td>Windows desktop host</td><td>Tauri/host crates exist for tray/window/local operator work; <code>ledgrrr_open_tray</code> can launch the existing <code>host-tray</code>/<code>ledgerr-tauri</code> binary if built.</td></tr>
-<tr><td>Windows service (OS-registered)</td><td>Not yet a productized install target — requires the native installer.</td></tr>
+<tr><td><code>ledgrrr-mcp</code> controller</td><td>Implemented (<code>crates/ledgerr-desktop-agent</code>). Real stdio JSON-RPC server exposing exactly 11 <code>ledgrrr_*</code> desktop-control tools; it is distinct from the 12 published <code>ledgerr_*</code> ledger capability families.</td></tr>
+<tr><td>Claude Desktop MCPB bundle</td><td>Implemented. <code>scripts/package-desktop-agent.sh</code> / <code>just package-desktop-mcpb</code> builds <code>dist/ledgrrr-claude.mcpb/</code>. It includes only the unprivileged controller and visible package helper—not a signing key, service, or silent installer.</td></tr>
+<tr><td><code>ledgrrr-service</code></td><td>Durable local runtime with an authenticated loopback health/shutdown endpoint, shared per-user config/audit schema, and an explicit per-user fallback. The package may later register it with SCM for machine scope.</td></tr>
+<tr><td>Windows desktop host</td><td>Tauri host is the tray/taskbar executable in the external payload; <code>ledgrrr_open_tray</code> discovers the installed <code>ledgrrr-tray.exe</code> before compatibility names.</td></tr>
+<tr><td>Native Windows dogfood package</td><td>Implemented: a test-signed sparse MSIX/external-location identity package, external Win32 payload, install/repair/uninstall helper, checksum, provenance, and Windows release-CI smoke. Public certificate procurement is deferred.</td></tr>
 <tr><td>Diagram rendering</td><td>Mermaid, JSON, and a minimal deterministic SVG layout are implemented and golden-tested in <code>ledgerr-desktop-agent</code> for the <code>ledgrrr_render_diagram</code> tool. PNG remains unsupported pending a rasterizer dependency. Mermaid/isometric documentation rendering for the Rhai diagram DSL is separately implemented in the mdBook tooling.</td></tr>
 <tr><td>Deterministic simulation</td><td>Implemented: <code>ledgrrr_simulate_pipeline</code> walks a playbook’s nodes/edges/gates with no LLM and no wall-clock dependency, producing a reproducible run id, step trace, and gate decisions (golden-tested).</td></tr>
 <tr><td>Office/SharePoint</td><td>Not packaged as OneNote/Office add-in or SPFx web part — requires a Microsoft 365/SharePoint tenant. <code>ledgrrr_export_office_artifact</code> writes a local, version-numbered bundle (Mermaid + SVG + playbook JSON + provenance) that a future Office/SPFx bridge can consume.</td></tr>
-<tr><td>b00t linkage</td><td>Datums published for all seven required capabilities (<code>ledgrrr.cli</code>, <code>ledgrrr.mcp</code>, <code>ledgrrr.desktop</code>, <code>ledgrrr.service</code>, <code>ledgrrr.office-addin</code>, <code>ledgrrr.sharepoint-webpart</code>, <code>ledgrrr.model-runtime</code>) in <code>_b00t_/</code>. The desktop/office-addin/sharepoint-webpart/model-runtime datums are honestly marked <code>missing</code>/not configured — see <a href="#b00t-contract">b00t Contract</a> below.</td></tr>
+<tr><td>b00t linkage</td><td>Source-controlled package and Tauri datums live in <code>.b00t/datums/</code>; installed desktop/runtime state is reported by <code>ledgrrr_status</code>. Office, SharePoint, and model integrations remain status-visible but unconfigured.</td></tr>
 </tbody>
 </table>
 </div>
@@ -2259,20 +2259,98 @@ SharePoint SPFx Web Part
 </code></pre>
 <h2 id="installation-boundary"><a class="header" href="#installation-boundary">Installation Boundary</a></h2>
 <p>MCPB installs the Claude-facing controller only. It must not silently install a service, write machine-wide registry keys, or mutate host state during bundle install.</p>
-<p>The native Windows installer owns the privileged stack:</p>
+<p>The authoritative Windows delivery is a sparse MSIX/external-location identity package. Its package identity enables Windows integration while its external payload owns the Win32 stack:</p>
 <ul>
 <li><code>ledgrrr-service.exe</code></li>
 <li><code>ledgrrr-tray.exe</code></li>
 <li><code>ledgrrr-mcp.exe</code></li>
+<li><code>support-manifest.json</code> (binary names, per-user state contract, prerequisites)</li>
 <li>local model/runtime assets</li>
 <li>WebView2/Tauri prerequisites</li>
 <li>Start Menu entries</li>
 <li>repair/uninstall registration</li>
 <li>update metadata</li>
 </ul>
-<p>Privileged service installation requires the normal Windows elevation path. Per-user mode must remain possible when the service is not installed.</p>
+<p>Per-user install is the dogfood default and requires no UAC: it installs the test certificate into Current User Trusted People, copies the external payload under <code>%LOCALAPPDATA%\Programs\ledgrrr</code>, and registers the MSIX identity with <code>Add-AppxPackage -ExternalLocation</code>. It writes <code>%LOCALAPPDATA%\ledgrrr\package-install.json</code> so an MCPB controller installed elsewhere can locate that payload, and caches the public MSIX/certificate under <code>%LOCALAPPDATA%\ledgrrr\package-cache</code> so repair can re-register the identity without a new download. Machine scope surfaces UAC and stages/provisions the package. Uninstall removes the external payload, install record, and package cache; runtime audit/config data remain under <code>%LOCALAPPDATA%\ledgrrr</code> unless the operator chooses to remove their personal data separately.</p>
+<p>The repeatable Windows commands are:</p>
+<pre><code class="language-text">just windows-package &lt;Build|TestInstall&gt; &lt;windows-repo-root&gt; &lt;version&gt; [output-dir] [certificate-store-path]
+just wsl2-pwsh-msix-build &lt;windows-repo-root&gt; &lt;version&gt;
+just wsl2-pwsh-msix-smoke &lt;windows-repo-root&gt; &lt;version&gt;
+</code></pre>
+<p>Use the first recipe when composing an automation flow. <code>TestInstall</code> is the
+single mutating dogfood command: it keeps package changes behind one visible
+Windows/UAC boundary instead of asking an operator to approve each lifecycle
+step individually. Controller MCP tools remain plan-first and require explicit
+approval for a user-initiated install, repair, or uninstall.</p>
+<p>The smoke path builds, test-signs, installs, discovers, and uninstalls the identity package. Per-user dogfood registration uses the explicit <code>Add-AppxPackage -AllowUnsigned</code> test mode so a self-signed root CA is never installed; this is not a public-signing substitute and is not used for machine-wide installation. Release CI uploads the <code>.msix</code>, public <code>.cer</code>, <code>external-payload.zip</code>, <code>INSTALL.json</code>, checksum, and provenance next to (not instead of) the domain MCPB artifacts. Extract <code>external-payload.zip</code> to a sibling <code>payload</code> directory before running the command in <code>INSTALL.json</code>.</p>
+<h3 id="windows-toolchain-prerequisites"><a class="header" href="#windows-toolchain-prerequisites">Windows Toolchain Prerequisites</a></h3>
+<p>The package command uses PowerShell 7 (<code>pwsh.exe</code>; 7.2+), including when invoked
+from WSL, not only a manually opened Developer PowerShell. Install it with
+<code>winget install --id Microsoft.PowerShell --source winget</code> if it is absent.
+When <code>P:</code> is available, the test signing PFX and matching public certificate
+persist under <code>P:\ledgrrr\test-signing</code>; release outputs contain only the public
+<code>.cer</code>. Use <code>-CertificateStorePath</code> to select another private signer location.
+Prefer a WSLC Windows container for repeatable Windows toolchain work when the
+installed <code>b00t</code> exposes that capability; otherwise stage a local Windows copy.
+It activates the Visual Studio environment through <code>VsDevCmd.bat</code> when needed.
+Before a local build or smoke test, install:</p>
+<ul>
+<li>Windows 10 version 2004 / build 19041 or newer;</li>
+<li>Visual Studio 2022 Build Tools with <strong>Desktop development with C++</strong> (the
+<code>Microsoft.VisualStudio.Workload.VCTools</code> workload) and its recommended
+Windows SDK components, which provide <code>link.exe</code>, <code>makeappx.exe</code>, and
+<code>signtool.exe</code>;</li>
+<li>the Microsoft Edge WebView2 Evergreen Runtime (required when the tray is
+installed); and</li>
+<li>the built-in Windows Appx PowerShell module.</li>
+</ul>
+<p>The package build detects a missing or stale mdBook toolchain and repairs the
+<code>mdbook-admonish</code> asset/binary mismatch automatically. It then embeds the
+generated playbook in the external payload, where the tray’s <code>/docs/</code> route
+discovers it beside <code>ledgrrr-tray.exe</code>. Offline builds should preinstall
+<code>mdbook 0.5.x</code>, <code>mdbook-admonish 1.20.x</code>, and the repo-local
+<code>mdbook-rhai-mermaid</code> binary. The legacy <code>mdbook-mermaid 0.16</code> preprocessor is
+not compatible with mdBook 0.5 and is intentionally not used.</p>
+<p>On a clean Windows machine, install the compiler workload with:</p>
+<pre><code class="language-powershell">winget install --id Microsoft.VisualStudio.2022.BuildTools --exact --source winget --accept-package-agreements --accept-source-agreements --silent --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+</code></pre>
+<p>Then verify the C++ workload and run the acceptance path (substitute the
+checkout’s Windows path when launching from WSL):</p>
+<pre><code class="language-powershell">$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+&amp; $vswhere -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+.\scripts\windows-package.ps1 -Action TestInstall -Version 1.9.0
+</code></pre>
+<p>If a repaired/offline Build Tools instance has <code>VsDevCmd.bat</code> but is not yet
+reported by <code>vswhere</code>, set <code>LEDGRRR_VSDEVCMD</code> to that file before invoking the
+package script. The script also probes the normal Build Tools location and the
+documented <code>C:\BuildTools</code> recovery location.</p>
+<p>Native Windows Cargo does not support a <code>\\wsl.localhost\...</code> checkout as its
+working directory. Keep a normal Windows clone under a drive such as <code>C:\src</code>
+or <code>D:\src</code> for desktop packaging. If the source only exists in the WSL Linux
+filesystem, stage a temporary local copy (excluding <code>.git</code>, <code>target</code>, <code>dist</code>,
+<code>.claude</code>, and optional <code>models</code>) before running the command; copy artifacts
+back only after the smoke succeeds. This is a Windows/Cargo constraint, not an
+installer permission requirement.</p>
+<p><code>TestInstall</code> builds the package, generates a test certificate, creates the
+MSIX/checksum/provenance/payload archive, installs per-user, calls the
+controller’s status/start/render/stop actions, repairs, and uninstalls. It is
+safe for dogfood only: the certificate is public/test-only and must be replaced
+by public signing before distribution outside the test channel.</p>
 <h2 id="required-mcpb-tools"><a class="header" href="#required-mcpb-tools">Required MCPB Tools</a></h2>
-<p>All 11 tools below are implemented in <code>ledgrrr-mcp</code> (<code>crates/ledgerr-desktop-agent</code>) and covered by contract tests (<code>tests/contract.rs</code>). <code>install_desktop</code>/<code>repair</code>/<code>uninstall</code> return a structured plan explaining that they require the native installer, which does not exist yet — they never fake a mutation.</p>
+<h3 id="governed-process-state-machines"><a class="header" href="#governed-process-state-machines">Governed Process State Machines</a></h3>
+<p><code>PlaybookModel</code> is also the deterministic process-state-machine contract. A
+task state may declare its executing role, the b00t capability it invokes, and
+the stable outcome it emits. Validation fails closed when a state invokes a
+capability absent from <code>capability_refs</code>, or when its role lacks that capability
+in <code>role_authorizations</code>. This is the executable form of the invariant that a
+process cannot exceed its declared tools.</p>
+<p>The checked-in <code>b00t learn ooda</code> fixture represents Observe → Orient → Decide
+→ Act as states with outcome-labelled transitions. Render it through
+<code>ledgrrr_render_diagram</code> with <code>format: "state-machine"</code>; simulate it through
+<code>ledgrrr_simulate_pipeline</code> with the deterministic profile. The resulting trace
+records each state, role, capability, evidence id, gate decision, and outcome
+without a model call or wall-clock dependency.</p>
+<p>All 11 tools below are implemented in <code>ledgrrr-mcp</code> (<code>crates/ledgerr-desktop-agent</code>) and covered by contract tests. Package mutations are plan-first: <code>ledgrrr_install_plan</code> exposes affected paths, scope, unattended command, and UAC boundary; <code>install_desktop</code>/<code>repair</code>/<code>uninstall</code> require <code>approved: true</code> and launch the actual visible PowerShell package workflow.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -2309,12 +2387,14 @@ SharePoint SPFx Web Part
 </div>
 <p>Office artifacts must be versioned. Refreshing a generated diagram creates a new artifact version and evidence node; it must not silently replace a previously published diagram.</p>
 <h2 id="b00t-contract"><a class="header" href="#b00t-contract">b00t Contract</a></h2>
-<p>Required datums are published in <code>_b00t_/</code> and discoverable today:</p>
+<p>The source-controlled b00t package/Tauri datums are in <code>.b00t/datums/</code>; the
+other integration names below are status vocabulary, not falsely advertised
+installed packages:</p>
 <ul>
 <li><code>ledgrrr.cli</code> — pre-existing FOCUS/transport datum for the vendored checkout.</li>
 <li><code>ledgrrr.mcp</code> — the <code>ledgrrr-mcp</code> controller surface (this document), <code>tool_prefix = "ledgrrr_"</code>.</li>
-<li><code>ledgrrr.service</code> — the Phase 1 heartbeat process, <code>type = "runtime"</code>.</li>
-<li><code>ledgrrr.desktop</code> — the native Windows installer target, <code>type = "vendor"</code>, honestly marked <code>status = "missing"</code>.</li>
+<li><code>ledgrrr.service</code> — the authenticated per-user runtime boundary, <code>type = "runtime"</code>; a machine service registration remains an elevated package option.</li>
+<li><code>ledgrrr.desktop</code> — the test-signed sparse-MSIX package contract (<code>.b00t/datums/ledgrrr.toml</code>), with installed state reported by <code>ledgrrr_status.desktop_package</code>.</li>
 <li><code>ledgrrr.office-addin</code> / <code>ledgrrr.sharepoint-webpart</code> — Office/SharePoint overlays, <code>type = "overlay"</code>, marked <code>status = "missing"</code> pending a Microsoft 365 tenant.</li>
 <li><code>ledgrrr.model-runtime</code> — local CPU inference profile, <code>type = "ai"</code>, marked missing; <code>ledgrrr_status.model_runtime.configured</code> stays <code>false</code> until <code>LEDGRRR_MODEL_RUNTIME_PROFILE</code> is set to something real.</li>
 </ul>
@@ -3787,6 +3867,8 @@ fn repair_and_retry() -&gt; requeue_validation
         <script src="theme/rhai-live-core-7e58f9cd.js"></script>
         <script src="theme/rhai-live-ca0b7d40.js"></script>
         <script src="theme/mdbook-nav-override-2a0f46ea.js"></script>
+        <script src="mermaid-eefea253.min.js"></script>
+        <script src="mermaid-init-53b67c53.js"></script>
 
         <script>
         window.addEventListener('load', function() {
