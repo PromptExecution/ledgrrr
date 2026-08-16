@@ -2,6 +2,77 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.10.0 - 2026-08-16
+#### Features
+- (**au-rd**) ITAA 1997 Div 355 R&D types + Satisfies impls + arc-kit-au extensions (gh#513) (#137) - (b2b9ed5) - Brian Horakh
+- (**b00t-reflect**) companion crate pattern — HolonNode in b00t-reflect-types (#138) - (3916884) - Brian Horakh
+- (**beankeeper-bridge**) OFX→double-entry bridge with full serde (K1 govcraft integration) (#122) - (dfe5735) - Brian Horakh
+- (**desktop**) add Windows dogfood package - (4547c98) - brianh
+- (**fbar**) derive maximum daily balance per account-year; Form 8938 thresholds are filing-status aware (#157) - (c339710) - Brian Horakh
+- (**holon-viz**) HolonEmit proc-macro replaces hand-maintained generated_seed() (K2) (#126) - (f4aef34) - Brian Horakh
+- (**host**) wire windows-rs tray/toast/registry backends into ledgerr-host (#159) - (ecd2cbc) - Brian Horakh
+- (**host-tauri**) settings now served by ledgrrr-service over HTTP, not a local SettingsStore - (a886446) - brianh
+- (**host-tray**) settings now served by ledgrrr-service over HTTP, shared SettingsClient with host-tauri - (68d3d25) - brianh
+- (**ingest**) wire beankeeper-bridge consumer into ledger import path (#160) - (35609b2) - Brian Horakh
+- (**ledgerr-desktop-agent**) serve settings HTTP endpoint from ledgrrr-service's main loop - (a767db7) - brianh
+- (**ledgerr-desktop-agent**) add settings HTTP server (GET/POST /settings) - (476f701) - brianh
+- (**ledgrrr-settings**) scaffold new crate, move settings_backend - (a665102) - brianh
+- (**mcp-tax-layer**) 5 TaxArgs + thin handlers + canonical_viz_dsl_map fix (gh#516) (#125) - (5113179) - Brian Horakh
+- (**package**) package ledgrrr-mcp desktop controller as .mcpb for Claude Desktop (#161) - (ba21029) - Brian Horakh
+- (**reconciliation**) statement continuity + completeness assertion across account-months (#152) - (34851bc) - Brian Horakh
+- (**tray**) native Windows tray wired into ledgerr-tauri (#136) - (fd1d058) - Brian Horakh
+- (**ufo-types**) new crate — UFO stereotypes, Satisfies trait, ISO 17442/6166/4217/IFRS-9 types (gh#511) (#124) - (7bf8620) - Brian Horakh
+- (**ufo-types**) new crate — UFO stereotypes, Satisfies trait, ISO types - (a873b40) - Brian Horakh
+- (**us-tax**) filing-status-aware capital loss limitation — MFS is $1,500, not $3,000 (#155) - (f181e59) - Brian Horakh
+- (**us-tax**) Schedule E rental model — 27.5yr depreciation with cross-year accumulated continuity (#156) - (d435c64) - Brian Horakh
+- (**us-tax**) Form 2555 FEIE model + hard guard that FEIE does not exclude SE tax (#154) - (0ab6dbe) - Brian Horakh
+- (**viz**) holonic viz engine — Cytoscape, KerML codegen, WASM filters, TypeScript build (#98) - (083dc9c) - PromptExecution.com
+- (**windows-rs**) registry settings backend + webview2 evaluation (#131) - (4d6f0fe) - Brian Horakh
+- (**windows-rs**) native tray + toast notifications (#130) - (cbd2fcf) - Brian Horakh
+- MECE test harness (42 tests) + CDP viz server + viz dashboard (#139) - (876f5ea) - Brian Horakh
+- bridge openmetadata mcp surfaces (#128) - (7af28ca) - Brian Horakh
+- fuse tauri cytoscape wasm bridge - (c7afc43) - Brian Horakh
+#### Bug Fixes
+- (**ci**) reduce podman publish storage (#172) - (1d4577a) - Brian Horakh
+- (**ci**) restore Windows package validation - (e676b79) - brianh
+- (**crypto**) cost basis method and chain are hardcoded in handle_crypto_cost_basis_check (#153) - (38199d3) - Brian Horakh
+- (**desktop-agent**) retain host-tauri tray candidate - (dc9012e) - brianh
+- (**docs**) accept themed admonish asset - (a25a3d3) - brianh
+- (**docs,ci**) repair broken l3dg3rr→ledgrrr links, regenerate server.json, add MSI release - (633da7a) - brianh
+- (**host**) keep Viz payload outside Specta - (76da653) - brianh
+- (**ledger-core**) repair committed conflict fragments - (c9e6a5b) - brianh
+- (**ledgerr-desktop-agent**) TRAY_CANDIDATES named a binary (ledgerr-tauri) that doesn't exist - (9c0a73e) - brianh
+- (**ledgerr-host**) resolve clippy violations in internal_openai.rs - (1e6889a) - brianh
+- (**ledgrrr-settings**) remove fabricated stub modules, scope lib.rs to Task 1's actual deliverable (backend only) - (e70bde5) - brianh
+- (**mcp**) reject unsupported crypto chains - (85eb83c) - brianh
+- (**ontology**) align artifact relation contracts (#141) - (3f9ff23) - Brian Horakh
+- (**release**) install cargo-edit for version bumps (#173) - (6bb1c6c) - Brian Horakh
+- (**rotel-visual**) restore classified log test body (#140) - (9ddbcfa) - Brian Horakh
+- address final whole-branch review findings (dead code, Default impl, doc gap) - (e3b03dd) - brianh
+- pin MCP protocol version to 2024-11-05 for opencode compatibility (#132) - (eca3c73) - Brian Horakh
+- restore b00t-reflect-types crate with serde derives - (60a1f02) - Brian Horakh
+- isolate focus_tool tests with mutex + temp paths - (da3d59c) - Brian Horakh
+- add missing PathBuf import in query_transactions_tests - (3d354bb) - Brian Horakh
+#### Documentation
+- mark gh#118 Phase A (settings unification) complete in the integration roadmap - (47362ec) - brianh
+- add implementation plan for gh#118 Phase A (settings unification) - (5a20d36) - brianh
+#### Tests
+- (**tax-lawyer**) add end-to-end test for Satisfies → evidence chain → MCP tool pipeline (#158) - (4046cbf) - Brian Horakh
+#### Continuous Integration
+- (**desktop**) smoke Windows package on branches - (8fed73a) - brianh
+- (**release**) publish sparse MSIX assets - (abed784) - brianh
+#### Refactoring
+- (**ledgerr-host**) move AppSettings/SettingsStore/default_settings_path to ledgrrr-settings - (63987b8) - brianh
+- (**ledgerr-host**) move ModelProviderLabel to ledgrrr-settings - (477b7f4) - brianh
+- (**ledgerr-host**) move NotificationBackend/Status/TestResult to ledgrrr-settings - (ccac115) - brianh
+#### Miscellaneous Chores
+- (**b00t**) sync b00t-patches — tray backends, MCP protocol pin, rotel-visual fix (#163) - (6fede08) - Brian Horakh
+- (**container**) rename Dockerfile to Containerfile - (525ea87) - brianh
+- (**ledgerr-mcp**) retire orphaned actor/gate channel dispatch system (gh#119) - (c0f76fa) - Brian Horakh
+- standardize on Python 3.14 across all tooling - (1542de9) - Brian Horakh
+
+- - -
+
 ## v1.9.0 - 2026-05-13
 #### Bug Fixes
 - **(ci)** add GTK deps to Dockerfile, remove --all-features - (02fc48b) - Claude Sonnet (coordinator)
