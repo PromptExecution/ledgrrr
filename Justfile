@@ -715,7 +715,7 @@ wrkflw-openmetadata-test emulation="secure-emulation":
 
 # ─── build: local CI build via wrkflw ──────────────────────────────────────
 
-# Prove the Dockerfile planner fix: runs cargo chef prepare + ledgerr-mcp build
+# Prove the Containerfile planner fix: runs cargo chef prepare + ledgerr-mcp build
 # via wrkflw emulation mode (no Docker required).
 build emulation="emulation":
     @if ! command -v wrkflw >/dev/null 2>&1; then echo "error: wrkflw not found — run: cargo install wrkflw"; exit 1; fi

@@ -15,7 +15,7 @@ This repo now includes a Claude plugin marketplace and a plugin entry intended f
 - MCP server entrypoint: [ledgerr-mcp-server.rs](crates/ledgerr-mcp/src/bin/ledgerr-mcp-server.rs)
 - Runtime helper commands: [Justfile](Justfile)
 - MCP regression script: [mcp_e2e.sh](scripts/mcp_e2e.sh)
-- Container build: [Dockerfile](Dockerfile)
+- Container build: [Containerfile](../Containerfile)
 - Python launcher package: [pyproject.toml](plugins/l3dg3rr-plugin-create/python/pyproject.toml)
 
 ## Install in Cowork
@@ -58,7 +58,7 @@ just mcp-start-release
 ### 3) Docker
 
 ```bash
-docker build -t tax-ledger:dev .
+docker build -f Containerfile -t tax-ledger:dev .
 docker run -i --rm -v "$PWD:/workspace" -w /workspace tax-ledger:dev \
   cargo run -p ledgerr-mcp --bin ledgerr-mcp-server
 ```
