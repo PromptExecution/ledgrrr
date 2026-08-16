@@ -380,7 +380,7 @@ Pushing the tag triggers `.github/workflows/docs.yml`, which redeploys GitHub Pa
 ## Docker
 
 ```bash
-docker build -t l3dg3rr:dev .
+docker build -f Containerfile -t l3dg3rr:dev .
 docker run --rm -i \
   -v "$PWD/data:/data" \
   l3dg3rr:dev

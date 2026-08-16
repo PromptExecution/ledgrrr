@@ -1,6 +1,6 @@
 ---
 name: ledgerr-qa
-description: Use this skill for adversarial quality inspection of the l3dg3rr repo. Covers MCP protocol compliance, CI/CD correctness, Dockerfile, dependency versions, README completeness, and test coverage. Run this before any release or when reviewing a contractor's work.
+description: Use this skill for adversarial quality inspection of the l3dg3rr repo. Covers MCP protocol compliance, CI/CD correctness, Containerfile, dependency versions, README completeness, and test coverage. Run this before any release or when reviewing a contractor's work.
 ---
 
 # ledgerr-qa
@@ -60,10 +60,10 @@ grep "cargo publish -p" .github/workflows/publish.yml
 # NOT turbo-mcp (old name, doesn't exist)
 ```
 
-### 6. Dockerfile
+### 6. Containerfile
 
 ```bash
-grep "CMD\|cargo test\|cargo-chef\|COPY --from" Dockerfile
+grep "CMD\|cargo test\|cargo-chef\|COPY --from" Containerfile
 ```
 
 - `CMD` must run the binary (`/usr/local/bin/ledgerr-mcp-server`), not `cargo test`

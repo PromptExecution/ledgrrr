@@ -1,4 +1,5 @@
 # syntax=docker/dockerfile:1.7
+# Native Docker and Podman build recipe.
 
 # ── dependency cache layer (cargo-chef) ──────────────────────────────────────
 FROM rust:1-bookworm AS chef
