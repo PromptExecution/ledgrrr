@@ -44,8 +44,10 @@ pub fn handle_crypto_cost_basis_check(
     let tt = TxType::from_str(tx_type);
 
     let ch = match Chain::from_str(chain) {
+        Some(Chain::Other(_)) | None => {
+            return json!({ "error": format!("unrecognized chain: {chain}") });
+        }
         Some(c) => c,
-        None => return json!({ "error": format!("unrecognized chain: {chain}") }),
     };
     let cbm = match CostBasisMethod::from_str(cost_basis_method) {
         Some(m) => m,
