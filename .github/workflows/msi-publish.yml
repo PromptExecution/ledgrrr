@@ -60,3 +60,50 @@ jobs:
           tagName: ${{ steps.tag.outputs.tag }}
           uploadUpdaterJson: false
           uploadUpdaterSignatures: false
+
+  publish-sparse-msix:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    name: build + upload sparse MSIX dogfood package (windows-latest)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName')
+            echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build the released source
+        shell: pwsh
+        run: |
+          git fetch --tags --force
+          git checkout "${{ steps.tag.outputs.tag }}"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build sparse MSIX package
+        shell: pwsh
+        run: |
+          $version = "${{ steps.tag.outputs.tag }}".TrimStart("v")
+          ./scripts/windows-package.ps1 -Action Build -Version $version
+
+      - name: Upload sparse MSIX release assets
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $assets = Get-ChildItem "dist/windows" -File |
+            Where-Object { $_.Extension -ne ".pfx" } |
+            Select-Object -ExpandProperty FullName
+          if ($assets.Count -eq 0) { throw "no sparse MSIX assets were produced" }
+          gh release upload "${{ steps.tag.outputs.tag }}" $assets --clobber
