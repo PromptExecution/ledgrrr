@@ -23,6 +23,11 @@ jobs:
           fetch-tags: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # cog.toml runs `cargo set-version {{version}}` as its pre-bump hook.
+      # That subcommand is provided by cargo-edit, not by Cargo itself.
+      - name: Install cargo-edit for the version bump hook
+        run: cargo install cargo-edit --locked
+
       - name: Install Cocogitto
         uses: cocogitto/cocogitto-action@v4
         with:
@@ -95,4 +100,3 @@ jobs:
             --title "${{ steps.tag.outputs.tag }} (dev/experimental)" \
             --notes-file RELEASE_NOTES.md \
             --prerelease
-
