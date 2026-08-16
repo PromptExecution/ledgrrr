@@ -1,0 +1,11 @@
+# Build artifacts and local metadata are never inputs to the production image.
+# Excluding them keeps the upload context deterministic and avoids consuming
+# runner storage before Podman begins the multi-stage build.
+.git
+.github
+.claude
+target
+dist
+book/book
+models
+node_modules
