@@ -40,7 +40,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f28ac4e2.js";
+            window.path_to_searchindex_js = "searchindex-01c0a00f.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-8264d5c0.js"></script>
@@ -291,11 +291,11 @@ for (idx, _) in nodes.iter().enumerate() {
 <h2 id="system-architecture-diagram"><a class="header" href="#system-architecture-diagram">System Architecture Diagram</a></h2>
 <pre><code class="language-rhai">fn human_accountant() -&gt; tray_icon
 fn human_accountant() -&gt; window_ui
-fn tray_icon() -&gt; slint_graph_view
-fn window_ui() -&gt; slint_graph_view
-fn toast_notifier() -&gt; slint_graph_view
-fn credential_manager() -&gt; slint_graph_view
-fn slint_graph_view() -&gt; pipeline_hsm
+fn tray_icon() -&gt; evidence_graph_view
+fn window_ui() -&gt; evidence_graph_view
+fn toast_notifier() -&gt; evidence_graph_view
+fn credential_manager() -&gt; evidence_graph_view
+fn evidence_graph_view() -&gt; pipeline_hsm
 fn pipeline_hsm() -&gt; validation
 fn pipeline_hsm() -&gt; legal_solver
 fn pipeline_hsm() -&gt; constraints
@@ -307,7 +307,7 @@ fn pipeline_hsm() -&gt; ledgerr_reconciliation
     human_accountant["human_accountant"]
     tray_icon["tray_icon"]
     window_ui["window_ui"]
-    slint_graph_view["slint_graph_view"]
+    evidence_graph_view["evidence_graph_view"]
     toast_notifier["toast_notifier"]
     credential_manager["credential_manager"]
     pipeline_hsm["pipeline_hsm"]
@@ -319,11 +319,11 @@ fn pipeline_hsm() -&gt; ledgerr_reconciliation
     ledgerr_reconciliation["ledgerr_reconciliation"]
     human_accountant --&gt; tray_icon
     human_accountant --&gt; window_ui
-    tray_icon --&gt; slint_graph_view
-    window_ui --&gt; slint_graph_view
-    toast_notifier --&gt; slint_graph_view
-    credential_manager --&gt; slint_graph_view
-    slint_graph_view --&gt; pipeline_hsm
+    tray_icon --&gt; evidence_graph_view
+    window_ui --&gt; evidence_graph_view
+    toast_notifier --&gt; evidence_graph_view
+    credential_manager --&gt; evidence_graph_view
+    evidence_graph_view --&gt; pipeline_hsm
     pipeline_hsm --&gt; validation
     pipeline_hsm --&gt; legal_solver
     pipeline_hsm --&gt; constraints
