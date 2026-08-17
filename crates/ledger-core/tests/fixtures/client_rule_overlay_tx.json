@@ -1,0 +1,7 @@
+{
+  "tx_id": "tx-client-overlay-001",
+  "account_id": "TESTBANK--CLIENT-CHK--2024-05",
+  "date": "2024-05-10",
+  "amount": "412.50",
+  "description": "Acme Test Vendor monthly hosting invoice"
+}
