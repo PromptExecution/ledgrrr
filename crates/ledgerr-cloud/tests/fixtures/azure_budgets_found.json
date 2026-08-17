@@ -1,0 +1,8 @@
+[
+  {
+    "name": "gpu-training-monthly",
+    "category": "Cost",
+    "amount": 400.0,
+    "timeGrain": "Monthly"
+  }
+]
