@@ -5765,6 +5765,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ledgerr-cloud"
+version = "1.10.0"
+dependencies = [
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "ledgerr-desktop-agent"
 version = "1.10.0"
 dependencies = [

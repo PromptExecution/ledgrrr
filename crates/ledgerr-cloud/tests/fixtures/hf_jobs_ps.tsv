@@ -1,0 +1,5 @@
+JOB ID	IMAGE	COMMAND	CREATED	STATUS	DURATION
+job-aaaa	pytorch/pytorch	train.py	2026-08-01T00:00:00Z	RUNNING	1h
+job-bbbb	pytorch/pytorch	train.py	2026-08-01T00:00:00Z	COMPLETED	30m
+job-cccc	pytorch/pytorch	train.py	2026-08-01T00:00:00Z	CANCELED	10m
+job-dddd	pytorch/pytorch	train.py	2026-08-01T00:00:00Z	ERROR	5m

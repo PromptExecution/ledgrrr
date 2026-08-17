@@ -1,0 +1,22 @@
+[
+  {
+    "name": "billingAccounts/000000-111111-222222/budgets/aaaa",
+    "displayName": "gpu-training-a",
+    "amount": {
+      "specifiedAmount": {
+        "currencyCode": "USD",
+        "units": "500"
+      }
+    }
+  },
+  {
+    "name": "billingAccounts/000000-111111-222222/budgets/bbbb",
+    "displayName": "gpu-training-b",
+    "amount": {
+      "specifiedAmount": {
+        "currencyCode": "USD",
+        "units": "300"
+      }
+    }
+  }
+]
