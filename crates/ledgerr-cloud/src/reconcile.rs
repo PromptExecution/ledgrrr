@@ -6,6 +6,7 @@
 //! `NoApi` providers) entry — nothing propagates via `?` out of `run`.
 
 use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
 
 use crate::aws::AwsProvider;
 use crate::azure::AzureProvider;
@@ -16,7 +17,8 @@ use crate::hf::HfProvider;
 use crate::provider::BudgetProvider;
 
 /// Outcome of reconciling a single provider.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ReconcileStatus {
     /// Authenticated and checked successfully (a cap may or may not be set).
     Pass,
@@ -29,7 +31,7 @@ pub enum ReconcileStatus {
 }
 
 /// Per-provider reconciliation result.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderStatus {
     pub provider: String,
     pub status: ReconcileStatus,
@@ -42,7 +44,7 @@ pub struct ProviderStatus {
 }
 
 /// Full reconciliation report across all configured providers.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReconcileReport {
     pub providers: Vec<ProviderStatus>,
 }

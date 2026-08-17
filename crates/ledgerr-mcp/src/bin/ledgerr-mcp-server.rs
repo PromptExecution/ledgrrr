@@ -127,6 +127,10 @@ fn handle_request(request: Value) -> Option<Value> {
                     let arguments = params.get("arguments").cloned().unwrap_or(Value::Null);
                     mcp_adapter::handle_focus_tool(&arguments)
                 }
+                mcp_adapter::BUDGET_TOOL => {
+                    let arguments = params.get("arguments").cloned().unwrap_or(Value::Null);
+                    mcp_adapter::handle_budget_tool(&arguments)
+                }
                 "l3dg3rr_list_accounts" => mcp_adapter::handle_list_accounts(global_raw_service()),
                 "l3dg3rr_get_pipeline_status" => {
                     mcp_adapter::handle_pipeline_status(true, true, true, Vec::new())
