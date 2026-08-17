@@ -1,0 +1,19 @@
+[package]
+name = "ledgerr-cloud"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "GPU-training cloud budget reconciliation across AWS, GCP, Azure, and HuggingFace Jobs — shells out to provider CLIs (aws/gcloud/az/hf), no cloud SDK dependencies."
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+rust_decimal = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

@@ -4632,6 +4632,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ledgerr-cloud"
+version = "1.10.0"
+dependencies = [
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "ledgerr-desktop-agent"
 version = "1.10.0"
 dependencies = [
@@ -4723,6 +4735,7 @@ dependencies = [
  "cfg-if",
  "chrono",
  "ledger-core",
+ "ledgerr-cloud",
  "ledgerr-focus",
  "ledgerr-llm",
  "ledgerr-mcp",
@@ -4741,6 +4754,7 @@ dependencies = [
  "sysinfo 0.33.1",
  "tempfile",
  "thiserror 2.0.18",
+ "tokio",
  "tracing",
  "ufo-types",
  "winreg 0.52.0",

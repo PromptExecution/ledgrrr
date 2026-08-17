@@ -37,6 +37,7 @@ pub const CALENDAR_TOOL: &str = "list_calendar_events";
 pub const SHAPE_TOOL: &str = "get_document_shape";
 pub const SCHEMA_TOOL: &str = "ledgerr_schema";
 pub const MANIFEST_TOOL: &str = "ledgerr_manifest";
+pub const BUDGET_TOOL: &str = "ledgerr_budget";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolContractSpec {
@@ -60,9 +61,10 @@ pub const TOOL_REGISTRY: &[&str] = &[
     SHAPE_TOOL,
     SCHEMA_TOOL,
     MANIFEST_TOOL,
+    BUDGET_TOOL,
 ];
 
-pub const PUBLISHED_TOOLS: [ToolContractSpec; 12] = [
+pub const PUBLISHED_TOOLS: [ToolContractSpec; 13] = [
     ToolContractSpec {
         name: DOCUMENTS_TOOL,
         purpose: "document intake (PDF, image, CSV), tagging, filesystem metadata sync",
@@ -189,6 +191,11 @@ pub const PUBLISHED_TOOLS: [ToolContractSpec; 12] = [
         name: MANIFEST_TOOL,
         purpose: "returns the full canonical viz-manifest: mapping of type IDs to their canonical Rhai DSL source strings",
         actions: &["get_manifest"],
+    },
+    ToolContractSpec {
+        name: BUDGET_TOOL,
+        purpose: "GPU-training cloud budget reconciliation across AWS, GCP, Azure, and HuggingFace Jobs",
+        actions: &["reconcile"],
     },
 ];
 
@@ -962,6 +969,19 @@ pub fn parse_schema(arguments: &Value) -> Result<SchemaArgs, ToolError> {
     parse_args(arguments)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "action", deny_unknown_fields)]
+pub enum BudgetArgs {
+    /// Run AWS/GCP/Azure/HuggingFace Jobs budget reconciliation and return
+    /// the full report (see `ledgerr_cloud::ReconcileReport`).
+    #[serde(rename = "reconcile")]
+    Reconcile,
+}
+
+pub fn parse_budget(arguments: &Value) -> Result<BudgetArgs, ToolError> {
+    parse_args(arguments)
+}
+
 fn parse_args<T>(arguments: &Value) -> Result<T, ToolError>
 where
     T: for<'de> Deserialize<'de>,
@@ -983,6 +1003,7 @@ pub fn tool_input_schema(name: &str) -> Value {
         FOCUS_TOOL => root_schema_to_value(schema_for!(FocusArgs)),
         EVIDENCE_TOOL => root_schema_to_value(schema_for!(EvidenceArgs)),
         SCHEMA_TOOL => root_schema_to_value(schema_for!(SchemaArgs)),
+        BUDGET_TOOL => root_schema_to_value(schema_for!(BudgetArgs)),
         _ => json!({ "type": "object" }),
     }
 }

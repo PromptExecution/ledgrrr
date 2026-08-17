@@ -1,0 +1,13 @@
+{
+  "Budgets": [
+    {
+      "BudgetName": "gpu-training-monthly",
+      "BudgetLimit": {
+        "Amount": "500.0",
+        "Unit": "USD"
+      },
+      "TimeUnit": "MONTHLY",
+      "BudgetType": "COST"
+    }
+  ]
+}

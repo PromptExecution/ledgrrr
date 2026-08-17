@@ -27,6 +27,7 @@ members = [
   "crates/holon-viz-wasm",
   "crates/beankeeper-bridge",
   "crates/ledgerr-desktop-agent",
+  "crates/ledgerr-cloud",
 ]
 resolver = "2"
 

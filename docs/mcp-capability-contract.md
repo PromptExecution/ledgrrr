@@ -4,7 +4,7 @@ This file is generated from `crates/ledgerr-mcp/src/contract.rs`.
 
 Rust code is the only source of truth for the published MCP surface. If this file drifts from the contract module, tests should fail.
 
-The default catalog is intentionally small: 12 top-level `ledgerr_*` tools. Each tool uses a required `action` field so the major capability families stay visible while related operations are grouped under one top-level command.
+The default catalog is intentionally small: 13 top-level `ledgerr_*` tools. Each tool uses a required `action` field so the major capability families stay visible while related operations are grouped under one top-level command.
 
 ## Published MCP Tools
 
@@ -22,6 +22,7 @@ The default catalog is intentionally small: 12 top-level `ledgerr_*` tools. Each
 | `ledgerr_evidence` | evidence traceability: provenance gaps, transaction lineage, review badges, graph summary and node queries | `provenance_gaps`, `trace_tx`, `summary`, `list_nodes`, `node_detail` |
 | `ledgerr_schema` | runtime schema extensibility: register, list, remove, and inspect custom entity kinds | `list_kinds`, `register_kind`, `remove_kind`, `get_kind` |
 | `ledgerr_manifest` | returns the full canonical viz-manifest: mapping of type IDs to their canonical Rhai DSL source strings | `get_manifest` |
+| `ledgerr_budget` | GPU-training cloud budget reconciliation across AWS, GCP, Azure, and HuggingFace Jobs | `reconcile` |
 
 The concrete parser, action enums, field aliases, and JSON Schemas all live in [crates/ledgerr-mcp/src/contract.rs](../crates/ledgerr-mcp/src/contract.rs).
 
