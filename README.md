@@ -128,9 +128,8 @@ See [Capability Map](book/src/capability-map.md) for the full component table.
 | mdBook Rhai-to-Mermaid preprocessor | Implemented | supports `fn`, `if`, and `match` diagram DSL lines |
 | Live Rhai docs editor | Implemented | synchronized isometric and Mermaid views |
 | Xero capability family | In flight | supervised MCP capability, not raw credential exposure |
-| Tauri desktop host | Active | primary operator host (replaces legacy Slint surface) |
+| Tauri desktop host | Active | sole operator host (legacy Slint surface removed, #50) |
 | VZ panel — Cytoscape.js + dagre layout | Active | hierarchical type/trait graph in Tauri sidebar; dagre TB layout; CDP observable on port 19222 |
-| Slint desktop host | Legacy | fallback window, settings, local endpoint, notifications |
 | Evidence traceability (arc-kit-au) | Implemented | petgraph-backed provenance graph with deterministic node identity |
 | Claude Desktop MCPB bundle | Implemented (Phase 1) | `ledgrrr-claude.mcpb` packages the `ledgrrr-mcp` controller via `just package-desktop-mcpb`; all eleven `ledgrrr_*` tools live |
 | Native Windows dogfood package | Implemented (test-signed) | sparse MSIX/external-location identity package plus per-user Win32 payload; reproducibly built and install/repair/uninstall-smoked on Windows CI. Public signing is intentionally deferred. |

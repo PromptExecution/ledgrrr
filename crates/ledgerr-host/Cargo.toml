@@ -6,10 +6,6 @@ license.workspace = true
 default-run = "host-tauri"
 
 [[bin]]
-name = "host-window"
-path = "src/bin/host-window.rs"
-
-[[bin]]
 name = "host-tray"
 path = "src/bin/host-tray.rs"
 
@@ -52,7 +48,6 @@ mistralrs = { version = "0.8", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-registry = "0.6"
-slint = "1.16.0"
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
