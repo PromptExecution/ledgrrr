@@ -39,3 +39,8 @@ _b00t_/
 
 # mdbook output
 book/book/
+
+# Client-specific classification rule overlays — operator-maintained, never
+# tracked in this repo (keeps ledgrrr project-agnostic). See
+# rules/CLIENT_RULES.md for the onboarding contract.
+rules/client/

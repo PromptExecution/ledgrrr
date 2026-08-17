@@ -12,6 +12,8 @@
 //! - `RuleRegistry::classify_waterfall` — implemented; routes through semantic selector
 //! - `SemanticRuleSelector` — implemented with lexical similarity; upgrade path to vector
 //!   embeddings (`fastembed-rs` / `candle` / ONNX) is wired at the trait boundary
+//! - Client rule overlay (`<rules_dir>/client/*.rhai`) — implemented in `load_from_dir`;
+//!   see `rules/CLIENT_RULES.md` for the operator-facing onboarding contract
 //!
 //! ## External Dependency
 //! The Python sidecar at <https://github.com/PromptExecution/reqif-opa-mcp> produces
@@ -46,6 +48,45 @@ fn is_transaction_rule(path: &Path) -> bool {
     };
 
     src.contains("fn classify(")
+}
+
+/// Subdirectory (relative to the rules directory passed to `load_from_dir`)
+/// scanned for operator-maintained, client-specific rule overlays. Intended
+/// to be gitignored — see `rules/CLIENT_RULES.md`.
+const CLIENT_RULES_SUBDIR: &str = "client";
+
+/// Scan a single, already-known-to-exist directory (non-recursively) for
+/// transaction rule files. Propagates I/O errors (missing directory,
+/// permissions, etc.) via `RuleRegistryError::Io` — the caller is expected
+/// to have already validated the directory should exist.
+fn scan_rule_dir(dir: &Path) -> Result<Vec<PathBuf>, RuleRegistryError> {
+    let mut paths: Vec<PathBuf> = std::fs::read_dir(dir)?
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("rhai")
+                && is_transaction_rule(&path)
+            {
+                Some(path)
+            } else {
+                None
+            }
+        })
+        .collect();
+    paths.sort();
+    Ok(paths)
+}
+
+/// Scan the optional, operator-maintained client rules overlay directory.
+///
+/// A missing overlay directory is the normal, unconfigured state (no client
+/// onboarded yet) and returns an empty `Vec` rather than an error. Any other
+/// I/O error (e.g. permissions) still propagates.
+fn scan_client_overlay(dir: &Path) -> Result<Vec<PathBuf>, RuleRegistryError> {
+    if !dir.is_dir() {
+        return Ok(Vec::new());
+    }
+    scan_rule_dir(dir)
 }
 
 fn semantic_candidate_id(source_kind: &str, source_ref: &str, text: &str) -> String {
@@ -310,21 +351,18 @@ impl RuleRegistry {
     /// because they expose a different entry point.
     /// Optionally loads a paired `<rule_name>.reqif.json` sidecar for each rule.
     ///
-    /// Returns `RuleRegistryError::NoRules` if the directory contains no `.rhai` files.
+    /// Also layers in any rules found under `<rules_dir>/client/` — an operator
+    /// maintained, gitignored-by-convention overlay for client-specific
+    /// classification rules (vendor names, account patterns, etc.) that must
+    /// never be committed to this repo. See `rules/CLIENT_RULES.md` for the
+    /// onboarding contract. A missing `client/` subdirectory is normal (no
+    /// client onboarded) and is not an error.
+    ///
+    /// Returns `RuleRegistryError::NoRules` if no `.rhai` files are found in
+    /// either location.
     pub fn load_from_dir(rules_dir: &Path) -> Result<Self, RuleRegistryError> {
-        let mut rule_paths: Vec<PathBuf> = std::fs::read_dir(rules_dir)?
-            .filter_map(|entry| {
-                let entry = entry.ok()?;
-                let path = entry.path();
-                if path.extension().and_then(|e| e.to_str()) == Some("rhai")
-                    && is_transaction_rule(&path)
-                {
-                    Some(path)
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let mut rule_paths = scan_rule_dir(rules_dir)?;
+        rule_paths.extend(scan_client_overlay(&rules_dir.join(CLIENT_RULES_SUBDIR))?);
 
         if rule_paths.is_empty() {
             return Err(RuleRegistryError::NoRules(rules_dir.to_path_buf()));

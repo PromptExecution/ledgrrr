@@ -2,6 +2,10 @@
 
 Mapping of each Rhai rule file to its tax-code anchor, jurisdiction, signal type, output categories, and review conditions.
 
+Rules below are generic and jurisdiction-level by design. For client-specific
+vendor/account classification rules (untracked, operator-maintained), see
+[`CLIENT_RULES.md`](./CLIENT_RULES.md).
+
 | Rule File | Tax Code Section | Jurisdiction | Signal Type | TaxCategory Output(s) | Review Condition |
 |---|---|---|---|---|---|
 | `classify_schedule_c.rhai` | IRC §162(a) | US | Description keywords: "invoice", "client payment", "consulting fee", "freelance payment", "1099", "contract payment", "business expense", "office supply", "software subscription", "professional development", "business meal" | `SelfEmployment`, `OfficeSupplies` | Income > $5,000 or expense abs(amount) > $2,500 |
