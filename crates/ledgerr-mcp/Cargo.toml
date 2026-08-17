@@ -13,6 +13,7 @@ blake3 = "1.8.3"
 chrono = { workspace = true }
 ledger-core = { version = "=1.10.0", path = "../ledger-core" }
 ufo-types = { path = "../ufo-types" }
+ledgerr-cloud = { path = "../ledgerr-cloud" }
 ledgerr-focus = { workspace = true }
 ledgerr-mcp-core = { workspace = true }
 ledgerr-xero = { version = "=1.10.0", path = "../ledgerr-xero", optional = true }
@@ -27,6 +28,11 @@ serde_json = { version = "1", features = ["preserve_order"] }
 thiserror = "2"
 tracing = { workspace = true }
 shellexpand = "3.1.0"
+
+# budget_reconcile tool: ReconcileRunner is async (shells out via
+# tokio::process::Command); the sync MCP dispatch loop drives it on a
+# scratch current-thread runtime — see mcp_adapter::handle_budget_tool.
+tokio = { workspace = true }
 
 # plugin_info — always available (cross-platform system metadata)
 sysinfo = { version = "0.33", default-features = false, features = ["system"] }
