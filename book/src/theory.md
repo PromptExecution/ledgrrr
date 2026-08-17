@@ -81,11 +81,11 @@ for (idx, _) in nodes.iter().enumerate() {
 ```rhai
 fn human_accountant() -> tray_icon
 fn human_accountant() -> window_ui
-fn tray_icon() -> slint_graph_view
-fn window_ui() -> slint_graph_view
-fn toast_notifier() -> slint_graph_view
-fn credential_manager() -> slint_graph_view
-fn slint_graph_view() -> pipeline_hsm
+fn tray_icon() -> evidence_graph_view
+fn window_ui() -> evidence_graph_view
+fn toast_notifier() -> evidence_graph_view
+fn credential_manager() -> evidence_graph_view
+fn evidence_graph_view() -> pipeline_hsm
 fn pipeline_hsm() -> validation
 fn pipeline_hsm() -> legal_solver
 fn pipeline_hsm() -> constraints

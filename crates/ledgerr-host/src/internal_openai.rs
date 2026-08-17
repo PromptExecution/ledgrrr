@@ -1707,7 +1707,7 @@ mod tests {
     /// Resolve active ChatSettings from the AppSettings model_provider field.
     ///
     /// Returns the resolved settings and an optional warning if a fallback occurred.
-    /// The caller (Slint settings panel, chat sender) decides whether to surface
+    /// The caller (Tauri settings panel, chat sender) decides whether to surface
     /// the warning or swallow it.
     #[test]
     fn resolve_chat_settings_uses_cloud_when_cloud_selected() {

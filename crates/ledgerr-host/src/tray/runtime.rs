@@ -291,9 +291,12 @@ fn send_best_effort_toast(settings: &AppSettings, event: NotificationEvent) {
 }
 
 fn show_window_process() -> Result<(), Box<dyn std::error::Error>> {
+    // The legacy Slint `host-window` binary was removed (#50); `host-tauri` is
+    // the active desktop host and is the correct target for the tray's
+    // "Show Window" action.
     let current_exe = std::env::current_exe()?;
-    let host_window = current_exe.with_file_name("host-window.exe");
-    std::process::Command::new(host_window).spawn()?;
+    let host_tauri = current_exe.with_file_name("host-tauri.exe");
+    std::process::Command::new(host_tauri).spawn()?;
     Ok(())
 }
 

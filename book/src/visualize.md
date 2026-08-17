@@ -7,7 +7,6 @@ The visualize module generates Mermaid diagrams and HTML exports for pipeline st
 - [Pipeline](./pipeline.md) - State definitions
 - [Layout](./layout.md) - Position calculations
 - [Render](./render.md) - Screen coordinate mapping
-- [Slint Viz](./slint_viz.md) - Slint integration
 - [Match Visualization Plan](./match-visualization-plan.md) - future multi-arm branch semantics
 - [Desktop Agent and Office Playbook Surface](./desktop-agent-office-playbook.md) - MCPB, OneNote, SharePoint, and local simulation surface
 
@@ -72,7 +71,7 @@ Node visuals use an internal SVG icon library keyed by inferred workflow role (`
 
 Each live editor also includes a Rhai mutation prompt panel. Type the desired workflow change, click `Prepare Model Prompt`, and paste that prompt into the configured local or OpenAI-compatible model. The prompt is constrained to the supported documentation DSL and asks the model to return a replacement block plus a short explanation.
 
-The checked-in playground does not make browser-side model calls. `Apply Example Draft` demonstrates the expected interaction by applying a deterministic Phi-family example mutation to the editor, then re-rendering the same Mermaid and isometric views. The default example target is `phi-4-mini-reasoning`; if a Phi-5 endpoint is configured later, the same prompt contract can be sent through the Slint host chat window or another supervised model bridge without changing the DSL.
+The checked-in playground does not make browser-side model calls. `Apply Example Draft` demonstrates the expected interaction by applying a deterministic Phi-family example mutation to the editor, then re-rendering the same Mermaid and isometric views. The default example target is `phi-4-mini-reasoning`; if a Phi-5 endpoint is configured later, the same prompt contract can be sent through the Tauri host chat window or another supervised model bridge without changing the DSL.
 
 Example prompt request:
 

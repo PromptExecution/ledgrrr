@@ -25,7 +25,7 @@ ledgrrr is a **local agentic governance proxy**: a memory-safe, deterministicall
 - **Local LLM chat** — `internal_openai.rs` OpenAI-compatible localhost server; selectable: `phi-4-mini-reasoning` (local), Foundry Local (Windows AI), or remote cloud
 - **Semantic knowledge graph** — codebase-memory-mcp for structural graph queries; HelixDB (or `heed`+`petgraph` fallback) for workbook fact projection
 - **KV cache** — rkyv sidecar archives per source document; JSON state sidecar for restart-visible service state (atomic rename pattern, fail-closed on corruption)
-- **Memory-safe Rust package** — workspace-wide `forbid(unsafe_code)` except Tauri/Slint macro boundaries; `rust_decimal` for all monetary values; no f64 in domain paths
+- **Memory-safe Rust package** — workspace-wide `forbid(unsafe_code)` except Tauri macro boundaries; `rust_decimal` for all monetary values; no f64 in domain paths
 - **Rhai scripting** — classification rules via `fn classify(tx)`, workflow FSM compiler output, docs visualization DSL
 - **Introspectable docs** — `mdbook-rhai-mermaid` preprocessor; live Rhai diagram editor in browser; executable code examples as integration tests; deployed at promptexecution.github.io/ledgrrr
 
@@ -73,7 +73,7 @@ Current operating assumptions:
 - Agent orchestration may run in a sidecar runtime (Hermes OpenAgent, LangGraph, etc.), but secrets and process supervision remain owned by `l3dg3rr`.
 - Xero access is mediated through supervised MCP worker processes — not raw credentials to the model.
 - Windows 11 desktop support is first-class: toast/app notifications, tray/menubar, persistent settings.
-- Slint is the legacy UI shell; Tauri (`crates/ledgrrr-host`) is the primary desktop host. CI checks Tauri; Slint CI is opt-in only.
+- Slint was the legacy UI shell; it was removed (#50). Tauri (`crates/ledgrrr-host`) is the sole desktop host. CI checks Tauri.
 - arc-kit-au (`crates/arc-kit-au`) is the evidence traceability layer — petgraph-backed, deterministic Blake3 node identity, surfaced through `ledgerr_evidence` MCP tool.
 - b00t-iface CapabilityOffer handshake enables inter-node capability negotiation before tool wiring.
 

@@ -182,7 +182,6 @@ fn visual_audit_graph() -> cpa_review
 | Ontology store | `ledgerr-mcp/src/ontology.rs` | Implemented | Entity/edge upsert and path query surface |
 | Xero service | `ledgerr-mcp/src/xero_service.rs` | Partial | Supervised catalog/link actions; credentials remain host-owned |
 | Mermaid auto-generation | `workflow.rs` | Implemented | rhai DSL → diagram blocks |
-| Slint desktop UI | `slint_viz.rs` | Partial | Stub, not wired to window system |
 | RuleRegistry | `rule_registry.rs` | Implemented | Loads transaction `.rhai` rules and optional ReqIF sidecars |
 | Keyword rule selection | `rule_registry.rs` | Implemented | Deterministic keyword fallback; semantic selector remains planned |
 | Waterfall orchestration | `rule_registry.rs` | Implemented | First non-`Unclassified` result wins; fallback outcome is preserved |
