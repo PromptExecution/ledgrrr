@@ -3242,6 +3242,9 @@ fn evidence_node_type_label(nt: arc_kit_au::NodeType) -> &'static str {
         NodeType::ValidationIssue => "validation_issue",
         NodeType::RndActivity => "rnd_activity",
         NodeType::TaxOffset => "tax_offset",
+        NodeType::Requirement => "requirement",
+        NodeType::Decision => "decision",
+        NodeType::Cost => "cost",
         NodeType::Unknown => "unknown",
     }
 }

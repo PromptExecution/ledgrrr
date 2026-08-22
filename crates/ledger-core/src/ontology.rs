@@ -24,6 +24,12 @@ pub enum ArtifactKind {
     ValidationIssue,
     DocumentChunk,
     ClassificationOutcome,
+    /// A traceable requirement record (systems-modeling registry vertical).
+    Requirement,
+    /// A version-controlled decision record (systems-modeling registry vertical).
+    Decision,
+    /// A version-controlled cost record (systems-modeling registry vertical).
+    Cost,
 }
 
 impl ArtifactKind {
@@ -46,6 +52,9 @@ impl ArtifactKind {
             Self::ValidationIssue => "validation_issue",
             Self::DocumentChunk => "document_chunk",
             Self::ClassificationOutcome => "classification_outcome",
+            Self::Requirement => "requirement",
+            Self::Decision => "decision",
+            Self::Cost => "cost",
         }
     }
 }
@@ -647,6 +656,9 @@ mod arc_kit_bridge {
                 ArtifactKind::WorkbookRow => NodeType::WorkbookRow,
                 ArtifactKind::EvidenceReference => NodeType::ExtractedRow,
                 ArtifactKind::AuditEvent => NodeType::OperatorApproval,
+                ArtifactKind::Requirement => NodeType::Requirement,
+                ArtifactKind::Decision => NodeType::Decision,
+                ArtifactKind::Cost => NodeType::Cost,
                 _ => NodeType::Unknown,
             }
         }
