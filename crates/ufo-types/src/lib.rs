@@ -6,8 +6,10 @@
 
 pub mod iso;
 pub mod satisfies;
+pub mod sysml;
 pub mod ufo;
 
 pub use iso::{BankAccount, Currency, FinancialInstrument, Isin, Lei};
 pub use satisfies::{Constraint, Disposition, NodeId, SatisfiesResult, Satisfies};
+pub use sysml::{SysmlV2Syntax, validate_sysml_v2};
 pub use ufo::{EndurantStereotype, MomentStereotype, PerdurantStereotype, UfoCategory};
