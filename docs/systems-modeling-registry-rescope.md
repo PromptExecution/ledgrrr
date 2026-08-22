@@ -273,11 +273,12 @@ The table below is kept for reference; none of its rows are tasks:
 
 ## 6. Next concrete tasks
 
-1. **Spike the `sysml-derive` proc-macro approach (§2a) before anything
-   else** — scaffold a new crate, get a minimal `#[derive(SysmlBlock)]`
-   walking one existing struct's AST (e.g. `arc-kit-au::Transaction`) to
-   emit a SysML-v2 block definition text fragment. This is now the gating
-   spike for tasks 2–3 below, not an independent nice-to-have.
+1. ~~Spike the `sysml-derive` proc-macro approach (§2a) before anything
+   else~~ **Done**: [`PromptExecution/ledgrrr#183`](https://github.com/PromptExecution/ledgrrr/pull/183)
+   (draft) — `#[derive(SysmlBlock)]` walks a struct's fields via `syn` and
+   emits a SysML-v2 `block def` fragment at compile time, tested against
+   structs mirroring `arc-kit-au::Transaction`'s and `::Classification`'s
+   shapes. Still gates task 3 until compared against task 2's LinkML spike.
 2. Spike LinkML (decision 4) **in parallel with task 1, as a comparison, not
    in isolation**: author the same small `Requirement` schema, run LinkML's
    Rust generator, and judge its output against task 1's macro output —
