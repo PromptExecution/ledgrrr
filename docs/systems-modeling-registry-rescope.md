@@ -1,7 +1,9 @@
 # Systems Modeling & Action Registry — Re-scope (Epic, Part 2)
 
-Status: research + design complete, all 6 open questions resolved. Still no
-implementation — this doc scopes the next concrete tasks, doesn't do them.
+Status: research + design complete, all 6 open questions resolved, plus the
+`sysml-derive` vs. LinkML spike run and decided (§3a) — `sysml-derive` wins,
+implemented in [`ledgrrr#183`](https://github.com/PromptExecution/ledgrrr/pull/183).
+`ArtifactKind`/`NodeType` widening (§6 task 3) is unblocked but not yet done.
 Follows on from [`docs/sysml-v2-tooling-survey.md`](sysml-v2-tooling-survey.md)
 (Part 1, `PromptExecution/ledgrrr#180`) — read that first, this doc does not
 repeat its SysML v2/KerML tooling findings.
@@ -214,8 +216,96 @@ parse-in, not emit-out).
 | What it is | Python-based (Monarch Initiative project, `linkml.io`), YAML-authored schema language: classes + slots + enums, with inheritance and mixins. Positioned *between* schema languages (JSON Schema, Avro) and ontology languages (RDF/OWL, SHACL) — the "concrete data-shape" layer §2's table identifies as the actual gap next to UFO-types' more philosophical stereotypes. |
 | Output formats | One schema compiles to JSON Schema, SHACL, ShEx, OWL, JSON-LD context, SQL DDL, Protobuf, GraphQL, OpenAPI, Pydantic, Java, TypeScript, **and Rust** — plus Excel/CSV/Pandera/TypeDB. |
 | Rust angle | LinkML **does ship a Rust code generator** — authoring/compilation is Python-only, output can be Rust structs. Same shape of exception already accepted for KerML→Rust+TS codegen and for `sysml-v2-lsp` (TS runtime, Rust-first only at the boundary that matters). |
-| Decision (§5 Q4) | **Spike before committing**: author one small schema (e.g. a `Requirement` class), run the Rust generator, judge the output. Not yet done — see §6 task 2. |
+| Decision (§5 Q4) | **Spiked and resolved (2026-08-22): LinkML rejected for authoring Requirement/Decision/Cost's Rust shape.** See §3a for the full comparison — real, working `gen-rust` output, but not adopted. |
 | Relationship to existing OWL2/UFO/KerML stack | Complementary, not competing. Proposed division of labor: **UFO-types** = philosophical/ontological category (Kind/Role/Relator/Mode); **KerML/SysML v2** = process/behavior metamodel (state machines, blocks, ports); **LinkML** = concrete field-level schema + validation for the domain nodes that live inside all of the above. |
+
+## 3a. LinkML vs. `sysml-derive` — spike comparison and decision (2026-08-22)
+
+Ran the actual spike both sides promised: authored one `Requirement` schema
+(`id`, `title`, `rationale`, `source`, `status`, plus `related_decisions` — a
+multivalued field to exercise the same "list of strings" case
+`sysml-derive`'s test suite covers via `Vec<NodeId>`), installed `linkml` in
+a throwaway venv, confirmed `gen-rust` is real (it is — a genuine, documented
+generator, not a stale/abandoned command), and ran it in crate mode with
+`--serde`. Then built the output with `cargo build` and consumed it from a
+throwaway crate the same way `sysml-derive`'s own test does.
+
+**What LinkML's `gen-rust` produces, concretely:**
+
+- A full standalone crate (`Cargo.toml` + 4 source files, 1219 lines total)
+  for **one 5-field class and one 4-value enum** — vs. `sysml-derive`'s
+  ~90-line macro implementation that adds a few lines of generated text per
+  annotated struct, no matter how many structs.
+- Dependencies pulled in even with no `pyo3` flag passed: `serde-value`,
+  `serde_yml`, `serde_path_to_error`, plus optional `pyo3`/`pyo3-stub-gen`
+  scaffolding compiled into the source (gated behind `#[cfg(feature =
+  "pyo3")]`) whether or not Python interop is ever wanted.
+- Compiles out of the box (`cargo build` succeeds), but with 7 warnings
+  (unused imports, dead code in the always-generated helper modules) on a
+  from-scratch project with nothing else in it yet.
+- **A real, concrete correctness surprise**: the generated
+  `serialize_primitive_list_or_single_value` helper (used for
+  `related_decisions: Option<Vec<String>>`, wired in via `#[serde(
+  serialize_with = ...)]`) collapses a single-element `Vec` down to a bare
+  scalar on serialization:
+  ```rust
+  match value.as_slice() {
+      [single] => single.serialize(serializer),
+      _ => value.serialize(serializer),
+  }
+  ```
+  Constructing `Requirement { related_decisions: Some(vec!["DEC-001".into()]), .. }`
+  and serializing to JSON produces `"related_decisions": "DEC-001"` — a bare
+  string, not `["DEC-001"]`. This is LinkML's own "inline as scalar when
+  singular" YAML-authoring convention leaking into the generated Rust's JSON
+  wire format. Any downstream consumer that isn't using this exact generated
+  deserializer (a TypeScript client, `arc-kit-au`'s own JSON handling, a
+  future MCP caller) would see a field whose JSON *type* changes shape based
+  on cardinality at runtime — the same category of surprise flagged for
+  `sysmlpy` during the ReqIF survey (§3), now found independently in
+  LinkML's own generator.
+
+**What this is and isn't comparable to.** LinkML's `gen-rust` and
+`sysml-derive` don't do the same job — `gen-rust` generates the *entire
+struct* from a YAML schema (Python-authored, Rust as one of many output
+targets). `sysml-derive` annotates a struct **you still hand-write in Rust**
+and derives an additional SysML-v2 description from it — it doesn't replace
+hand-written Rust, it augments it. So the real question was never
+"which generator makes better Rust" in the abstract, it's "do we want to
+author domain types in LinkML YAML and generate Rust from them, or author
+them in Rust directly (as `ledger-core`'s domain types already are) and
+derive whatever else we need via macros?"
+
+**Decision: reject LinkML for authoring `Requirement`/`Decision`/`Cost`'s
+Rust shape. `sysml-derive`'s Rust-native, macro-driven approach wins**, on
+the combination of:
+
+1. **Rust > Python priority (Part 1, non-negotiable)** — a macro authored
+   and consumed entirely in Rust is a strictly better fit than a Python
+   YAML-authoring step that only *targets* Rust as output.
+2. **The scalar-collapse serialization behavior is a real correctness risk**
+   for exactly the kind of cross-system JSON payloads (MCP calls, potential
+   TypeScript clients) this epic's decision+cost ledger needs to produce
+   reliably.
+3. **Dependency and toolchain footprint** — `sysml-derive` needs nothing
+   beyond `cargo build`; LinkML needs a separate Python/YAML authoring step
+   and toolchain external to the Rust workspace, plus pulls in `serde-value`/
+   `serde_yml`/optional `pyo3` scaffolding this codebase doesn't otherwise use.
+4. **Consistency with existing convention** — this codebase already
+   established "author in Rust, derive other representations via a macro"
+   as the accepted pattern (`specta`, `AGENTS.md` PM-3). LinkML would
+   introduce a second, competing authoring paradigm (YAML-first) for the
+   same class of problem `sysml-derive` already solves the established way.
+
+This does **not** reject LinkML for the entire epic — it may still earn a
+role for genuine cross-language schema portability elsewhere (its multi-
+target compilation to JSON Schema/SHACL/OWL/Pydantic/TypeScript/etc. is real
+and none of that was disproven here). It's rejected specifically as the
+answer to "what authors Requirement/Decision/Cost's Rust shape" — that's
+`sysml-derive`.
+
+**§6 task 3 (widen `ArtifactKind`/`NodeType`) is now unblocked**: proceed
+backed by `sysml-derive`-annotated structs, not LinkML-generated ones.
 
 ## 4. sysgit.io — reference vibe, not a backlog (decided, §5 Q5)
 
@@ -254,9 +344,16 @@ The table below is kept for reference; none of its rows are tasks:
 3. ~~ReqIF: accept the Python-wrap exception, or hold out for Rust?~~
    **Resolved 2026-08-22**: use `PromptExecution/reqif-opa-mcp` (first-party,
    ours to modify) rather than a third-party wrap.
-4. **LinkML: spike first.** Author one small schema, run the Rust generator,
-   judge the output — before deciding whether LinkML becomes the canonical
-   schema layer or hand-written Rust structs stay the norm.
+4. **LinkML: spiked and rejected for this role (2026-08-22).** `gen-rust`
+   genuinely works, but produces 1219 lines for one 5-field class, pulls in
+   `pyo3`/`serde_yml` scaffolding unconditionally, and — the deciding
+   finding — silently serializes a single-element `Vec` as a bare scalar
+   rather than a JSON array, a real correctness surprise for cross-system
+   payloads. `sysml-derive` (§2a, §6 task 1) wins on Rust-first fit,
+   dependency footprint, and consistency with the `specta` precedent
+   already established here. See §3a for the full comparison. LinkML is not
+   rejected for the whole epic — just for authoring Requirement/Decision/
+   Cost's Rust shape.
 5. **sysgit.io: reference vibe only.** Not a feature-parity roadmap — §4's
    gap table is context, not backlog.
 6. **`reqif-opa-mcp` integration, three parts, all resolved:**
@@ -279,19 +376,17 @@ The table below is kept for reference; none of its rows are tasks:
    emits a SysML-v2 `block def` fragment at compile time, tested against
    structs mirroring `arc-kit-au::Transaction`'s and `::Classification`'s
    shapes. Still gates task 3 until compared against task 2's LinkML spike.
-2. Spike LinkML (decision 4) **in parallel with task 1, as a comparison, not
-   in isolation**: author the same small `Requirement` schema, run LinkML's
-   Rust generator, and judge its output against task 1's macro output —
-   usability, maintenance burden, whether Python-authoring buys anything the
-   macro doesn't.
-3. Once 1–2 give a real comparison, widen `ArtifactKind`
+2. ~~Spike LinkML (decision 4) in parallel with task 1, as a comparison~~
+   **Done (2026-08-22)**: see §3a. `gen-rust` works but is rejected for this
+   role — `sysml-derive` wins.
+3. **Unblocked, ready to scope**: widen `ArtifactKind`
    (`ledger-core/src/ontology.rs`) and `NodeType` (`arc-kit-au/src/node.rs`)
    with `Requirement`/`Decision`/`Cost` variants (decision 1), backed by
-   structs annotated with whichever approach won task 1 vs. 2. Add the
-   matching `OperationKind` variants (`RecordDecision`/`RecordCost`/
-   `ImportRequirement`) in `ledger_ops.rs`. Retrofitting existing variants
-   (`Transaction`/`TaxCategory`/etc.) onto the same macro is a tracked
-   follow-on, not required to unblock this task.
+   structs annotated with `sysml-derive`'s `#[derive(SysmlBlock)]` (§3a
+   decision). Add the matching `OperationKind` variants
+   (`RecordDecision`/`RecordCost`/`ImportRequirement`) in `ledger_ops.rs`.
+   Retrofitting existing variants (`Transaction`/`TaxCategory`/etc.) onto
+   the same macro is a tracked follow-on, not required to unblock this task.
 4. Add the new dedicated `ZLayer` variant in `ledger-core/src/iso.rs`
    (decision 2) — naming, z-depth, and color TBD at implementation time;
    follow the existing `IsometricProjection`/`HasVisualization` pattern used
