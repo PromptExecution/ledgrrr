@@ -11577,6 +11577,7 @@ dependencies = [
 name = "xtask-mcpb"
 version = "1.10.0"
 dependencies = [
+ "arc-kit-au",
  "clap",
  "hex",
  "ledger-core",

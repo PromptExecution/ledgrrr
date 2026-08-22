@@ -3188,6 +3188,293 @@
         },
         "description": "Crypto wallet — tracks asset lots, cost basis methods, and balance history for tax event attribution"
       }
+    },
+    {
+      "type_name": "Requirement",
+      "spec": {
+        "semantic_type": "requirement",
+        "z_layer": "SystemsModel",
+        "rhai_dsl": {
+          "source": "let req = load_requirement(source);\nif req.status == \"active\" { link_decisions(req.related_decisions) }",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "req",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "load_requirement",
+              "span": {
+                "line": 1,
+                "col": 11
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "source",
+              "span": {
+                "line": 1,
+                "col": 28
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "if",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "req",
+              "span": {
+                "line": 2,
+                "col": 4
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "status",
+              "span": {
+                "line": 2,
+                "col": 8
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "link_decisions",
+              "span": {
+                "line": 2,
+                "col": 29
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "req",
+              "span": {
+                "line": 2,
+                "col": 44
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "related_decisions",
+              "span": {
+                "line": 2,
+                "col": 48
+              }
+            }
+          ]
+        },
+        "description": "SysML v2 systems-modeling requirement — traceable spec record, linked to the decisions it constrains"
+      }
+    },
+    {
+      "type_name": "Decision",
+      "spec": {
+        "semantic_type": "decision",
+        "z_layer": "SystemsModel",
+        "rhai_dsl": {
+          "source": "let decision = record_decision(subject, rationale, decided_by);\nlink_requirements(decision.related_requirements);",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "decision",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "record_decision",
+              "span": {
+                "line": 1,
+                "col": 16
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "subject",
+              "span": {
+                "line": 1,
+                "col": 32
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "rationale",
+              "span": {
+                "line": 1,
+                "col": 41
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "decided_by",
+              "span": {
+                "line": 1,
+                "col": 52
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "link_requirements",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "decision",
+              "span": {
+                "line": 2,
+                "col": 19
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "related_requirements",
+              "span": {
+                "line": 2,
+                "col": 28
+              }
+            }
+          ]
+        },
+        "description": "Version-controlled decision record — rationale + decider, linked back to the requirements it satisfies"
+      }
+    },
+    {
+      "type_name": "Cost",
+      "spec": {
+        "semantic_type": "cost",
+        "z_layer": "SystemsModel",
+        "rhai_dsl": {
+          "source": "let cost = record_cost(subject, amount, currency);\nif cost.related_decision.is_some() { attribute_to_decision(cost) }",
+          "symbols": [
+            {
+              "kind": "Keyword",
+              "name": "let",
+              "span": {
+                "line": 1,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "cost",
+              "span": {
+                "line": 1,
+                "col": 5
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "record_cost",
+              "span": {
+                "line": 1,
+                "col": 12
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "subject",
+              "span": {
+                "line": 1,
+                "col": 24
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "amount",
+              "span": {
+                "line": 1,
+                "col": 33
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "currency",
+              "span": {
+                "line": 1,
+                "col": 41
+              }
+            },
+            {
+              "kind": "Keyword",
+              "name": "if",
+              "span": {
+                "line": 2,
+                "col": 1
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "cost",
+              "span": {
+                "line": 2,
+                "col": 4
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "related_decision",
+              "span": {
+                "line": 2,
+                "col": 9
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "is_some",
+              "span": {
+                "line": 2,
+                "col": 26
+              }
+            },
+            {
+              "kind": "FunctionCall",
+              "name": "attribute_to_decision",
+              "span": {
+                "line": 2,
+                "col": 38
+              }
+            },
+            {
+              "kind": "Variable",
+              "name": "cost",
+              "span": {
+                "line": 2,
+                "col": 60
+              }
+            }
+          ]
+        },
+        "description": "Version-controlled cost record — monetary amount attributed to a decision for systems-modeling cost traceability"
+      }
     }
   ]
 }

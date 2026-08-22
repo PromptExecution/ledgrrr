@@ -137,6 +137,12 @@ pub enum SemanticType {
     Issue,
     Proof,
     Attestation,
+    /// SysML-v2 systems-modeling requirement record — see `ZLayer::SystemsModel`.
+    Requirement,
+    /// SysML-v2 systems-modeling decision record — see `ZLayer::SystemsModel`.
+    Decision,
+    /// SysML-v2 systems-modeling cost record — see `ZLayer::SystemsModel`.
+    Cost,
     Unknown,
 }
 
@@ -155,6 +161,9 @@ impl SemanticType {
             SemanticType::Issue => "issue",
             SemanticType::Proof => "proof",
             SemanticType::Attestation => "attestation",
+            SemanticType::Requirement => "requirement",
+            SemanticType::Decision => "decision",
+            SemanticType::Cost => "cost",
             SemanticType::Unknown => "unknown",
         }
     }
@@ -690,6 +699,9 @@ mod tests {
             SemanticType::Issue,
             SemanticType::Proof,
             SemanticType::Attestation,
+            SemanticType::Requirement,
+            SemanticType::Decision,
+            SemanticType::Cost,
             SemanticType::Unknown,
         ];
         for st in all {
@@ -816,6 +828,9 @@ mod tests {
             SemanticType::Issue,
             SemanticType::Proof,
             SemanticType::Attestation,
+            SemanticType::Requirement,
+            SemanticType::Decision,
+            SemanticType::Cost,
             SemanticType::Unknown,
         ];
         for st in all {
