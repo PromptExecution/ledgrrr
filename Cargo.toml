@@ -28,6 +28,7 @@ members = [
   "crates/beankeeper-bridge",
   "crates/ledgerr-desktop-agent",
   "crates/sysml-derive",
+  "crates/reqif-mcp-spike",
 ]
 resolver = "2"
 
