@@ -1,0 +1,21 @@
+[package]
+name = "sysml-v2-parser-spike"
+version.workspace = true
+edition.workspace = true
+description = "Spike: round-trip holon-viz's SysmlV2Emitter output (and OMG sample corpora) through the sysml-v2-parser crate"
+license.workspace = true
+publish = false
+
+[dependencies]
+holon-viz = { path = "../holon-viz" }
+sysml-v2-parser = "0.54"
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[[bin]]
+name = "sysml-v2-parser-spike"
+path = "src/main.rs"
+
+[lints]
+workspace = true
