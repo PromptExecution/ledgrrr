@@ -647,7 +647,7 @@ mod tests {
     #[test]
     fn requirement_sysml_block_def_matches_field_shape() {
         let block = Requirement::sysml_block_def();
-        assert!(block.starts_with("block def Requirement {\n"));
+        assert!(block.starts_with("part def Requirement {\n"));
         assert!(block.contains("attribute requirement_id : String;"));
         assert!(block.contains("attribute rationale : String[0..1];"));
         assert!(block.contains("attribute related_decisions : NodeId[*];"));
