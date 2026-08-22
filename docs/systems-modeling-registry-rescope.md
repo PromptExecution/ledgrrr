@@ -5,6 +5,8 @@ Status: research + design complete, all 6 open questions resolved, plus the
 implemented in [`ledgrrr#183`](https://github.com/PromptExecution/ledgrrr/pull/183).
 `ArtifactKind`/`NodeType`/`OperationKind` widening (§6 task 3) is done:
 [`ledgrrr#184`](https://github.com/PromptExecution/ledgrrr/pull/184).
+The new dedicated `ZLayer` variant (§6 task 4) is done:
+[`ledgrrr#185`](https://github.com/PromptExecution/ledgrrr/pull/185).
 Follows on from [`docs/sysml-v2-tooling-survey.md`](sysml-v2-tooling-survey.md)
 (Part 1, `PromptExecution/ledgrrr#180`) — read that first, this doc does not
 repeat its SysML v2/KerML tooling findings.
@@ -396,10 +398,20 @@ The table below is kept for reference; none of its rows are tasks:
    and `cargo check --workspace --all-features` all pass; clippy clean.
    Retrofitting existing variants (`Transaction`/`TaxCategory`/etc.) onto
    the same macro remains a tracked follow-on, not done here.
-4. Add the new dedicated `ZLayer` variant in `ledger-core/src/iso.rs`
-   (decision 2) — naming, z-depth, and color TBD at implementation time;
-   follow the existing `IsometricProjection`/`HasVisualization` pattern used
-   by the other 6 (soon 8) variants.
+4. ~~Add the new dedicated `ZLayer` variant in `ledger-core/src/iso.rs`
+   (decision 2)~~ **Done**: [`ledgrrr#185`](https://github.com/PromptExecution/ledgrrr/pull/185)
+   (stacked on #184). Added `ZLayer::SystemsModel` — `index=6`,
+   `base_z=816.0` (continues the existing 136.0 spacing), color `#be185d`
+   (distinct from all 6 existing hexes), `label="SystemsModel"`. Grepped
+   the workspace for other exhaustive matches over `ZLayer` (same check as
+   task 3's enum widening) — none exist outside `iso.rs` itself. Verified:
+   `cargo test -p ledger-core --lib` (181 passed, 1 ignored),
+   `cargo check --workspace --all-features` clean. **Not done**: no
+   `HasVisualization` impls for the `Requirement`/`Decision`/`Cost` structs
+   themselves — `iso_objects.rs`'s convention requires every new impl there
+   to also update `xtask/src/viz_manifest.rs::export_viz_manifest` and the
+   checked-in `viz-manifest.json`; that's a larger change tracked alongside
+   task 6, not this task.
 5. Spike `reqif-opa-mcp` wrapped over MCP (decision 6): point it at its own
    sample derived baselines (`samples/standards/derived/
    {nist_ssdf_dogfood,owasp_asvs_cwe}.reqif`), call its parse/query tools
