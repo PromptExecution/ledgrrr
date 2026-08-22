@@ -10,6 +10,11 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
 schemars = { version = "0.8", features = ["derive"] }
+# Pinned to an exact version (not a caret range): pre-1.0, ~one release
+# every 2-3 days. See docs/sysml-v2-parser-spike.md for the crate-health
+# writeup. Not wasm32-compatible (pulls in `stacker`), so this must never
+# become a dependency of anything in the holon-viz-wasm build graph.
+sysml-v2-parser = "=0.54.0"
 
 [dev-dependencies]
 serde_json.workspace = true

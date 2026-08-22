@@ -1,7 +1,10 @@
 //! `#[derive(SysmlBlock)]` — walks a struct's fields via its AST (`syn`) and
 //! generates a `sysml_block_def()` associated function returning the
-//! equivalent SysML-v2 `block def` textual definition, computed at compile
-//! time from the field list.
+//! equivalent SysML-v2 `part def` textual definition, computed at compile
+//! time from the field list. (The derive and function are named after the
+//! informal "block definition" concept, not the literal SysML v1 `Block`/
+//! `block def` keyword — SysML v2 renamed that construct to `part def`; see
+//! below.)
 //!
 //! Spike for the systems-modeling epic — see
 //! `docs/systems-modeling-registry-rescope.md` §2a and §6 task 1. This
@@ -35,12 +38,19 @@
 //! - `String` and opaque domain types (e.g. `NodeId`, `Confidence`,
 //!   `rust_decimal::Decimal`) pass through as bare type-name references,
 //!   under the standard SysML modeling assumption that they resolve to a
-//!   sibling `block def`/`attribute def`/`datatype` declared elsewhere in
+//!   sibling `part def`/`attribute def`/`datatype` declared elsewhere in
 //!   the same model or an imported package — the same assumption every
-//!   `block def` referencing another `block def` by name already relies on.
+//!   `part def` referencing another `part def` by name already relies on.
 //!   This is a documented modeling assumption, not a bug: unlike the
 //!   primitives/`DateTime` case above, there is no single universally-right
 //!   SysML mapping for a project-specific newtype to invent here.
+//! - The outer wrapper emits `part def {Name} { ... }`, not `block def` —
+//!   SysML v1 called this construct `Block`; SysML v2 renamed the
+//!   equivalent concept to `part def`, and `block` is not a SysML v2
+//!   keyword at all. Confirmed against the real `sysml-v2-parser` crate via
+//!   `ufo_types::sysml::validate_sysml_v2` (see
+//!   `crates/sysml-derive/tests/real_grammar_validation.rs`) — the same bug
+//!   `holon-viz`'s `SysmlV2Emitter` had (ledgrrr#197).
 //!
 //! Only supports structs with named fields; anything else is a compile
 //! error via `syn::Error::to_compile_error`, not a panic. An unsupported
@@ -88,7 +98,7 @@ pub fn derive_sysml_block(input: TokenStream) -> TokenStream {
         ));
     }
 
-    let block_def = format!("block def {name} {{\n{attribute_lines}}}\n");
+    let block_def = format!("part def {name} {{\n{attribute_lines}}}\n");
 
     let expanded = quote! {
         impl #name {
