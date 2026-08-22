@@ -36,7 +36,7 @@ struct Classification {
 #[test]
 fn emits_block_def_with_scalar_and_vec_attributes() {
     let block = Transaction::sysml_block_def();
-    assert!(block.starts_with("block def Transaction {\n"));
+    assert!(block.starts_with("part def Transaction {\n"));
     assert!(block.contains("    attribute tx_id : String;\n"));
     assert!(block.contains("    attribute source_rows : NodeId[*];\n"));
     assert!(block.ends_with("}\n"));
