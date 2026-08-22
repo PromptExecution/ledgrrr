@@ -7,6 +7,8 @@ implemented in [`ledgrrr#183`](https://github.com/PromptExecution/ledgrrr/pull/1
 [`ledgrrr#184`](https://github.com/PromptExecution/ledgrrr/pull/184).
 The new dedicated `ZLayer` variant (§6 task 4) is done:
 [`ledgrrr#185`](https://github.com/PromptExecution/ledgrrr/pull/185).
+The `reqif-opa-mcp` MCP client spike (§6 task 5) is done:
+[`ledgrrr#186`](https://github.com/PromptExecution/ledgrrr/pull/186).
 Follows on from [`docs/sysml-v2-tooling-survey.md`](sysml-v2-tooling-survey.md)
 (Part 1, `PromptExecution/ledgrrr#180`) — read that first, this doc does not
 repeat its SysML v2/KerML tooling findings.
@@ -412,12 +414,24 @@ The table below is kept for reference; none of its rows are tasks:
    to also update `xtask/src/viz_manifest.rs::export_viz_manifest` and the
    checked-in `viz-manifest.json`; that's a larger change tracked alongside
    task 6, not this task.
-5. Spike `reqif-opa-mcp` wrapped over MCP (decision 6): point it at its own
-   sample derived baselines (`samples/standards/derived/
-   {nist_ssdf_dogfood,owasp_asvs_cwe}.reqif`), call its parse/query tools
-   from a throwaway Rust client via the `DatumType`/MCP pattern, and write
-   the second-stage Rust converter that maps its requirement records into
-   the new `ArtifactKind::Requirement` nodes from task 3.
+5. ~~Spike `reqif-opa-mcp` wrapped over MCP (decision 6)~~ **Done**:
+   [`ledgrrr#186`](https://github.com/PromptExecution/ledgrrr/pull/186)
+   (stacked on #185). New crate `reqif-mcp-spike`: `McpHttpClient` (blocking
+   client for reqif-opa-mcp's Streamable-HTTP MCP server — handshake +
+   `mcp-session-id` header, mandatory `notifications/initialized`,
+   `tools/call` with SSE-frame result extraction), `RequirementRecord`
+   (mirrors its `requirement-record.schema.json`), and
+   `requirement_record_to_node()` (the second-stage converter into
+   `arc_kit_au::node::Requirement` from task 3). Verified **live** against
+   a real `reqif-opa-mcp` checkout, parsing both its own sample derived
+   baselines — `samples/standards/derived/{nist_ssdf_dogfood,
+   owasp_asvs_cwe}.reqif` — through `reqif_parse` → `reqif_query` →
+   `requirement_record_to_node` → `Requirement::node_id()`, producing
+   correct, deterministic `req:` NodeIds for all 11 requirements across
+   both baselines. Captured as an `#[ignore]`'d integration test (needs an
+   external repo checkout + Python/uv, not available in CI/a fresh clone).
+   Verified: `cargo test -p reqif-mcp-spike` (5 unit tests), `cargo check
+   --workspace --all-features`, clippy clean.
 6. Wire the new `Requirement`/`Decision`/`Cost` capability family into
    `crates/ledgerr-mcp/src/contract.rs` (the single source of truth the
    docs/runbook auto-generate from) once tasks 1–5 land.
