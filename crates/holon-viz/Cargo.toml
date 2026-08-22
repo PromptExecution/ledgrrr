@@ -22,6 +22,11 @@ path = "src/bin/demo.rs"
 [dev-dependencies]
 serde_json.workspace = true
 tempfile.workspace = true
+# Test-only: validates SysmlV2Emitter's own output against a real SysML v2
+# grammar (see docs/sysml-v2-parser-spike.md). Dev-dependency only, since
+# ufo-types' sysml-v2-parser dependency is not wasm32-compatible and
+# holon-viz-wasm must never pull it in.
+ufo-types = { path = "../ufo-types" }
 # CDP integration test dependency — only required when TEST_WEBVIEW=1 is set
 # cargo test --test holon_viz_visual_e2e      # e2e with live Tauri WebView2
 # cargo test                                    # unit + integration (no webview)
