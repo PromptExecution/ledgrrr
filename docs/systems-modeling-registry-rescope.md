@@ -10,9 +10,25 @@ The new dedicated `ZLayer` variant (§6 task 4) is done:
 The `reqif-opa-mcp` MCP client spike (§6 task 5) and the `contract.rs`
 wiring (§6 task 6) are both done:
 [`ledgrrr#186`](https://github.com/PromptExecution/ledgrrr/pull/186).
-**All 6 tasks in §6 are now complete** — only the README correction (§7,
-deliberately deferred, see [`ledgrrr#188`](https://github.com/PromptExecution/ledgrrr/pull/188))
-and the two follow-ons noted inline in tasks 3/4 above remain.
+**All 6 tasks in §6 are now complete**, and so are the two follow-ons noted
+inline in tasks 3/4 below: `HasVisualization`/`viz_manifest` wiring for
+`Requirement`/`Decision`/`Cost` ([`ledgrrr#190`](https://github.com/PromptExecution/ledgrrr/pull/190))
+and retrofitting `#[derive(SysmlBlock)]` onto the 8 pre-existing
+`arc-kit-au::node` structs ([`ledgrrr#193`](https://github.com/PromptExecution/ledgrrr/pull/193),
+draft). The DVC scoping pass (§6 task 7) is also done, as its own doc:
+[`ledgrrr#191`](https://github.com/PromptExecution/ledgrrr/pull/191) —
+conclusion: defer, no self-hostable open DVC MCP server exists. The README
+correction (§7, deliberately deferred, see
+[`ledgrrr#188`](https://github.com/PromptExecution/ledgrrr/pull/188)) is
+also done. Two gaps surfaced in retrospective review and tracked as their
+own issues, not yet resolved: the semantic correctness of `sysml-derive`'s
+generated output for the newly-retrofitted field types
+(`Decimal`/`Confidence`/`bool`/`usize`/`Vec<NodeId>`) is unvalidated against
+real SysML v2 grammar ([`ledgrrr#195`](https://github.com/PromptExecution/ledgrrr/issues/195),
+now the top-priority follow-up), and generated-artifact CI drift
+(`mcp-capability-contract.md`, `viz-manifest.json`) surfaced twice in this
+stack because `check-drift` only reports one stale artifact per run
+([`ledgrrr#194`](https://github.com/PromptExecution/ledgrrr/issues/194)).
 Follows on from [`docs/sysml-v2-tooling-survey.md`](sysml-v2-tooling-survey.md)
 (Part 1, `PromptExecution/ledgrrr#180`) — read that first, this doc does not
 repeat its SysML v2/KerML tooling findings.
@@ -403,7 +419,15 @@ The table below is kept for reference; none of its rows are tasks:
    `ledger-core --lib` (184 tests), `ledgerr-mcp --features legacy` build,
    and `cargo check --workspace --all-features` all pass; clippy clean.
    Retrofitting existing variants (`Transaction`/`TaxCategory`/etc.) onto
-   the same macro remains a tracked follow-on, not done here.
+   the same macro was a tracked follow-on, not done here — now **done**:
+   [`ledgrrr#193`](https://github.com/PromptExecution/ledgrrr/pull/193)
+   (draft) added `#[derive(SysmlBlock)]` to the 8 pre-existing structs
+   (`SourceDoc`, `ExtractedRow`, `Transaction`, `Classification`,
+   `ModelProposal`, `OperatorApproval`, `ValidationIssue`, `WorkbookRow`),
+   introducing previously-unexercised field types (`rust_decimal::Decimal`,
+   a custom `Confidence` type, `bool`, `usize`) whose *semantic* (not just
+   compile-time) correctness in the generated SysML v2 output is unverified
+   — tracked as [`ledgrrr#195`](https://github.com/PromptExecution/ledgrrr/issues/195).
 4. ~~Add the new dedicated `ZLayer` variant in `ledger-core/src/iso.rs`
    (decision 2)~~ **Done**: [`ledgrrr#185`](https://github.com/PromptExecution/ledgrrr/pull/185)
    (stacked on #184). Added `ZLayer::SystemsModel` — `index=6`,
@@ -416,8 +440,12 @@ The table below is kept for reference; none of its rows are tasks:
    `HasVisualization` impls for the `Requirement`/`Decision`/`Cost` structs
    themselves — `iso_objects.rs`'s convention requires every new impl there
    to also update `xtask/src/viz_manifest.rs::export_viz_manifest` and the
-   checked-in `viz-manifest.json`; that's a larger change tracked alongside
-   task 6, not this task.
+   checked-in `viz-manifest.json`; that was a larger change tracked
+   alongside task 6, not this task — now **done**:
+   [`ledgrrr#190`](https://github.com/PromptExecution/ledgrrr/pull/190)
+   added the 3 `HasVisualization` impls (under
+   `#[cfg(feature = "arc-kit-au")] mod systems_model`), wired them into
+   `viz_manifest.rs`, and regenerated `viz-manifest.json` (28 → 31 objects).
 5. ~~Spike `reqif-opa-mcp` wrapped over MCP (decision 6)~~ **Done**:
    [`ledgrrr#186`](https://github.com/PromptExecution/ledgrrr/pull/186)
    (stacked on #185). New crate `reqif-mcp-spike`: `McpHttpClient` (blocking
@@ -456,9 +484,14 @@ The table below is kept for reference; none of its rows are tasks:
    covering import+list+detail+summary, record_decision+record_cost, and
    idempotent re-import, all pass; `cargo build -p ledgerr-mcp --features
    legacy` clean.
-7. **DVC integration remains untouched and out of scope for this doc** —
-   same status as Part 1 left it: a separate tool line (data-source
-   tracking) needing its own scoping pass.
+7. ~~DVC integration remains untouched and out of scope for this doc~~
+   **Done**: [`ledgrrr#191`](https://github.com/PromptExecution/ledgrrr/pull/191)
+   is the scoping pass — conclusion: no genuine, self-hostable, open-source
+   DVC MCP server exists in the official registry, b00t's own registry,
+   GitHub, or the open `vinkius-labs/mcp-database` dataset (6533 entries);
+   the one hit is a hosted proxy into DVC Studio's paid product.
+   Recommendation: defer implementation until a concrete ledgrrr use case
+   appears.
 
 ## 7. Explicitly not done in this pass
 
