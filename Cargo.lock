@@ -265,6 +265,7 @@ dependencies = [
  "rust_decimal",
  "serde",
  "serde_json",
+ "sysml-derive",
  "tempfile",
  "thiserror 2.0.18",
  "tracing",
@@ -1177,6 +1178,12 @@ dependencies = [
  "quote",
  "syn 1.0.109",
 ]
+
+[[package]]
+name = "bytecount"
+version = "0.6.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "175812e0be2bccb6abe50bb8d566126198344f707e304f45c648fd8f2cc0365e"
 
 [[package]]
 name = "bytemuck"
@@ -3815,6 +3822,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tracing",
+ "ufo-types",
 ]
 
 [[package]]
@@ -5646,6 +5654,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df9761775871bdef83bee530e60050f7e54b1105350d6884eb0fb4f46c2f9405"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "nom_locate"
+version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b577e2d69827c4740cba2b52efaad1c4cc7c73042860b199710b3575c68438d"
+dependencies = [
+ "bytecount",
+ "memchr",
+ "nom 8.0.0",
 ]
 
 [[package]]
@@ -8742,6 +8761,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "sysml-v2-parser"
+version = "0.54.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5db89688b6bab9dacbf8150e3f32f636decd36e34fcb8aaacbdb52fe281a9134"
+dependencies = [
+ "log",
+ "nom 8.0.0",
+ "nom_locate",
+ "stacker",
+]
+
+[[package]]
 name = "system-configuration"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9815,7 +9846,7 @@ dependencies = [
  "png 0.18.1",
  "serde",
  "thiserror 2.0.18",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -9936,6 +9967,7 @@ dependencies = [
  "schemars 0.8.22",
  "serde",
  "serde_json",
+ "sysml-v2-parser",
  "thiserror 2.0.18",
 ]
 

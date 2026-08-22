@@ -12,3 +12,10 @@ proc-macro = true
 syn = { workspace = true, features = ["full"] }
 quote = { workspace = true }
 proc-macro2 = { workspace = true }
+
+[dev-dependencies]
+# Test-only: validates the actual generated sysml_block_def() text against
+# a real SysML v2 grammar (ufo_types::sysml, wired to sysml-v2-parser) —
+# see tests/real_grammar_validation.rs. Not a runtime dependency of the
+# proc-macro itself.
+ufo-types = { path = "../ufo-types" }
