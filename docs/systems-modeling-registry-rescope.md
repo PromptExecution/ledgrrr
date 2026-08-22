@@ -7,8 +7,12 @@ implemented in [`ledgrrr#183`](https://github.com/PromptExecution/ledgrrr/pull/1
 [`ledgrrr#184`](https://github.com/PromptExecution/ledgrrr/pull/184).
 The new dedicated `ZLayer` variant (§6 task 4) is done:
 [`ledgrrr#185`](https://github.com/PromptExecution/ledgrrr/pull/185).
-The `reqif-opa-mcp` MCP client spike (§6 task 5) is done:
+The `reqif-opa-mcp` MCP client spike (§6 task 5) and the `contract.rs`
+wiring (§6 task 6) are both done:
 [`ledgrrr#186`](https://github.com/PromptExecution/ledgrrr/pull/186).
+**All 6 tasks in §6 are now complete** — only the README correction (§7,
+deliberately deferred, see [`ledgrrr#188`](https://github.com/PromptExecution/ledgrrr/pull/188))
+and the two follow-ons noted inline in tasks 3/4 above remain.
 Follows on from [`docs/sysml-v2-tooling-survey.md`](sysml-v2-tooling-survey.md)
 (Part 1, `PromptExecution/ledgrrr#180`) — read that first, this doc does not
 repeat its SysML v2/KerML tooling findings.
@@ -432,20 +436,37 @@ The table below is kept for reference; none of its rows are tasks:
    external repo checkout + Python/uv, not available in CI/a fresh clone).
    Verified: `cargo test -p reqif-mcp-spike` (5 unit tests), `cargo check
    --workspace --all-features`, clippy clean.
-6. Wire the new `Requirement`/`Decision`/`Cost` capability family into
-   `crates/ledgerr-mcp/src/contract.rs` (the single source of truth the
-   docs/runbook auto-generate from) once tasks 1–5 land.
+6. ~~Wire the new `Requirement`/`Decision`/`Cost` capability family into
+   `crates/ledgerr-mcp/src/contract.rs`~~ **Done**: added as a second
+   commit on [`ledgrrr#186`](https://github.com/PromptExecution/ledgrrr/pull/186)
+   (same branch, `feat/reqif-opa-mcp-client-spike`), since task 5's
+   `reqif-mcp-spike` crate and task 6's contract wiring are two commits
+   on the same PR rather than a new stacked branch.
+   `EVIDENCE_TOOL` gained `import_requirement`/`record_decision`/
+   `record_cost` actions in `contract.rs`'s `EvidenceArgs`, each handled in
+   `mcp_adapter.rs` by constructing the corresponding `arc-kit-au` node
+   and inserting it via `EvidenceGraph::add_node` (idempotent — a
+   `DuplicateNode` re-insert is treated as success, matching
+   `EvidenceBuilder`'s existing `ensure_*` idempotency convention).
+   `parse_evidence_node_type` gained `requirement`/`decision`/`cost`
+   (plus previously-missing `rnd_activity`/`tax_offset`, same class of
+   gap, fixed while touching that function). `summary`'s `node_counts`
+   and `list_nodes`'s invalid-type error message extended to match.
+   Verified: 3 new tests (`tests/evidence_requirement_decision_cost.rs`)
+   covering import+list+detail+summary, record_decision+record_cost, and
+   idempotent re-import, all pass; `cargo build -p ledgerr-mcp --features
+   legacy` clean.
 7. **DVC integration remains untouched and out of scope for this doc** —
    same status as Part 1 left it: a separate tool line (data-source
    tracking) needing its own scoping pass.
 
 ## 7. Explicitly not done in this pass
 
-- **`README.md`'s tax-accounting framing is not corrected in this doc.** §1
-  documents that it's wrong and why, but rewriting the System Thesis/primary
-  description is a separate, standalone edit — not bundled into this
-  research-and-design pass. Worth doing as its own small follow-up once
-  ready to touch the README (note: the README's own "Humble Beginnings"
-  section already articulates something close to the corrected framing
-  further down the page — the fix is largely promoting that framing to the
-  top, not inventing new language).
+- ~~**`README.md`'s tax-accounting framing is not corrected in this doc.**~~
+  **Done** (as a follow-up, not bundled into the original research pass):
+  [`ledgrrr#188`](https://github.com/PromptExecution/ledgrrr/pull/188).
+  Promoted the corrected framing to the top of the README (System Thesis +
+  opening paragraph) largely by reusing the existing "Humble Beginnings"
+  section's own language, per the note originally left here, rather than
+  inventing new copy; trimmed "Humble Beginnings" itself to avoid
+  duplicating the promoted content verbatim.
