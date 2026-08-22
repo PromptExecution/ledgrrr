@@ -3223,6 +3223,11 @@ fn parse_evidence_node_type(s: &str) -> Option<arc_kit_au::NodeType> {
         "operator_approval" | "approval" => NodeType::OperatorApproval,
         "workbook_row" | "wb" => NodeType::WorkbookRow,
         "validation_issue" | "vi" => NodeType::ValidationIssue,
+        "rnd_activity" | "rnd" => NodeType::RndActivity,
+        "tax_offset" | "tax" => NodeType::TaxOffset,
+        "requirement" | "req" => NodeType::Requirement,
+        "decision" | "dec" => NodeType::Decision,
+        "cost" => NodeType::Cost,
         _ => return None,
     })
 }
@@ -3359,6 +3364,9 @@ pub fn handle_evidence_tool(service: &TurboLedgerService, arguments: &Value) -> 
                 "operator_approvals": counts.get("operator_approval").copied().unwrap_or(0),
                 "workbook_rows":      counts.get("workbook_row").copied().unwrap_or(0),
                 "validation_issues":  counts.get("validation_issue").copied().unwrap_or(0),
+                "requirements":       counts.get("requirement").copied().unwrap_or(0),
+                "decisions":          counts.get("decision").copied().unwrap_or(0),
+                "costs":              counts.get("cost").copied().unwrap_or(0),
             });
             let wq = evidence.work_queue_summary();
             json!({
@@ -3396,7 +3404,8 @@ pub fn handle_evidence_tool(service: &TurboLedgerService, arguments: &Value) -> 
                                 "error": format!(
                                     "Unknown node type: {nt}. Valid types: \
                                      source_doc, extracted_row, transaction, classification, \
-                                     model_proposal, operator_approval, workbook_row, validation_issue"
+                                     model_proposal, operator_approval, workbook_row, validation_issue, \
+                                     rnd_activity, tax_offset, requirement, decision, cost"
                                 ),
                             }))],
                             "isError": true,
@@ -3447,6 +3456,135 @@ pub fn handle_evidence_tool(service: &TurboLedgerService, arguments: &Value) -> 
                         "action":  "node_detail",
                         "node_id": node_id,
                         "error":   "Node not found in evidence graph",
+                    }))],
+                    "isError": true,
+                }),
+            }
+        }
+        EvidenceArgs::ImportRequirement {
+            requirement_id,
+            title,
+            rationale,
+            source,
+            status,
+            related_decisions,
+        } => {
+            let mut evidence = match service.evidence.lock() {
+                Ok(e) => e,
+                Err(_) => {
+                    return error_envelope(&ToolError::Internal(
+                        "evidence mutex poisoned".to_string(),
+                    ))
+                }
+            };
+            let node = arc_kit_au::node::Requirement {
+                requirement_id,
+                title,
+                rationale,
+                source,
+                status,
+                related_decisions: related_decisions.into_iter().map(arc_kit_au::NodeId).collect(),
+                imported_at: chrono::Utc::now(),
+            };
+            let node_id = node.node_id();
+            match evidence.add_node(arc_kit_au::EvidenceNode::Requirement(node)) {
+                Ok(id) | Err(arc_kit_au::graph::GraphError::DuplicateNode(id)) => json!({
+                    "content": [text_content(json!({
+                        "action":  "import_requirement",
+                        "node_id": id.to_string(),
+                    }))],
+                    "isError": false
+                }),
+                Err(err) => json!({
+                    "content": [text_content(json!({
+                        "action": "import_requirement",
+                        "node_id": node_id.to_string(),
+                        "error": err.to_string(),
+                    }))],
+                    "isError": true,
+                }),
+            }
+        }
+        EvidenceArgs::RecordDecision {
+            decision_id,
+            subject,
+            rationale,
+            decided_by,
+            related_requirements,
+        } => {
+            let mut evidence = match service.evidence.lock() {
+                Ok(e) => e,
+                Err(_) => {
+                    return error_envelope(&ToolError::Internal(
+                        "evidence mutex poisoned".to_string(),
+                    ))
+                }
+            };
+            let node = arc_kit_au::node::Decision {
+                decision_id,
+                subject,
+                rationale,
+                decided_by,
+                decided_at: chrono::Utc::now(),
+                related_requirements: related_requirements
+                    .into_iter()
+                    .map(arc_kit_au::NodeId)
+                    .collect(),
+            };
+            match evidence.add_node(arc_kit_au::EvidenceNode::Decision(node)) {
+                Ok(id) | Err(arc_kit_au::graph::GraphError::DuplicateNode(id)) => json!({
+                    "content": [text_content(json!({
+                        "action":  "record_decision",
+                        "node_id": id.to_string(),
+                    }))],
+                    "isError": false
+                }),
+                Err(err) => json!({
+                    "content": [text_content(json!({
+                        "action": "record_decision",
+                        "error": err.to_string(),
+                    }))],
+                    "isError": true,
+                }),
+            }
+        }
+        EvidenceArgs::RecordCost {
+            cost_id,
+            subject,
+            amount,
+            currency,
+            recorded_by,
+            related_decision,
+        } => {
+            let mut evidence = match service.evidence.lock() {
+                Ok(e) => e,
+                Err(_) => {
+                    return error_envelope(&ToolError::Internal(
+                        "evidence mutex poisoned".to_string(),
+                    ))
+                }
+            };
+            let node = arc_kit_au::node::Cost {
+                cost_id,
+                subject,
+                amount,
+                currency,
+                recorded_by,
+                recorded_at: chrono::Utc::now(),
+                related_decision: related_decision.map(arc_kit_au::NodeId),
+            };
+            match evidence.add_node(arc_kit_au::EvidenceNode::Cost(node)) {
+                Ok(id) | Err(arc_kit_au::graph::GraphError::DuplicateNode(id)) => json!({
+                    "content": [text_content(json!({
+                        "action":  "record_cost",
+                        "node_id": id.to_string(),
+                    }))],
+                    "isError": false
+                }),
+                Err(err) => json!({
+                    "content": [text_content(json!({
+                        "action": "record_cost",
+                        "error": err.to_string(),
                     }))],
                     "isError": true,
                 }),
