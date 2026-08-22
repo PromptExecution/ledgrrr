@@ -6,15 +6,15 @@
 [![Release](https://github.com/PromptExecution/ledgrrr/actions/workflows/release.yml/badge.svg)](https://github.com/PromptExecution/ledgrrr/actions/workflows/release.yml)
 [![Documentation](https://img.shields.io/badge/docs-github.io-blue)](https://promptexecution.github.io/ledgrrr/)
 
-`l3dg3rr` is a local-first bookkeeping application for turning financial documents into an accountant-usable, CPA-auditable source of truth. Its core shape is a strongly typed, ontologically linked graph of scriptable, visual-first workflows: Rust owns financial invariants, Rhai owns editable classification and workflow rules, and AI/LLM agents drive supervised ETL through MCP tools without taking custody of credentials or approval authority.
+`l3dg3rr` is a general-purpose, git-versioned systems modeling and action/decision registry: a strongly typed, ontologically linked graph of scriptable, visual-first workflows, where Rust owns structural invariants, Rhai owns editable classification and workflow rules, and AI/LLM agents drive supervised ETL through MCP tools without taking custody of credentials or approval authority. Local-first bookkeeping — turning financial documents into an accountant-usable, CPA-auditable source of truth — is the first dogfood vertical proving out that substrate, not the project's purpose. Requirements (ReqIF), schema/data modeling (LinkML), and a decision+cost ledger are newer verticals sitting on the same substrate: the ontology graph, the evidence chain, Rhai policy, and KerML/OWL2 metamodel work.
 
 Read the live book: <https://promptexecution.github.io/ledgrrr/>
 
-**Primary bookkeeping outcome:** ingest raw historical statements, classify and reconcile transactions, preserve evidence and mutation history, then export a CPA-reviewable Excel workbook without requiring private data to leave the local machine.
+**Bookkeeping vertical's primary outcome:** ingest raw historical statements, classify and reconcile transactions, preserve evidence and mutation history, then export a CPA-reviewable Excel workbook without requiring private data to leave the local machine.
 
 ## System Thesis
 
-The project is intentionally not just a PDF parser, a rules folder, or a visualization experiment. Those are subsystems of one bookkeeping control plane:
+The project is intentionally not just a PDF parser, a rules folder, or a visualization experiment. Those are subsystems of one general process/action control plane, expressed here through its original bookkeeping vertical:
 
 ```rhai
 fn source_documents() -> typed_document_graph
@@ -27,7 +27,7 @@ fn workbook_export() -> cpa_review
 fn cpa_review() -> audit_history
 ```
 
-The workbook remains the human and accounting interface. The graph, sidecar state, Rhai rules, MCP tools, and visualization layers exist to make that workbook reproducible, explainable, and agent-accessible.
+The workbook remains that vertical's human and accounting interface. The graph, sidecar state, Rhai rules, MCP tools, and visualization layers exist to make it reproducible, explainable, and agent-accessible — and the same typed-state machine now also governs non-bookkeeping verticals (requirements, decisions, costs) and agent capability discovery/skill lifecycle, not just financial documents.
 
 ## Design Lens: TRIZ + MECE
 
@@ -250,22 +250,7 @@ The `McpProvider` trait (`crates/ledgerr-mcp/src/provider.rs`) and `McpProviderR
 
 # Humble Beginnings
 
-This project started as a local-first bookkeeping pipeline — ingest PDF statements, classify transactions with Rhai rules, export a CPA-auditable Excel workbook. The system thesis was a single directed graph of financial document processing:
-
-```rhai
-fn source_documents() -> typed_document_graph
-fn typed_document_graph() -> extraction_and_normalization
-fn extraction_and_normalization() -> transaction_classification
-fn transaction_classification() -> validation_and_legal_checks
-fn validation_and_legal_checks() -> reconciliation
-fn reconciliation() -> workbook_export
-fn workbook_export() -> cpa_review
-fn cpa_review() -> audit_history
-```
-
-That pipeline is still real and still works. But the architecture kept revealing a deeper structure: the bookkeeping pipeline was one *surface* of a more general executive dashboarding and logic process system. The same typed-state machine that governs document ingest is now also governing agent capability discovery, skill lifecycle, and LLM verification loops. The same `MetaCtx` carry-forward confidence model that compounds validation scores also governs which b00t capabilities load into agent context.
-
-The workbook remains the canonical human/accountant artifact. But the system behind it is now a formally grounded logic process control plane, where every transition — financial or agentic — is typed, traced, and governed by the same verification infrastructure.
+This project started as a local-first bookkeeping pipeline — ingest PDF statements, classify transactions with Rhai rules, export a CPA-auditable Excel workbook (see System Thesis above; that pipeline is still real and still works). The architecture kept revealing a deeper structure: the bookkeeping pipeline was one *surface* of a more general systems-modeling and action/decision registry, which is why the framing at the top of this README no longer leads with tax/bookkeeping. The same `MetaCtx` carry-forward confidence model that compounds validation scores also governs which b00t capabilities load into agent context, and the same typed-state machine now governs requirements/decisions/costs, not just financial documents.
 
 ---
 
