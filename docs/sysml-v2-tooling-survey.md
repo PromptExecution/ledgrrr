@@ -1,14 +1,16 @@
 # SysML v2 Tooling Survey (Epic, Part 1)
 
-Status: draft — survey only, no adoption decisions made yet.
+Status: survey complete, key decisions made — see "Decisions" below. DVC
+integration remains open; everything else is ready to scope as follow-up
+tasks.
 
 ## Purpose
 
 Before writing any more of our own SysML v2 / KerML tooling, inventory what
 already exists so we don't reimplement a parser, LSP, or MCP bridge that's
 already maintained upstream. This doc is the output of that survey plus a
-prioritized research list. It does not pick winners — see "Open questions"
-for the decisions that still need a human call.
+prioritized research list, and the decisions made once the tiered candidates
+were reviewed.
 
 ## Constraints (given, non-negotiable unless noted)
 
@@ -147,36 +149,38 @@ eliminating build work outright.
 - [Don't Panic Batmobile](https://github.com/MBSE4U/dont-panic-batmobile) —
   small, approachable teaching example.
 
-### Explicitly out of scope for now (flagging, not deciding)
+### .NET tooling
 
-- **Commercial tools** (CATIA/Cameo, Siemens, Ansys, PTC, Syside, etc.) — not
-  evaluated; OSS-first per the rest of this survey.
-- **.NET tooling** (`SysML2.NET`) — the language-priority rule
-  (Rust > Python > TS, JVM-via-GraalVM-container) doesn't mention .NET at
-  all. Not assuming it's excluded — see open questions.
+- **`SysML2.NET`** — decided in scope under the **same rule as JVM**: usable
+  only when containerized/isolated the same way, never a direct host
+  dependency. Not otherwise prioritized — no candidate here has been
+  evaluated yet.
 
-## Open questions (need a decision, not answered by this survey)
+### Commercial tools — still flagging, not deciding
 
-1. **Home for this work: confirmed `ledgrrr`, or still open?** Given how much
-   SysML-v2/OWL2/ontology infrastructure already lives in `ledgrrr`
-   (`holon-viz`, `ufo-types`, the `feat/holonic-viz-sysml-owl2-cytoscape`
-   branch, `ledgrrr#99`), it looks like the "b00t ledger (ledgrrr) vs.
-   something entirely new" question from the previous round is already
-   answered by what exists — but confirming explicitly rather than assuming.
-2. **Wrap vs. build for LSP/MCP.** `daltskin/sysml-v2-lsp` (TS, MIT) already
-   ships an LSP *and* an MCP server today. Do we vendor/wrap it as the
-   fastest path to "MCP + LSP shareable via b00t," or is the TypeScript
-   runtime dependency itself disqualifying given the Rust-first rule — in
-   which case we build the equivalent in Rust on top of the
-   `sysml-v2-parser` crate (pending Tier 0 evaluation of that crate)?
-3. **DVC integration** — flagged in the earlier planning round as needed
-   for data-source tracking. Nothing in this survey addresses it; it's a
-   separate tool line, not part of the SysML-v2-parsing space.
-4. **.NET scope** — in or out? Not addressed by the given priority list.
-5. **Conformance oracle** — worth standing up the OMG Pilot Implementation
-   in a GraalVM-native-image container specifically to validate whatever
-   Rust/Python parser we adopt, or is that premature until Tier 0 tools are
-   evaluated?
+- CATIA/Cameo, Siemens, Ansys, PTC, Syside, etc. — not evaluated; OSS-first
+  per the rest of this survey.
+
+## Decisions (resolved 2026-08-21/22)
+
+1. **Home for this work: confirmed `ledgrrr`.** The existing infrastructure
+   (`holon-viz`, `ufo-types`, `feat/holonic-viz-sysml-owl2-cytoscape`,
+   `ledgrrr#99`) is the substrate — no new repo/system.
+2. **Wrap vs. build for LSP/MCP: wrap `daltskin/sysml-v2-lsp` now.** Accept
+   the TypeScript runtime dependency inside b00t as a pragmatic exception to
+   the Rust-first rule, in exchange for shipping in days/weeks instead of
+   building a Rust LSP from scratch on an unverified parser crate. Revisit
+   only if the TS dependency becomes an actual operational problem.
+3. **.NET scope: same rule as JVM** — see above.
+4. **Conformance oracle: stand up the OMG Pilot Implementation now, in
+   parallel** with the Tier 0 spikes below — as a GraalVM native-image in a
+   container, never a host install.
+
+## Still open
+
+- **DVC integration** for data-source tracking — flagged in the earlier
+  planning round, untouched by this survey; separate tool line from
+  SysML-v2 parsing/LSP/MCP.
 
 ## Next steps
 
@@ -187,5 +191,10 @@ eliminating build work outright.
    first.
 3. Vendor `sysml-v2-docs` as a b00t skill/reference corpus — no decision
    blocking this, do it regardless of the rest.
-4. Answer the five open questions above before writing any new parser/LSP/
-   MCP code.
+4. Vendor/wrap `daltskin/sysml-v2-lsp` (LSP + MCP server) into the b00t MCP
+   surface via the existing `DatumType` pattern (`src/datum_mcp.rs`,
+   `src/commands/mcp.rs`) — decided, ready to scope as its own task.
+5. Stand up the OMG Pilot Implementation as a GraalVM native-image in a
+   container, in parallel with (1) and (2), as the conformance oracle.
+6. DVC integration remains open — needs its own scoping pass, separate from
+   this epic's parser/LSP/MCP thread.
