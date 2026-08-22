@@ -3,7 +3,8 @@
 Status: research + design complete, all 6 open questions resolved, plus the
 `sysml-derive` vs. LinkML spike run and decided (§3a) — `sysml-derive` wins,
 implemented in [`ledgrrr#183`](https://github.com/PromptExecution/ledgrrr/pull/183).
-`ArtifactKind`/`NodeType` widening (§6 task 3) is unblocked but not yet done.
+`ArtifactKind`/`NodeType`/`OperationKind` widening (§6 task 3) is done:
+[`ledgrrr#184`](https://github.com/PromptExecution/ledgrrr/pull/184).
 Follows on from [`docs/sysml-v2-tooling-survey.md`](sysml-v2-tooling-survey.md)
 (Part 1, `PromptExecution/ledgrrr#180`) — read that first, this doc does not
 repeat its SysML v2/KerML tooling findings.
@@ -304,8 +305,9 @@ and none of that was disproven here). It's rejected specifically as the
 answer to "what authors Requirement/Decision/Cost's Rust shape" — that's
 `sysml-derive`.
 
-**§6 task 3 (widen `ArtifactKind`/`NodeType`) is now unblocked**: proceed
-backed by `sysml-derive`-annotated structs, not LinkML-generated ones.
+**§6 task 3 done**: [`ledgrrr#184`](https://github.com/PromptExecution/ledgrrr/pull/184)
+widens `ArtifactKind`/`NodeType`/`OperationKind`, backed by
+`sysml-derive`-annotated structs, not LinkML-generated ones.
 
 ## 4. sysgit.io — reference vibe, not a backlog (decided, §5 Q5)
 
@@ -379,14 +381,21 @@ The table below is kept for reference; none of its rows are tasks:
 2. ~~Spike LinkML (decision 4) in parallel with task 1, as a comparison~~
    **Done (2026-08-22)**: see §3a. `gen-rust` works but is rejected for this
    role — `sysml-derive` wins.
-3. **Unblocked, ready to scope**: widen `ArtifactKind`
-   (`ledger-core/src/ontology.rs`) and `NodeType` (`arc-kit-au/src/node.rs`)
-   with `Requirement`/`Decision`/`Cost` variants (decision 1), backed by
-   structs annotated with `sysml-derive`'s `#[derive(SysmlBlock)]` (§3a
-   decision). Add the matching `OperationKind` variants
-   (`RecordDecision`/`RecordCost`/`ImportRequirement`) in `ledger_ops.rs`.
+3. ~~Widen `ArtifactKind`/`NodeType`/`OperationKind` with
+   `Requirement`/`Decision`/`Cost`~~ **Done**:
+   [`ledgrrr#184`](https://github.com/PromptExecution/ledgrrr/pull/184)
+   (stacked on #183). `ArtifactKind` (`ledger-core/src/ontology.rs`) and
+   `NodeType` (`arc-kit-au/src/node.rs`) both gained the 3 variants, backed
+   by structs annotated with `sysml-derive`'s `#[derive(SysmlBlock)]`;
+   `OperationKind` gained `RecordDecision`/`RecordCost`/`ImportRequirement`
+   in `ledger_ops.rs`, each with a working (content-hashed, idempotent)
+   `LedgerOperation` impl, wired into `OperationDispatcher`. Also fixed an
+   exhaustive `NodeType` match in `ledgerr-mcp`'s legacy-feature code that
+   would otherwise not have compiled. Verified: `arc-kit-au` (46 tests),
+   `ledger-core --lib` (184 tests), `ledgerr-mcp --features legacy` build,
+   and `cargo check --workspace --all-features` all pass; clippy clean.
    Retrofitting existing variants (`Transaction`/`TaxCategory`/etc.) onto
-   the same macro is a tracked follow-on, not required to unblock this task.
+   the same macro remains a tracked follow-on, not done here.
 4. Add the new dedicated `ZLayer` variant in `ledger-core/src/iso.rs`
    (decision 2) — naming, z-depth, and color TBD at implementation time;
    follow the existing `IsometricProjection`/`HasVisualization` pattern used
