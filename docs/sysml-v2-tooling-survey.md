@@ -182,13 +182,73 @@ eliminating build work outright.
   planning round, untouched by this survey; separate tool line from
   SysML-v2 parsing/LSP/MCP.
 
+### `mycr0ft/sysmlpy#3` investigation (2026-08-22)
+
+Read in full (body + 0 comments, via `gh api repos/mycr0ft/sysmlpy/issues/3`).
+Still **open**, filed 2026-08-19, no maintainer response yet. Verified the two
+code paths it names still match `sysmlpy`'s current `main` (commit `5547907`,
+pushed 2026-08-21 — i.e. after the issue was filed, so this is not stale):
+
+- **1a — the missing dispatch.** `src/sysmlpy/grammar/classes.py`,
+  `AnnotatingElement.__init__` (~line 4210) only recognizes
+  `ownedRelatedElement["name"] in {"Documentation", "CommentSysML"}`. Anything
+  else (including `MetadataFeature`, which the visitor does produce and which
+  is fully implemented elsewhere in the same file) falls into an `else` that
+  prints a warning and sets `self.children = None`. `get_definition()` then
+  calls `self.children.get_definition()` unguarded → `AttributeError:
+  'NoneType' object has no attribute 'get_definition'`. Confirmed present,
+  unchanged, on current `main`.
+- **1b — the trap.** `src/sysmlpy/antlr_visitor.py`,
+  `_visit_metadata_feature_dict` (~line 316) only captures a body when it is
+  a bare `;`; a braced `{ ... }` body is dropped at visit time and never
+  reaches the dict the object model is built from. Confirmed present,
+  unchanged, on current `main`.
+- **Why it's a trap, not just a bug**: patching 1a alone (the obvious "make
+  the crash go away" fix) removes the guard rail without restoring the data
+  1b already threw away — `@ProbeTag { probeValue = "x"; }` would round-trip
+  as `@ : ProbeTag`, silently. The reporter explicitly monkeypatched to verify
+  this. Both must be fixed together, 1b first if only one lands initially.
+
+**Severity**: not a narrow edge case. `@Tag { field = value; }` metadata
+application is normative SysML v2 syntax (the OMG textual-notation guide's
+own `part driverAirBag { @Safety{isMandatory = false;} }` example uses it),
+and is exactly the mechanism ledgrrr would use for requirements/safety/
+traceability annotations. Any real model that applies a metadata feature with
+a braced body hits this — crash today, silent corruption if patched
+carelessly. The issue also flags three smaller conformance gaps in the same
+report: the OMG standard library files themselves don't parse (`standard
+library package` keyword unsupported, though `analyze(library=...)` already
+has the tolerant path), the bundled library subset is incomplete, and
+`assert constraint` bodies are syntax-checked only — an undefined name inside
+one still reports "ok". Together these mean sysmlpy's 123/123 conformance
+claim covers parsing, not semantic validation depth.
+
+**Comparison to the LinkML `gen-rust` precedent** (this same epic, a
+different sub-task): that generator's serializer silently collapsing a
+single-element JSON array into a bare scalar was the deciding factor to
+reject it outright. `sysmlpy#3`'s 1a/1b combination is the same class of
+risk — a "fix" that trades a loud failure for silent data loss — except here
+it's reported and not yet fixed, on a normative/load-bearing path (metadata
+annotation), rather than an edge case.
+
+**Recommendation: avoid/deprioritize `sysmlpy` for now**, specifically for
+any use case involving metadata applications with braced bodies (i.e. most
+real usage). Do not adopt for parsing where correctness matters until 1a+1b
+both land upstream — treat an open PR/commit fixing both, plus a regression
+test for the round-trip case, as the bar before revisiting. `sysml-v2-parser`
+(Rust, Tier 0) remains the preferred path forward pending its own spike-test
+(next-steps item 1 below); it has not been shown to share this defect and
+matches the language-priority rule besides. `sysml-style` (Tier 2, built on
+`sysmlpy`) inherits the same risk and should be evaluated with the same
+caution if/when a `.sysml` linter is needed.
+
 ## Next steps
 
 1. Spike-test `sysml-v2-parser` (Rust crate) against the OMG sample corpora
    above — does it round-trip with `holon-viz`'s `SysmlV2Emitter` output?
-2. Read `mycr0ft/sysmlpy#3` in full before depending on `sysmlpy` for
-   anything — the "silent data loss" note is a red flag worth resolving
-   first.
+2. ~~Read `mycr0ft/sysmlpy#3` in full before depending on `sysmlpy` for
+   anything~~ — done, see "`mycr0ft/sysmlpy#3` investigation" above.
+   Recommendation: avoid/deprioritize `sysmlpy` until upstream fixes land.
 3. Vendor `sysml-v2-docs` as a b00t skill/reference corpus — no decision
    blocking this, do it regardless of the rest.
 4. Vendor/wrap `daltskin/sysml-v2-lsp` (LSP + MCP server) into the b00t MCP
