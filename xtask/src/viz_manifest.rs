@@ -1,12 +1,13 @@
 //! Export the VisualizationSpec JSON manifest for the docs UI.
 //!
-//! Collects `HasVisualization::viz_spec()` from all 28 domain types (every
+//! Collects `HasVisualization::viz_spec()` from all 31 domain types (every
 //! `impl HasVisualization` in `ledger_core::iso_objects`, with the generic
 //! `StageResult<T>` represented once via `StageResult<()>`) and writes a
 //! `VizManifest` JSON file to the specified output path.
 
 use std::path::Path;
 
+use arc_kit_au::node::{Cost, Decision, Requirement};
 use ledger_core::{
     au_rd::{AuRdActivity, AuRdOffset},
     constraints::{
@@ -74,6 +75,9 @@ pub fn export_viz_manifest(output: &Path) -> Result<(), Box<dyn std::error::Erro
         VizManifestEntry::new("UsRdcCredit", UsRdcCredit::viz_spec()),
         VizManifestEntry::new("CryptoTx", CryptoTx::viz_spec()),
         VizManifestEntry::new("CryptoWallet", CryptoWallet::viz_spec()),
+        VizManifestEntry::new("Requirement", Requirement::viz_spec()),
+        VizManifestEntry::new("Decision", Decision::viz_spec()),
+        VizManifestEntry::new("Cost", Cost::viz_spec()),
     ];
 
     let count = objects.len();

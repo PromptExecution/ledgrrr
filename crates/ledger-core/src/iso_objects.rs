@@ -1,4 +1,4 @@
-//! `HasVisualization` implementations for the 28 domain types that participate
+//! `HasVisualization` implementations for the 31 domain types that participate
 //! in the isometric pipeline view.
 //!
 //! Every `impl HasVisualization` added here must also be registered in
@@ -469,9 +469,64 @@ let lots = wallet.cost_basis_lots(method); // FIFO | HIFO | ACB"#,
     }
 }
 
+// ============================================================================
+// SYSTEMS MODEL — Requirement/Decision/Cost (z=6, SystemsModel layer)
+// ============================================================================
+
+#[cfg(feature = "arc-kit-au")]
+mod systems_model {
+    use arc_kit_au::node::{Cost, Decision, Requirement};
+
+    use crate::iso::{HasVisualization, RhaiDsl, SemanticType, VisualizationSpec, ZLayer};
+
+    impl HasVisualization for Requirement {
+        fn viz_spec() -> VisualizationSpec {
+            VisualizationSpec {
+                semantic_type: SemanticType::Requirement,
+                z_layer: ZLayer::SystemsModel,
+                rhai_dsl: RhaiDsl::new(
+                    r#"let req = load_requirement(source);
+if req.status == "active" { link_decisions(req.related_decisions) }"#,
+                ),
+                description: "SysML v2 systems-modeling requirement — traceable spec record, linked to the decisions it constrains",
+            }
+        }
+    }
+
+    impl HasVisualization for Decision {
+        fn viz_spec() -> VisualizationSpec {
+            VisualizationSpec {
+                semantic_type: SemanticType::Decision,
+                z_layer: ZLayer::SystemsModel,
+                rhai_dsl: RhaiDsl::new(
+                    r#"let decision = record_decision(subject, rationale, decided_by);
+link_requirements(decision.related_requirements);"#,
+                ),
+                description: "Version-controlled decision record — rationale + decider, linked back to the requirements it satisfies",
+            }
+        }
+    }
+
+    impl HasVisualization for Cost {
+        fn viz_spec() -> VisualizationSpec {
+            VisualizationSpec {
+                semantic_type: SemanticType::Cost,
+                z_layer: ZLayer::SystemsModel,
+                rhai_dsl: RhaiDsl::new(
+                    r#"let cost = record_cost(subject, amount, currency);
+if cost.related_decision.is_some() { attribute_to_decision(cost) }"#,
+                ),
+                description: "Version-controlled cost record — monetary amount attributed to a decision for systems-modeling cost traceability",
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "arc-kit-au")]
+    use arc_kit_au::node::{Cost, Decision, Requirement};
 
     #[test]
     fn all_viz_spec_rhai_dsl_has_valid_syntax() {
@@ -517,6 +572,13 @@ mod tests {
         check!(UsRdcCredit);
         check!(CryptoTx);
         check!(CryptoWallet);
+        // Systems-modeling domain
+        #[cfg(feature = "arc-kit-au")]
+        {
+            check!(Requirement);
+            check!(Decision);
+            check!(Cost);
+        }
     }
 }
 
