@@ -19,7 +19,7 @@ The default catalog is intentionally small: 12 top-level `ledgerr_*` tools. Each
 | `ledgerr_ontology` | ontology query/export/write operations | `query_path`, `export_snapshot`, `upsert_entities`, `upsert_edges` |
 | `ledgerr_xero` | Xero accounting integration: contacts, accounts, bank accounts, entity linking | `get_auth_url`, `exchange_code`, `fetch_contacts`, `search_contacts`, `fetch_accounts`, `fetch_bank_accounts`, `fetch_invoices`, `link_entity`, `sync_catalog` |
 | `ledgerr_focus` | FOCUS (FinOps Cost Usage Spec) v1.3 cost/usage records, FocusDelta comparison, experiment scoring | `append_focus_record`, `query_focus_summary`, `compute_focus_delta`, `experiment_score` |
-| `ledgerr_evidence` | evidence traceability: provenance gaps, transaction lineage, review badges, graph summary and node queries | `provenance_gaps`, `trace_tx`, `summary`, `list_nodes`, `node_detail` |
+| `ledgerr_evidence` | evidence traceability: provenance gaps, transaction lineage, review badges, graph summary and node queries; requirement/decision/cost recording | `provenance_gaps`, `trace_tx`, `summary`, `list_nodes`, `node_detail`, `import_requirement`, `record_decision`, `record_cost` |
 | `ledgerr_schema` | runtime schema extensibility: register, list, remove, and inspect custom entity kinds | `list_kinds`, `register_kind`, `remove_kind`, `get_kind` |
 | `ledgerr_manifest` | returns the full canonical viz-manifest: mapping of type IDs to their canonical Rhai DSL source strings | `get_manifest` |
 

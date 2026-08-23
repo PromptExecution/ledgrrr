@@ -166,13 +166,16 @@ pub const PUBLISHED_TOOLS: [ToolContractSpec; 12] = [
     },
     ToolContractSpec {
         name: EVIDENCE_TOOL,
-        purpose: "evidence traceability: provenance gaps, transaction lineage, review badges, graph summary and node queries",
+        purpose: "evidence traceability: provenance gaps, transaction lineage, review badges, graph summary and node queries; requirement/decision/cost recording",
         actions: &[
             "provenance_gaps",
             "trace_tx",
             "summary",
             "list_nodes",
             "node_detail",
+            "import_requirement",
+            "record_decision",
+            "record_cost",
         ],
     },
     ToolContractSpec {
@@ -915,6 +918,46 @@ pub enum EvidenceArgs {
     },
     #[serde(rename = "node_detail")]
     NodeDetail { node_id: String },
+    /// Import a requirement record (e.g. from `reqif-mcp-spike`'s
+    /// `RequirementRecord`) as a `NodeType::Requirement` evidence node.
+    #[serde(rename = "import_requirement")]
+    ImportRequirement {
+        requirement_id: String,
+        title: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        rationale: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source: Option<String>,
+        #[serde(default = "default_requirement_status")]
+        status: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        related_decisions: Vec<String>,
+    },
+    /// Record a decision as a `NodeType::Decision` evidence node.
+    #[serde(rename = "record_decision")]
+    RecordDecision {
+        decision_id: String,
+        subject: String,
+        rationale: String,
+        decided_by: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        related_requirements: Vec<String>,
+    },
+    /// Record a cost as a `NodeType::Cost` evidence node.
+    #[serde(rename = "record_cost")]
+    RecordCost {
+        cost_id: String,
+        subject: String,
+        amount: String,
+        currency: String,
+        recorded_by: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        related_decision: Option<String>,
+    },
+}
+
+fn default_requirement_status() -> String {
+    "active".to_string()
 }
 
 pub fn parse_evidence(arguments: &Value) -> Result<EvidenceArgs, ToolError> {

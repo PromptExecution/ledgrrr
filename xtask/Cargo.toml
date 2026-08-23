@@ -15,6 +15,7 @@ name = "xtask_mcpb"
 path = "src/lib.rs"
 
 [dependencies]
+arc-kit-au = { path = "../crates/arc-kit-au" }
 clap = { version = "4", features = ["derive"] }
 ledger-core = { path = "../crates/ledger-core" }
 hex = "0.4"
