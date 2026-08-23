@@ -71,8 +71,9 @@ fn external_tool_descriptors() -> Vec<Value> {
 
 // Public re-exports are always available (they're just constants).
 pub use crate::contract::{
-    AUDIT_TOOL, DOCUMENTS_TOOL, EVIDENCE_TOOL, FOCUS_TOOL, MANIFEST_TOOL, ONTOLOGY_TOOL,
-    RECONCILIATION_TOOL, REVIEW_TOOL, SCHEMA_TOOL, TAX_TOOL, WORKFLOW_TOOL, XERO_TOOL,
+    AUDIT_TOOL, BUDGET_TOOL, DOCUMENTS_TOOL, EVIDENCE_TOOL, FOCUS_TOOL, MANIFEST_TOOL,
+    ONTOLOGY_TOOL, RECONCILIATION_TOOL, REVIEW_TOOL, SCHEMA_TOOL, TAX_TOOL, WORKFLOW_TOOL,
+    XERO_TOOL,
 };
 
 // ── Default dispatch ──────────────────────────────────────────────────────────
@@ -232,6 +233,46 @@ pub fn handle_manifest_tool(_arguments: &Value) -> Value {
     })
 }
 
+/// Handler for `ledgerr_budget` — GPU-training cloud budget reconciliation
+/// across AWS, GCP, Azure, and HuggingFace Jobs.
+///
+/// `ReconcileRunner::run` is async (each provider shells out via
+/// `tokio::process::Command`); this MCP server's request loop is
+/// synchronous (see `bin/ledgerr-mcp-server.rs`), so this handler drives it
+/// to completion on a scratch current-thread runtime rather than requiring
+/// the whole server to become async for one tool.
+pub fn handle_budget_tool(arguments: &Value) -> Value {
+    use crate::contract::{parse_budget, BudgetArgs};
+    use ledgerr_cloud::ReconcileRunner;
+
+    let request = match parse_budget(arguments) {
+        Ok(r) => r,
+        Err(err) => return error_envelope(&err),
+    };
+
+    match request {
+        BudgetArgs::Reconcile => {
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(rt) => rt,
+                Err(e) => {
+                    return error_envelope(&ToolError::Internal(format!(
+                        "failed to start budget-reconcile runtime: {e}"
+                    )))
+                }
+            };
+            let report =
+                runtime.block_on(async { ReconcileRunner::default_providers().run().await });
+            json!({
+                "content": [text_content(json!(report))],
+                "isError": false
+            })
+        }
+    }
+}
+
 /// Hardcoded list of published tool names (always available).
 const BUILTIN_TOOL_NAMES: &[&str] = &[
     DOCUMENTS_TOOL,
@@ -246,6 +287,7 @@ const BUILTIN_TOOL_NAMES: &[&str] = &[
     EVIDENCE_TOOL,
     SCHEMA_TOOL,
     MANIFEST_TOOL,
+    BUDGET_TOOL,
 ];
 
 fn builtin_tool_input_schema(name: &str) -> Value {
@@ -263,6 +305,7 @@ fn builtin_tool_description(name: &str) -> &'static str {
         ONTOLOGY_TOOL => "Ontology graph: query paths, upsert entities/edges, export snapshots",
         XERO_TOOL => "Xero integration: contacts, accounts, invoices, and entity linking",
         EVIDENCE_TOOL => "Evidence provenance: trace transactions and identify gaps",
+        BUDGET_TOOL => "GPU-training cloud budget reconciliation: AWS, GCP, Azure, HuggingFace Jobs",
         _ => "Ledgerr MCP tool",
     }
 }

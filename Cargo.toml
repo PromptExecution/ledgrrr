@@ -29,6 +29,7 @@ members = [
   "crates/ledgerr-desktop-agent",
   "crates/sysml-derive",
   "crates/reqif-mcp-spike",
+  "crates/ledgerr-cloud",
 ]
 resolver = "2"
 
