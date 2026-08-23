@@ -8,6 +8,7 @@ use chrono::{DateTime, Utc};
 use ordered_float::OrderedFloat;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
+use sysml_derive::SysmlBlock;
 
 /// Confidence score — a total-ordered f64 that implements Eq, Ord, and Hash.
 ///
@@ -39,6 +40,9 @@ impl NodeId {
             "approval" => NodeType::OperatorApproval,
             "wb" => NodeType::WorkbookRow,
             "vi" => NodeType::ValidationIssue,
+            "req" => NodeType::Requirement,
+            "dec" => NodeType::Decision,
+            "cost" => NodeType::Cost,
             _ => NodeType::Unknown,
         }
     }
@@ -78,6 +82,12 @@ pub enum NodeType {
     RndActivity,
     /// ATO tax offset claim or estimate.
     TaxOffset,
+    /// A traceable requirement record (systems-modeling registry vertical).
+    Requirement,
+    /// A version-controlled decision record (systems-modeling registry vertical).
+    Decision,
+    /// A version-controlled cost record (systems-modeling registry vertical).
+    Cost,
     /// Unknown or unrecognized type
     Unknown,
 }
@@ -95,6 +105,9 @@ impl NodeType {
             Self::ValidationIssue => "vi",
             Self::RndActivity => "rnd",
             Self::TaxOffset => "tax",
+            Self::Requirement => "req",
+            Self::Decision => "dec",
+            Self::Cost => "cost",
             Self::Unknown => "unknown",
         }
     }
@@ -111,7 +124,7 @@ pub fn content_hash(parts: &[&str]) -> String {
 }
 
 /// Source document evidence.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, SysmlBlock)]
 pub struct SourceDoc {
     /// Original filename (must follow VENDOR--ACCOUNT--YYYY-MM--DOCTYPE.ext)
     pub filename: String,
@@ -138,7 +151,7 @@ impl SourceDoc {
 }
 
 /// Extracted row from document parsing.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, SysmlBlock)]
 pub struct ExtractedRow {
     pub account_id: String,
     pub date: String,
@@ -163,7 +176,7 @@ impl ExtractedRow {
 }
 
 /// Deterministic transaction record.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, SysmlBlock)]
 pub struct Transaction {
     /// Blake3 hash of account/date/amount/description
     pub tx_id: String,
@@ -181,7 +194,7 @@ impl Transaction {
 }
 
 /// Classification applied to transaction.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, SysmlBlock)]
 pub struct Classification {
     pub tx_id: String,
     pub category: String,
@@ -208,7 +221,7 @@ impl Classification {
 }
 
 /// Model-generated classification proposal.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, SysmlBlock)]
 pub struct ModelProposal {
     pub tx_id: String,
     pub model_name: String,
@@ -234,7 +247,7 @@ impl ModelProposal {
 }
 
 /// Operator approval/rejection of model proposal.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, SysmlBlock)]
 pub struct OperatorApproval {
     pub tx_id: String,
     pub operator_id: String,
@@ -262,7 +275,7 @@ impl OperatorApproval {
 /// Distinct from Classification — validation artifacts represent rule/constraint
 /// failures, not categorization decisions. PRD-4 Phase 2 requires
 /// classification_artifact → validation_artifact as a separate chain step.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, SysmlBlock)]
 pub struct ValidationIssue {
     pub tx_id: String,
     pub rule: String,
@@ -288,7 +301,7 @@ impl ValidationIssue {
 }
 
 /// Final workbook row in CPA export.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, SysmlBlock)]
 pub struct WorkbookRow {
     pub tx_id: String,
     pub sheet_name: String,
@@ -312,6 +325,87 @@ impl WorkbookRow {
     }
 }
 
+/// A traceable requirement record (systems-modeling registry vertical).
+///
+/// See `docs/systems-modeling-registry-rescope.md` (epic part 2) — the
+/// `#[derive(SysmlBlock)]` here is the chosen alternative to LinkML for
+/// authoring this type's schema (§3a decision).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, SysmlBlock)]
+pub struct Requirement {
+    pub requirement_id: String,
+    pub title: String,
+    pub rationale: Option<String>,
+    pub source: Option<String>,
+    pub status: String,
+    pub related_decisions: Vec<NodeId>,
+    pub imported_at: DateTime<Utc>,
+}
+
+impl Requirement {
+    pub fn node_id(&self) -> NodeId {
+        NodeId::new(
+            NodeType::Requirement,
+            &content_hash(&[
+                &self.requirement_id,
+                &self.title,
+                self.source.as_deref().unwrap_or(""),
+            ]),
+        )
+    }
+}
+
+/// A version-controlled decision record (systems-modeling registry vertical).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, SysmlBlock)]
+pub struct Decision {
+    pub decision_id: String,
+    pub subject: String,
+    pub rationale: String,
+    pub decided_by: String,
+    pub decided_at: DateTime<Utc>,
+    pub related_requirements: Vec<NodeId>,
+}
+
+impl Decision {
+    pub fn node_id(&self) -> NodeId {
+        NodeId::new(
+            NodeType::Decision,
+            &content_hash(&[
+                &self.decision_id,
+                &self.subject,
+                &self.decided_by,
+                &self.decided_at.to_rfc3339(),
+            ]),
+        )
+    }
+}
+
+/// A version-controlled cost record (systems-modeling registry vertical).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, SysmlBlock)]
+pub struct Cost {
+    pub cost_id: String,
+    pub subject: String,
+    pub amount: String,
+    pub currency: String,
+    pub recorded_by: String,
+    pub recorded_at: DateTime<Utc>,
+    pub related_decision: Option<NodeId>,
+}
+
+impl Cost {
+    pub fn node_id(&self) -> NodeId {
+        NodeId::new(
+            NodeType::Cost,
+            &content_hash(&[
+                &self.cost_id,
+                &self.subject,
+                &self.amount,
+                &self.currency,
+                &self.recorded_at.to_rfc3339(),
+            ]),
+        )
+    }
+}
+
 /// Unified evidence node enum.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -324,6 +418,9 @@ pub enum EvidenceNode {
     OperatorApproval(OperatorApproval),
     WorkbookRow(WorkbookRow),
     ValidationIssue(ValidationIssue),
+    Requirement(Requirement),
+    Decision(Decision),
+    Cost(Cost),
 }
 
 impl EvidenceNode {
@@ -337,6 +434,9 @@ impl EvidenceNode {
             Self::OperatorApproval(approval) => approval.node_id(),
             Self::WorkbookRow(wb) => wb.node_id(),
             Self::ValidationIssue(vi) => vi.node_id(),
+            Self::Requirement(req) => req.node_id(),
+            Self::Decision(dec) => dec.node_id(),
+            Self::Cost(cost) => cost.node_id(),
         }
     }
 
@@ -350,6 +450,9 @@ impl EvidenceNode {
             Self::OperatorApproval(_) => NodeType::OperatorApproval,
             Self::WorkbookRow(_) => NodeType::WorkbookRow,
             Self::ValidationIssue(_) => NodeType::ValidationIssue,
+            Self::Requirement(_) => NodeType::Requirement,
+            Self::Decision(_) => NodeType::Decision,
+            Self::Cost(_) => NodeType::Cost,
         }
     }
 
@@ -361,7 +464,11 @@ impl EvidenceNode {
             Self::OperatorApproval(approval) => Some(&approval.tx_id),
             Self::WorkbookRow(wb) => Some(&wb.tx_id),
             Self::ValidationIssue(vi) => Some(&vi.tx_id),
-            Self::ExtractedRow(_) | Self::SourceDoc(_) => None,
+            Self::ExtractedRow(_)
+            | Self::SourceDoc(_)
+            | Self::Requirement(_)
+            | Self::Decision(_)
+            | Self::Cost(_) => None,
         }
     }
 }
@@ -390,6 +497,9 @@ mod tests {
             (NodeType::OperatorApproval, "approval"),
             (NodeType::WorkbookRow, "wb"),
             (NodeType::ValidationIssue, "vi"),
+            (NodeType::Requirement, "req"),
+            (NodeType::Decision, "dec"),
+            (NodeType::Cost, "cost"),
         ];
         for (expected_type, prefix) in cases {
             let id = NodeId(format!("{prefix}:somehash"));
@@ -475,5 +585,71 @@ mod tests {
             raw_context_path: None,
         });
         assert!(doc.tx_id().is_none());
+    }
+
+    #[test]
+    fn requirement_node_id_is_deterministic_and_tx_id_is_none() {
+        let req = Requirement {
+            requirement_id: "REQ-001".to_string(),
+            title: "System shall log all decisions".to_string(),
+            rationale: Some("Auditability".to_string()),
+            source: Some("NIST SSDF".to_string()),
+            status: "APPROVED".to_string(),
+            related_decisions: vec![],
+            imported_at: Utc.with_ymd_and_hms(2026, 8, 22, 0, 0, 0).unwrap(),
+        };
+        let id1 = req.node_id();
+        let id2 = req.node_id();
+        assert_eq!(id1, id2);
+        assert_eq!(id1.node_type(), NodeType::Requirement);
+        assert!(id1.0.starts_with("req:"));
+
+        let node = EvidenceNode::Requirement(req);
+        assert_eq!(node.node_type(), NodeType::Requirement);
+        assert!(node.tx_id().is_none());
+    }
+
+    #[test]
+    fn decision_node_id_is_deterministic() {
+        let dec = Decision {
+            decision_id: "DEC-001".to_string(),
+            subject: "Adopt sysml-derive over LinkML".to_string(),
+            rationale: "Rust-first, no correctness surprise".to_string(),
+            decided_by: "user".to_string(),
+            decided_at: Utc.with_ymd_and_hms(2026, 8, 22, 0, 0, 0).unwrap(),
+            related_requirements: vec![],
+        };
+        let id1 = dec.node_id();
+        let id2 = dec.node_id();
+        assert_eq!(id1, id2);
+        assert_eq!(id1.node_type(), NodeType::Decision);
+        assert!(id1.0.starts_with("dec:"));
+    }
+
+    #[test]
+    fn cost_node_id_is_deterministic() {
+        let cost = Cost {
+            cost_id: "COST-001".to_string(),
+            subject: "sysml-derive spike".to_string(),
+            amount: "0.00".to_string(),
+            currency: "AUD".to_string(),
+            recorded_by: "user".to_string(),
+            recorded_at: Utc.with_ymd_and_hms(2026, 8, 22, 0, 0, 0).unwrap(),
+            related_decision: None,
+        };
+        let id1 = cost.node_id();
+        let id2 = cost.node_id();
+        assert_eq!(id1, id2);
+        assert_eq!(id1.node_type(), NodeType::Cost);
+        assert!(id1.0.starts_with("cost:"));
+    }
+
+    #[test]
+    fn requirement_sysml_block_def_matches_field_shape() {
+        let block = Requirement::sysml_block_def();
+        assert!(block.starts_with("part def Requirement {\n"));
+        assert!(block.contains("attribute requirement_id : String;"));
+        assert!(block.contains("attribute rationale : String[0..1];"));
+        assert!(block.contains("attribute related_decisions : NodeId[*];"));
     }
 }

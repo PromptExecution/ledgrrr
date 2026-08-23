@@ -7,7 +7,7 @@ use crate::cytoscape::CytoscapeGraph;
 
 /// Emits SysML-v2 textual block definition fragments from a [`CytoscapeGraph`].
 ///
-/// Output is a minimal SysML-v2 `package` block containing one `block def`
+/// Output is a minimal SysML-v2 `package` block containing one `part def`
 /// per node and `part def` references for containment edges.
 pub struct SysmlV2Emitter;
 
@@ -21,8 +21,17 @@ impl SysmlV2Emitter {
 
         for node in &graph.nodes {
             let safe_label = sanitize_sysml_id(&node.data.label);
+            // The trailing comment is on its own line, and the closing `}`
+            // on its own line after it -- putting them on the same line
+            // (as this used to) puts the brace inside the `//` comment,
+            // leaving the block syntactically unclosed. `part def`, not
+            // `block def`: SysML v1 called this construct `Block`; SysML
+            // v2 renamed the equivalent concept to `part def`, and `block`
+            // is not a SysML v2 keyword at all. See
+            // docs/sysml-v2-parser-spike.md for how this was found (fed
+            // through the real `sysml-v2-parser` crate, not eyeballed).
             out.push_str(&format!(
-                "    block def {} {{ // id: {}, kind: {} }}\n",
+                "    part def {} {{\n        // id: {}, kind: {}\n    }}\n",
                 safe_label, node.data.id, node.data.kind
             ));
         }
@@ -32,7 +41,7 @@ impl SysmlV2Emitter {
             let src_label = find_label(graph, &edge.data.source);
             let tgt_label = find_label(graph, &edge.data.target);
             out.push_str(&format!(
-                "    part def {} : {} {{ // edge: {} }}\n",
+                "    part def {} : {} {{\n        // edge: {}\n    }}\n",
                 sanitize_sysml_id(&tgt_label),
                 sanitize_sysml_id(&src_label),
                 edge.data.id
