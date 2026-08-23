@@ -1104,20 +1104,44 @@ impl LedgerOperation for ImportRequirementOp {
     }
 }
 
-/// Ingest a PDF statement file via the external Python sidecar.
+/// Ingest a PDF statement file via the `reqif-opa-mcp` Python sidecar.
 ///
-/// Spawns the sidecar subprocess (`reqif-opa-mcp ingest --file <path> --output ndjson`),
-/// reads NDJSON transaction candidates from stdout, runs the Rhai classification waterfall
-/// on each, and persists results to the workbook. Blake3 content-hash IDs ensure
+/// Spawns `uv run python -m reqif_ingest_cli extract <path> --profile auto`
+/// in `reqif_opa_mcp_dir`, parses its single-JSON-blob stdout as a
+/// `docling_bridge::DoclingDocumentGraph`, classifies every node via
+/// `bank_statement::classify_document` (deterministic regex, never an LLM),
+/// bridges `TransactionRow`-classified nodes into real `TransactionInput`
+/// values via `bank_statement::node_to_transaction_input`, then runs the
+/// same Rhai classification waterfall the CSV/XLSX ingest path uses and
+/// persists results to the workbook. Blake3 content-hash IDs ensure
 /// idempotent re-ingest.
 ///
+/// # Prior implementation
+/// This previously invoked a `reqif-opa-mcp ingest --file <path> --output
+/// ndjson` command and parsed each line as a `ReqIfCandidate` (a
+/// modal-verb-detected requirement sentence). Neither the `reqif-opa-mcp`
+/// binary nor an `ingest` subcommand actually exist in the real
+/// `reqif-opa-mcp` CLI (confirmed: no `[project.scripts]` entry point is
+/// declared in its `pyproject.toml`) — this path had never actually run
+/// end-to-end. It also built `TransactionInput { date: candidate.section,
+/// amount: candidate.confidence.to_string(), .. }`, which type-checked but
+/// was semantically nonsense: a requirement's confidence score is not a
+/// dollar amount. Both are fixed here.
+///
 /// # Subprocess
-/// Requires `reqif-opa-mcp` on `PATH`. The intended long-term replacement is
-/// `docling convert <path>` once docling's NDJSON output shape is stabilised.
+/// Requires `uv` on `PATH` and a `reqif-opa-mcp` checkout with the
+/// `ingest-lite` or `ingest-full` extra installed at `reqif_opa_mcp_dir`.
 pub struct PdfIngestOp {
     pub input_path: PathBuf,
     pub rule_dir: PathBuf,
     pub workbook_path: PathBuf,
+    /// Path to a `reqif-opa-mcp` checkout (e.g. `~/promptexecution/reqif-opa-mcp`).
+    pub reqif_opa_mcp_dir: PathBuf,
+    /// Account this statement belongs to — there is no reliable way to
+    /// recover this from the PDF's own content, so it must be supplied by
+    /// the caller (the same convention the CSV/XLSX ingest path implicitly
+    /// assumes via its input file's account association).
+    pub account_id: String,
 }
 
 impl LedgerOperation for PdfIngestOp {
@@ -1135,10 +1159,11 @@ impl LedgerOperation for PdfIngestOp {
     }
 
     fn execute(&self, _ctx: &OperationContext) -> Result<OperationResult, LedgerOpError> {
+        use crate::bank_statement::{classify_document, node_to_transaction_input, NodeCategory};
         use crate::classify::ClassificationEngine;
+        use crate::docling_bridge::DoclingDocumentGraph;
         use crate::document::DocType;
-        use crate::ingest::TransactionInput;
-        use crate::rule_registry::{ReqIfCandidate, RuleRegistry};
+        use crate::rule_registry::RuleRegistry;
         use crate::workbook::WorkbookWriter;
         use std::time::Duration;
 
@@ -1169,14 +1194,18 @@ impl LedgerOperation for PdfIngestOp {
             let timeout_duration = Duration::from_secs(120);
 
             tokio::time::timeout(timeout_duration, async {
-                let mut child = tokio::process::Command::new("reqif-opa-mcp")
+                let mut child = tokio::process::Command::new("uv")
                     .args([
-                        "ingest",
-                        "--file",
+                        "run",
+                        "python",
+                        "-m",
+                        "reqif_ingest_cli",
+                        "extract",
                         &input_path,
-                        "--output",
-                        "ndjson",
+                        "--profile",
+                        "auto",
                     ])
+                    .current_dir(&self.reqif_opa_mcp_dir)
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
                     .spawn()
@@ -1231,27 +1260,33 @@ impl LedgerOperation for PdfIngestOp {
         }
 
         let stdout = String::from_utf8_lossy(&output.1);
-        let mut candidates = Vec::new();
+        let graph: DoclingDocumentGraph = serde_json::from_str(&stdout).map_err(|e| {
+            LedgerOpError::ExternalProcessFailed(format!(
+                "failed to parse DocumentGraph JSON from reqif_ingest_cli: {e}"
+            ))
+        })?;
+
+        let classified = classify_document(&graph);
+        let mut tx_inputs = Vec::new();
         let mut row_errors = Vec::new();
 
-        for (line_num, line) in stdout.lines().enumerate() {
-            if line.trim().is_empty() {
+        for c in &classified {
+            if c.category != NodeCategory::TransactionRow {
                 continue;
             }
-
-            match serde_json::from_str::<ReqIfCandidate>(line) {
-                Ok(candidate) => candidates.push(candidate),
+            match node_to_transaction_input(c, &self.account_id) {
+                Ok(tx) => tx_inputs.push(tx),
                 Err(e) => {
                     row_errors.push(IngestRowError {
                         tx_id: None,
-                        row_index: line_num + 1,
-                        error: format!("parse error: {e}"),
+                        row_index: 0,
+                        error: format!("bridge failed for node {}: {e}", c.node.node_id),
                     });
                 }
             }
         }
 
-        if candidates.is_empty() {
+        if tx_inputs.is_empty() {
             return Ok(OperationResult {
                 operation_id: "pdf-ingest".to_string(),
                 success: true,
@@ -1276,16 +1311,8 @@ impl LedgerOperation for PdfIngestOp {
         let mut processed = 0;
         let mut flagged = 0;
 
-        for (candidate_index, candidate) in candidates.iter().enumerate() {
-            let tx_input = TransactionInput {
-                account_id: candidate.key.clone(),
-                date: candidate.section.clone(),
-                amount: candidate.confidence.to_string(),
-                description: candidate.text.clone(),
-                source_ref: filename.to_string(),
-            };
-
-            let tx_id = crate::ingest::deterministic_tx_id(&tx_input);
+        for (tx_index, tx_input) in tx_inputs.iter().enumerate() {
+            let tx_id = crate::ingest::deterministic_tx_id(tx_input);
 
             // Blake3 deduplication: skip if tx_id already exists
             if seen_tx_ids.contains(&tx_id) {
@@ -1307,11 +1334,16 @@ impl LedgerOperation for PdfIngestOp {
                         flagged += 1;
                     }
 
-                    // Persist classified transaction to workbook
+                    // Persist classified transaction to workbook. There is no
+                    // separate vendor field on TransactionInput, so the
+                    // extracted description doubles as the vendor slot here
+                    // (as it already does for the CSV/XLSX ingest path) —
+                    // this replaces the old `&candidate.key`, a requirement's
+                    // stable key, which had no vendor meaning at all.
                     writer.append_row(crate::workbook::TransactionRow::new(
                         &tx_id,
                         &tx_input.date,
-                        &candidate.key,
+                        &tx_input.description,
                         &tx_input.account_id,
                         &tx_input.amount,
                         &outcome.category,
@@ -1324,7 +1356,7 @@ impl LedgerOperation for PdfIngestOp {
                 Err(e) => {
                     row_errors.push(IngestRowError {
                         tx_id: Some(tx_id.clone()),
-                        row_index: candidate_index + 1,
+                        row_index: tx_index + 1,
                         error: format!("classification failed: {e}"),
                     });
                 }
@@ -1700,6 +1732,8 @@ mod tests {
             input_path: PathBuf::from("/tmp/test.pdf"),
             rule_dir: PathBuf::from("/tmp/rules"),
             workbook_path: PathBuf::from("/tmp/workbook.xlsx"),
+            reqif_opa_mcp_dir: PathBuf::from("/tmp/reqif-opa-mcp"),
+            account_id: "test-acct".to_string(),
         };
         assert!(op.is_idempotent());
     }
@@ -1710,6 +1744,8 @@ mod tests {
             input_path: PathBuf::from("/tmp/test.csv"),
             rule_dir: PathBuf::from("/tmp/rules"),
             workbook_path: PathBuf::from("/tmp/workbook.xlsx"),
+            reqif_opa_mcp_dir: PathBuf::from("/tmp/reqif-opa-mcp"),
+            account_id: "test-acct".to_string(),
         };
         let ctx = OperationContext::new(
             PathBuf::from("/tmp"),
@@ -1724,6 +1760,55 @@ mod tests {
             }
             other => panic!("expected InvalidInput, got {other:?}"),
         }
+    }
+
+    /// Real, non-mocked integration test: spawns the actual `uv run python -m
+    /// reqif_ingest_cli extract` subprocess against a real reqif-opa-mcp
+    /// checkout and a real PDF, exercising the exact path that was
+    /// previously untested (both other PdfIngestOp tests above return
+    /// before ever reaching the subprocess). The old implementation invoked
+    /// a `reqif-opa-mcp ingest --output ndjson` command that never actually
+    /// existed — this test is what would have caught that.
+    ///
+    /// Ignored by default: requires `uv` on PATH and a sibling
+    /// `~/promptexecution/reqif-opa-mcp` checkout with the `ingest-lite` (or
+    /// `ingest-full`) extra installed. Run explicitly with:
+    ///   cargo test -p ledger-core --lib pdf_ingest_op_real_subprocess -- --ignored
+    #[test]
+    #[ignore = "requires uv + a reqif-opa-mcp checkout on disk"]
+    fn pdf_ingest_op_real_subprocess_extraction_and_classification() {
+        let reqif_opa_mcp_dir = dirs_next_home().join("promptexecution/reqif-opa-mcp");
+        let input_path = reqif_opa_mcp_dir
+            .join("samples/standards/upstream/owasp-asvs/OWASP_ASVS_5.0.0_en.pdf");
+        assert!(
+            input_path.exists(),
+            "expected sample PDF at {input_path:?} — is the reqif-opa-mcp checkout present?"
+        );
+
+        let workbook_dir = tempfile::tempdir().expect("tempdir");
+        let op = PdfIngestOp {
+            input_path,
+            rule_dir: PathBuf::from("/tmp/nonexistent-rules"),
+            workbook_path: workbook_dir.path().join("workbook.xlsx"),
+            reqif_opa_mcp_dir,
+            account_id: "test-acct".to_string(),
+        };
+        let ctx = OperationContext::new(
+            PathBuf::from("/tmp"),
+            PathBuf::from("/tmp/rules"),
+        );
+
+        let result = op.execute(&ctx).expect("real subprocess extraction should succeed");
+        assert!(result.success);
+        // The OWASP ASVS PDF is not a bank statement, so classify_document
+        // should find zero TransactionRow-shaped nodes — proving the real
+        // subprocess ran, its JSON parsed, and classification executed,
+        // without needing a fabricated bank-statement fixture.
+        assert_eq!(result.items_processed, 0);
+    }
+
+    fn dirs_next_home() -> PathBuf {
+        std::env::var("HOME").map(PathBuf::from).expect("HOME must be set")
     }
 
     #[test]

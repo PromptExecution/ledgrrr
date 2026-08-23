@@ -7,6 +7,7 @@
 use tempfile::TempDir;
 use std::fs;
 use std::io::Write;
+use std::path::PathBuf;
 
 use ledger_core::ledger_ops::{PdfIngestOp, OperationContext, IngestRowError, LedgerOperation};
 use ledger_core::workbook::{initialize_workbook, WorkbookWriter};
@@ -44,6 +45,8 @@ fn ac_213_subprocess_spawns_and_parses_ndjson() {
         input_path: pdf_path.clone(),
         rule_dir: rules_dir.clone(),
         workbook_path: workbook_path.clone(),
+        reqif_opa_mcp_dir: PathBuf::from("/nonexistent/reqif-opa-mcp"),
+        account_id: "test-account".to_string(),
     };
 
     let ctx = OperationContext::new(temp_dir.path().to_path_buf(), rules_dir.clone());
@@ -91,6 +94,8 @@ fn ac_213_rejects_non_zero_subprocess_exit() {
         input_path: txt_path.clone(),
         rule_dir: rules_dir.clone(),
         workbook_path: workbook_path.clone(),
+        reqif_opa_mcp_dir: PathBuf::from("/nonexistent/reqif-opa-mcp"),
+        account_id: "test-account".to_string(),
     };
 
     let ctx = OperationContext::new(temp_dir.path().to_path_buf(), rules_dir.clone());
@@ -135,6 +140,8 @@ fn ac_214_idempotency_via_blake3_deduplication() {
         input_path: pdf_path.clone(),
         rule_dir: rules_dir.clone(),
         workbook_path: workbook_path.clone(),
+        reqif_opa_mcp_dir: PathBuf::from("/nonexistent/reqif-opa-mcp"),
+        account_id: "test-account".to_string(),
     };
 
     let ctx = OperationContext::new(temp_dir.path().to_path_buf(), rules_dir.clone());
@@ -208,6 +215,8 @@ fn test_timeout_returns_error_after_120s() {
         input_path: pdf_path.clone(),
         rule_dir: rules_dir.clone(),
         workbook_path: workbook_path.clone(),
+        reqif_opa_mcp_dir: PathBuf::from("/nonexistent/reqif-opa-mcp"),
+        account_id: "test-account".to_string(),
     };
 
     let ctx = OperationContext::new(temp_dir.path().to_path_buf(), rules_dir.clone());
@@ -252,6 +261,8 @@ fn test_collects_row_level_errors() {
         input_path: pdf_path.clone(),
         rule_dir: rules_dir.clone(),
         workbook_path: workbook_path.clone(),
+        reqif_opa_mcp_dir: PathBuf::from("/nonexistent/reqif-opa-mcp"),
+        account_id: "test-account".to_string(),
     };
 
     let ctx = OperationContext::new(temp_dir.path().to_path_buf(), rules_dir.clone());
@@ -296,6 +307,8 @@ fn test_persists_transactions_to_workbook() {
         input_path: pdf_path.clone(),
         rule_dir: rules_dir.clone(),
         workbook_path: workbook_path.clone(),
+        reqif_opa_mcp_dir: PathBuf::from("/nonexistent/reqif-opa-mcp"),
+        account_id: "test-account".to_string(),
     };
 
     let ctx = OperationContext::new(temp_dir.path().to_path_buf(), rules_dir.clone());
