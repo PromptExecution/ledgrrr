@@ -32,6 +32,8 @@ tokio = { workspace = true }
 tracing = "0.1"
 notify = "8.2"
 ledger-attest = { path = "../ledger-attest" }
+async-nats = { version = "0.45", features = ["service"], optional = true }
+futures-util = { version = "0.3", optional = true }
 
 # filesystem metadata — xattr on Linux; sidecar fallback is pure std
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -42,10 +44,16 @@ default = ["arc-kit-au"]
 legal-z3 = ["dep:z3"]
 otel-arrow = ["dep:arrow"]
 cedar-policy = ["dep:msft-agent-gov-ledgrrr"]
+nats-service = ["dep:async-nats", "dep:futures-util"]
 
 [dependencies.msft-agent-gov-ledgrrr]
 path = "../msft-agent-gov-ledgrrr"
 optional = true
+
+[[bin]]
+name = "ledgrrr-nats-service"
+path = "src/bin/ledgrrr_nats_service.rs"
+required-features = ["nats-service"]
 
 [lints]
 workspace = true

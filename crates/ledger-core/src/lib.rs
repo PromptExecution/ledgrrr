@@ -1,8 +1,10 @@
 pub mod attest;
+pub mod bank_statement;
 pub mod calendar;
 pub mod classify;
 pub mod constraints;
 pub mod crypto;
+pub mod docling_bridge;
 pub mod document;
 pub mod document_shape;
 pub mod filename;
