@@ -27,6 +27,8 @@ members = [
   "crates/holon-viz-wasm",
   "crates/beankeeper-bridge",
   "crates/ledgerr-desktop-agent",
+  "crates/sysml-derive",
+  "crates/reqif-mcp-spike",
 ]
 resolver = "2"
 
@@ -52,6 +54,9 @@ kasuari = "0.4"
 statig = "0.4"
 anyhow = "1"
 ordered-float = { version = "4", features = ["serde"] }
+syn = "2"
+quote = "1"
+proc-macro2 = "1"
 b00t-reflect-types = { path = "crates/b00t-reflect-types" }
 b00t-reflect = { path = "crates/b00t-reflect" }
 ledger-core = { path = "crates/ledger-core" }

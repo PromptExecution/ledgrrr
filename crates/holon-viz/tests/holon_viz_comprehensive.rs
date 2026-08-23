@@ -501,8 +501,8 @@ fn test_27_sysml_v2_empty() {
     let out = SysmlV2Emitter::emit(&empty_graph());
     assert!(out.contains("package HolonModel"));
     assert!(out.contains("}"));
-    // No block def nodes
-    assert_eq!(out.matches("block def").count(), 0);
+    // No part def nodes
+    assert_eq!(out.matches("part def").count(), 0);
 }
 
 #[test]
@@ -511,7 +511,10 @@ fn test_28_sysml_v2_single_node() {
     let g = CytoscapeGraph::from_holons(&[h]);
     let out = SysmlV2Emitter::emit(&g);
     assert!(out.contains("package HolonModel"));
-    assert!(out.contains("block def Alpha"));
+    // SysML v2 renamed SysML v1's `Block` to `part def`; `block def` is not
+    // valid SysML v2 syntax at all (confirmed against the real
+    // sysml-v2-parser crate — see docs/sysml-v2-parser-spike.md).
+    assert!(out.contains("part def Alpha"));
 }
 
 #[test]
@@ -774,10 +777,14 @@ fn test_40_cross_format_consistency() {
 
     // SysML-v2
     let sysml = SysmlV2Emitter::emit(&g);
-    let sysml_block_count = sysml.matches("block def").count();
+    // Both nodes and containment edges emit `part def` (SysML v2 has one
+    // keyword for this, unlike the old node="block def"/edge="part def"
+    // split): 2 node defs + 1 containment-edge def for this 2-node,
+    // 1-edge graph = 3.
+    let sysml_block_count = sysml.matches("part def").count();
     assert_eq!(
-        sysml_block_count, 2,
-        "SysML-v2 should contain 2 block definitions, got {}",
+        sysml_block_count, 3,
+        "SysML-v2 should contain 3 part definitions (2 nodes + 1 containment edge), got {}",
         sysml_block_count
     );
 

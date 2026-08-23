@@ -61,6 +61,22 @@ pub enum OperationKind {
     ExportWorkbook { output_path: String },
     GenerateAuditTrail { year: i32 },
     CheckTaxDeadline { deadline_id: String },
+    /// Record a decision as an immutable, content-hashed evidence entry.
+    /// Systems-modeling registry vertical — see
+    /// `docs/systems-modeling-registry-rescope.md` (epic part 2).
+    RecordDecision {
+        subject: String,
+        rationale: String,
+        decided_by: String,
+    },
+    /// Record a cost as an immutable, content-hashed evidence entry.
+    RecordCost {
+        subject: String,
+        amount: String,
+        currency: String,
+    },
+    /// Import a requirement record from an external source (e.g. ReqIF).
+    ImportRequirement { source: String, title: String },
 }
 
 // ---------------------------------------------------------------------------
@@ -969,6 +985,125 @@ impl LedgerOperation for CheckTaxDeadlineOp {
     }
 }
 
+/// Record a decision as an immutable, content-hashed evidence entry.
+///
+/// Systems-modeling registry vertical (epic part 2) — mirrors `arc-kit-au`'s
+/// `Decision` node shape without depending on `arc-kit-au` directly; wiring
+/// this operation's output into the evidence graph is a later task (see
+/// `docs/systems-modeling-registry-rescope.md` §6 task 6).
+pub struct RecordDecisionOp {
+    pub subject: String,
+    pub rationale: String,
+    pub decided_by: String,
+}
+
+impl LedgerOperation for RecordDecisionOp {
+    fn id(&self) -> &str {
+        "record-decision"
+    }
+
+    fn description(&self) -> &str {
+        "Record a decision as an immutable, content-hashed evidence entry"
+    }
+
+    fn is_idempotent(&self) -> bool {
+        // Blake3 content-hash IDs prevent duplicate records, same as ingest.
+        true
+    }
+
+    fn execute(&self, _ctx: &OperationContext) -> Result<OperationResult, LedgerOpError> {
+        let hash = blake3::hash(
+            format!("{}|{}|{}", self.subject, self.rationale, self.decided_by).as_bytes(),
+        )
+        .to_hex()
+        .to_string();
+        Ok(OperationResult {
+            operation_id: "record-decision".to_string(),
+            success: true,
+            items_processed: 1,
+            items_flagged: 0,
+            issues: vec![format!("Decision recorded: dec:{hash}")],
+            duration_ms: 0,
+            row_errors: vec![],
+        })
+    }
+}
+
+/// Record a cost as an immutable, content-hashed evidence entry.
+pub struct RecordCostOp {
+    pub subject: String,
+    pub amount: String,
+    pub currency: String,
+}
+
+impl LedgerOperation for RecordCostOp {
+    fn id(&self) -> &str {
+        "record-cost"
+    }
+
+    fn description(&self) -> &str {
+        "Record a cost as an immutable, content-hashed evidence entry"
+    }
+
+    fn is_idempotent(&self) -> bool {
+        true
+    }
+
+    fn execute(&self, _ctx: &OperationContext) -> Result<OperationResult, LedgerOpError> {
+        let hash = blake3::hash(
+            format!("{}|{}|{}", self.subject, self.amount, self.currency).as_bytes(),
+        )
+        .to_hex()
+        .to_string();
+        Ok(OperationResult {
+            operation_id: "record-cost".to_string(),
+            success: true,
+            items_processed: 1,
+            items_flagged: 0,
+            issues: vec![format!("Cost recorded: cost:{hash}")],
+            duration_ms: 0,
+            row_errors: vec![],
+        })
+    }
+}
+
+/// Import a requirement record from an external source (e.g. ReqIF via
+/// `reqif-opa-mcp`, wrapped over MCP per
+/// `docs/systems-modeling-registry-rescope.md` §5 decision 6).
+pub struct ImportRequirementOp {
+    pub source: String,
+    pub title: String,
+}
+
+impl LedgerOperation for ImportRequirementOp {
+    fn id(&self) -> &str {
+        "import-requirement"
+    }
+
+    fn description(&self) -> &str {
+        "Import a requirement record from an external source"
+    }
+
+    fn is_idempotent(&self) -> bool {
+        true
+    }
+
+    fn execute(&self, _ctx: &OperationContext) -> Result<OperationResult, LedgerOpError> {
+        let hash = blake3::hash(format!("{}|{}", self.source, self.title).as_bytes())
+            .to_hex()
+            .to_string();
+        Ok(OperationResult {
+            operation_id: "import-requirement".to_string(),
+            success: true,
+            items_processed: 1,
+            items_flagged: 0,
+            issues: vec![format!("Requirement imported: req:{hash}")],
+            duration_ms: 0,
+            row_errors: vec![],
+        })
+    }
+}
+
 /// Ingest a PDF statement file via the external Python sidecar.
 ///
 /// Spawns the sidecar subprocess (`reqif-opa-mcp ingest --file <path> --output ndjson`),
@@ -1382,6 +1517,30 @@ impl OperationDispatcher {
                     output_path: PathBuf::from(format!("audit-trail-{}.xlsx", year)),
                     year: *year,
                 }),
+                OperationKind::RecordDecision {
+                    subject,
+                    rationale,
+                    decided_by,
+                } => Box::new(RecordDecisionOp {
+                    subject: subject.clone(),
+                    rationale: rationale.clone(),
+                    decided_by: decided_by.clone(),
+                }),
+                OperationKind::RecordCost {
+                    subject,
+                    amount,
+                    currency,
+                } => Box::new(RecordCostOp {
+                    subject: subject.clone(),
+                    amount: amount.clone(),
+                    currency: currency.clone(),
+                }),
+                OperationKind::ImportRequirement { source, title } => {
+                    Box::new(ImportRequirementOp {
+                        source: source.clone(),
+                        title: title.clone(),
+                    })
+                }
             };
 
             dispatcher.ops.push(op);
@@ -1608,5 +1767,101 @@ mod tests {
         let result = op.execute(&ctx).unwrap();
         assert!(result.success);
         assert!(result.issues.is_empty());
+    }
+
+    #[test]
+    fn record_decision_op_is_idempotent_and_content_hashed() {
+        let op = RecordDecisionOp {
+            subject: "Adopt sysml-derive over LinkML".to_string(),
+            rationale: "Rust-first, no correctness surprise".to_string(),
+            decided_by: "user".to_string(),
+        };
+        let ctx = test_ctx();
+        let r1 = op.execute(&ctx).unwrap();
+        let r2 = op.execute(&ctx).unwrap();
+        assert!(op.is_idempotent());
+        assert!(r1.success);
+        assert_eq!(r1.issues, r2.issues);
+        assert!(r1.issues[0].starts_with("Decision recorded: dec:"));
+    }
+
+    #[test]
+    fn record_cost_op_is_idempotent_and_content_hashed() {
+        let op = RecordCostOp {
+            subject: "sysml-derive spike".to_string(),
+            amount: "0.00".to_string(),
+            currency: "AUD".to_string(),
+        };
+        let ctx = test_ctx();
+        let r1 = op.execute(&ctx).unwrap();
+        let r2 = op.execute(&ctx).unwrap();
+        assert!(op.is_idempotent());
+        assert!(r1.success);
+        assert_eq!(r1.issues, r2.issues);
+        assert!(r1.issues[0].starts_with("Cost recorded: cost:"));
+    }
+
+    #[test]
+    fn import_requirement_op_is_idempotent_and_content_hashed() {
+        let op = ImportRequirementOp {
+            source: "NIST SSDF".to_string(),
+            title: "System shall log all decisions".to_string(),
+        };
+        let ctx = test_ctx();
+        let r1 = op.execute(&ctx).unwrap();
+        let r2 = op.execute(&ctx).unwrap();
+        assert!(op.is_idempotent());
+        assert!(r1.success);
+        assert_eq!(r1.issues, r2.issues);
+        assert!(r1.issues[0].starts_with("Requirement imported: req:"));
+    }
+
+    #[test]
+    fn dispatcher_from_scheduled_events_wires_new_operation_kinds() {
+        use crate::calendar::{RecurrenceRule, ScheduledEvent};
+
+        fn event(id: &str, operation: OperationKind) -> ScheduledEvent {
+            ScheduledEvent {
+                id: id.to_string(),
+                description: id.to_string(),
+                recurrence: RecurrenceRule::EveryNDays { n: 1 },
+                operation,
+                jurisdiction: None,
+                enabled: true,
+                last_run: None,
+                tags: vec![],
+            }
+        }
+
+        let events = [
+            event(
+                "dec-1",
+                OperationKind::RecordDecision {
+                    subject: "s".to_string(),
+                    rationale: "r".to_string(),
+                    decided_by: "d".to_string(),
+                },
+            ),
+            event(
+                "cost-1",
+                OperationKind::RecordCost {
+                    subject: "s".to_string(),
+                    amount: "1.00".to_string(),
+                    currency: "AUD".to_string(),
+                },
+            ),
+            event(
+                "req-1",
+                OperationKind::ImportRequirement {
+                    source: "src".to_string(),
+                    title: "t".to_string(),
+                },
+            ),
+        ];
+
+        let dispatcher = OperationDispatcher::from_scheduled_events(&events);
+        let results = dispatcher.run_all(&test_ctx());
+        assert_eq!(results.len(), 3);
+        assert!(results.iter().all(|r| r.as_ref().unwrap().success));
     }
 }

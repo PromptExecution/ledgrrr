@@ -51,10 +51,16 @@ pub enum ZLayer {
     Legal,
     FormalProof,
     Attestation,
+    /// SysML-v2 systems-modeling primitives (Requirement/Decision/Cost) —
+    /// a dedicated layer rather than folded into the (still-unimplemented,
+    /// see `docs/ontological-implementation-spec.md` §6.1) proposed `Domain`
+    /// layer, per explicit decision: independent toggle/color in the
+    /// isometric renderer over reusing an ontological-concepts layer.
+    SystemsModel,
 }
 
 impl ZLayer {
-    /// 0-based layer index (max 5).
+    /// 0-based layer index (max 6).
     pub fn index(self) -> u8 {
         match self {
             ZLayer::Document => 0,
@@ -63,6 +69,7 @@ impl ZLayer {
             ZLayer::Legal => 3,
             ZLayer::FormalProof => 4,
             ZLayer::Attestation => 5,
+            ZLayer::SystemsModel => 6,
         }
     }
 
@@ -75,6 +82,7 @@ impl ZLayer {
             ZLayer::Legal => "#b91c1c",
             ZLayer::FormalProof => "#0f766e",
             ZLayer::Attestation => "#b45309",
+            ZLayer::SystemsModel => "#be185d",
         }
     }
 
@@ -87,6 +95,7 @@ impl ZLayer {
             ZLayer::Legal => 408.0,
             ZLayer::FormalProof => 544.0,
             ZLayer::Attestation => 680.0,
+            ZLayer::SystemsModel => 816.0,
         }
     }
 
@@ -99,6 +108,7 @@ impl ZLayer {
             ZLayer::Legal => "Legal",
             ZLayer::FormalProof => "FormalProof",
             ZLayer::Attestation => "Attestation",
+            ZLayer::SystemsModel => "SystemsModel",
         }
     }
 }
@@ -127,6 +137,12 @@ pub enum SemanticType {
     Issue,
     Proof,
     Attestation,
+    /// SysML-v2 systems-modeling requirement record — see `ZLayer::SystemsModel`.
+    Requirement,
+    /// SysML-v2 systems-modeling decision record — see `ZLayer::SystemsModel`.
+    Decision,
+    /// SysML-v2 systems-modeling cost record — see `ZLayer::SystemsModel`.
+    Cost,
     Unknown,
 }
 
@@ -145,6 +161,9 @@ impl SemanticType {
             SemanticType::Issue => "issue",
             SemanticType::Proof => "proof",
             SemanticType::Attestation => "attestation",
+            SemanticType::Requirement => "requirement",
+            SemanticType::Decision => "decision",
+            SemanticType::Cost => "cost",
             SemanticType::Unknown => "unknown",
         }
     }
@@ -641,15 +660,29 @@ mod tests {
             ZLayer::Legal,
             ZLayer::FormalProof,
             ZLayer::Attestation,
+            ZLayer::SystemsModel,
         ];
         for layer in all {
             assert!(
-                layer.index() <= 5,
-                "ZLayer::{:?} has index {} > 5",
+                layer.index() <= 6,
+                "ZLayer::{:?} has index {} > 6",
                 layer,
                 layer.index()
             );
         }
+    }
+
+    #[test]
+    fn z_layer_systems_model_is_dedicated_not_pipeline() {
+        // Decision 2: Requirement/Decision/Cost content gets its own layer,
+        // not folded into an existing one (e.g. Pipeline or a future Domain).
+        assert_eq!(ZLayer::SystemsModel.index(), 6);
+        assert_eq!(ZLayer::SystemsModel.label(), "SystemsModel");
+        assert_ne!(ZLayer::SystemsModel.color(), ZLayer::Pipeline.color());
+        assert_eq!(
+            ZLayer::SystemsModel.base_z(),
+            ZLayer::Attestation.base_z() + 136.0
+        );
     }
 
     #[test]
@@ -666,6 +699,9 @@ mod tests {
             SemanticType::Issue,
             SemanticType::Proof,
             SemanticType::Attestation,
+            SemanticType::Requirement,
+            SemanticType::Decision,
+            SemanticType::Cost,
             SemanticType::Unknown,
         ];
         for st in all {
@@ -771,6 +807,7 @@ mod tests {
             ZLayer::Legal,
             ZLayer::FormalProof,
             ZLayer::Attestation,
+            ZLayer::SystemsModel,
         ];
         for layer in all {
             assert!(!layer.to_string().is_empty());
@@ -791,6 +828,9 @@ mod tests {
             SemanticType::Issue,
             SemanticType::Proof,
             SemanticType::Attestation,
+            SemanticType::Requirement,
+            SemanticType::Decision,
+            SemanticType::Cost,
             SemanticType::Unknown,
         ];
         for st in all {

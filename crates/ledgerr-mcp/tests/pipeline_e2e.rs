@@ -180,7 +180,7 @@ fn pipe_viz_manifest_entry_count_matches_registered_types() {
     // `impl HasVisualization` blocks in `ledger_core::iso_objects`. It must be
     // regenerated (and this count updated) whenever an impl is added, removed,
     // or registered/deregistered in xtask/src/viz_manifest.rs.
-    const EXPECTED_ENTRY_COUNT: usize = 28;
+    const EXPECTED_ENTRY_COUNT: usize = 31;
 
     let manifest_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -218,6 +218,9 @@ fn pipe_viz_manifest_entry_count_matches_registered_types() {
             "AuRdActivity",
             "UsRdcCredit",
             "CryptoWallet",
+            "Requirement",
+            "Decision",
+            "Cost",
         ] {
             assert!(names.contains(&expected), "missing {expected} entry");
         }
