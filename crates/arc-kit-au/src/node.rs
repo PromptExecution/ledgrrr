@@ -124,7 +124,7 @@ pub fn content_hash(parts: &[&str]) -> String {
 }
 
 /// Source document evidence.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, SysmlBlock)]
 pub struct SourceDoc {
     /// Original filename (must follow VENDOR--ACCOUNT--YYYY-MM--DOCTYPE.ext)
     pub filename: String,
@@ -151,7 +151,7 @@ impl SourceDoc {
 }
 
 /// Extracted row from document parsing.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, SysmlBlock)]
 pub struct ExtractedRow {
     pub account_id: String,
     pub date: String,
@@ -176,7 +176,7 @@ impl ExtractedRow {
 }
 
 /// Deterministic transaction record.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, SysmlBlock)]
 pub struct Transaction {
     /// Blake3 hash of account/date/amount/description
     pub tx_id: String,
@@ -194,7 +194,7 @@ impl Transaction {
 }
 
 /// Classification applied to transaction.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, SysmlBlock)]
 pub struct Classification {
     pub tx_id: String,
     pub category: String,
@@ -221,7 +221,7 @@ impl Classification {
 }
 
 /// Model-generated classification proposal.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, SysmlBlock)]
 pub struct ModelProposal {
     pub tx_id: String,
     pub model_name: String,
@@ -247,7 +247,7 @@ impl ModelProposal {
 }
 
 /// Operator approval/rejection of model proposal.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, SysmlBlock)]
 pub struct OperatorApproval {
     pub tx_id: String,
     pub operator_id: String,
@@ -275,7 +275,7 @@ impl OperatorApproval {
 /// Distinct from Classification — validation artifacts represent rule/constraint
 /// failures, not categorization decisions. PRD-4 Phase 2 requires
 /// classification_artifact → validation_artifact as a separate chain step.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, SysmlBlock)]
 pub struct ValidationIssue {
     pub tx_id: String,
     pub rule: String,
@@ -301,7 +301,7 @@ impl ValidationIssue {
 }
 
 /// Final workbook row in CPA export.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, SysmlBlock)]
 pub struct WorkbookRow {
     pub tx_id: String,
     pub sheet_name: String,
