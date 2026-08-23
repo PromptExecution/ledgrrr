@@ -1,0 +1,43 @@
+# Plain-JVM container for the SysML v2 Pilot Implementation "conformance oracle".
+#
+# This does NOT use GraalVM native-image. See README.md for why: native-image was
+# attempted (Containerfile.native-image) and failed. This Containerfile satisfies the
+# project rule "any JVM-only tool is only usable as a container, never installed on
+# the host" by running the officially-released fat jar as a normal containerized JVM
+# process, built and run with podman (never docker).
+#
+# The fat jar (org.omg.sysml.jupyter-sysml-kernel-<version>-all.jar) is the project's
+# own released artifact from the "jupyter-sysml-kernel-<version>.zip" GitHub release
+# asset. It bundles every dependency (EMF, Xtext runtime, Guice, the KerML/SysML
+# grammars and standalone setup classes) so no Tycho/Eclipse-platform build is needed
+# to obtain it here — we just run it, we don't build it, which is what "usable as a
+# containerized JVM process" requires.
+FROM docker.io/eclipse-temurin:21-jre-jammy
+
+ARG SYSML_RELEASE_TAG=2026-07
+ARG SYSML_KERNEL_ZIP=jupyter-sysml-kernel-0.61.0.zip
+
+RUN apt-get update && apt-get install -y --no-install-recommends unzip curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+RUN curl -fL -o /tmp/kernel.zip \
+      "https://github.com/Systems-Modeling/SysML-v2-Pilot-Implementation/releases/download/${SYSML_RELEASE_TAG}/${SYSML_KERNEL_ZIP}" \
+    && unzip -q /tmp/kernel.zip -d /tmp/kernel-extract \
+    && find /tmp/kernel-extract -name '*-all.jar' -exec mv {} /app/sysml-kernel-all.jar \; \
+    && rm -rf /tmp/kernel.zip /tmp/kernel-extract \
+    && test -s /app/sysml-kernel-all.jar
+
+# Standard KerML/SysML library sources, taken from this same release's source tree,
+# needed to resolve cross-references like ScalarValues::Integer used by real models.
+COPY sysml.library /app/sysml.library
+
+COPY oracle.sh /app/oracle.sh
+RUN chmod +x /app/oracle.sh
+
+# Input models are expected to be bind-mounted (or copied) under /work.
+VOLUME ["/work"]
+WORKDIR /work
+
+ENTRYPOINT ["/app/oracle.sh"]

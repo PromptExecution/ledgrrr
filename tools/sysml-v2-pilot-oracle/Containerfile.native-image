@@ -1,0 +1,49 @@
+# Attempt at a GraalVM native-image build of the SysML v2 Pilot Implementation's
+# standalone entry points (org.omg.sysml.interactive.SysMLInteractive /
+# org.omg.sysml.xtext.util.SysML2JSON), built from the project's own released fat jar.
+#
+# EXPECTED / OBSERVED: the build itself (native-image compilation) actually succeeds —
+# but only because --report-unsupported-elements-at-runtime defers reflection-registration
+# failures to runtime instead of failing the build. See README.md for what happens when
+# the resulting binary is actually run: it fails at runtime on real EMF/Guice reflection
+# it wasn't given metadata for. Kept here, not deleted, because that failure — and
+# exactly where it happens — is the deliverable of this spike, not a mistake to hide.
+FROM ghcr.io/graalvm/native-image-community:21 AS builder
+
+ARG SYSML_RELEASE_TAG=2026-07
+ARG SYSML_KERNEL_ZIP=jupyter-sysml-kernel-0.61.0.zip
+
+RUN microdnf install -y unzip curl findutils && microdnf clean all
+
+WORKDIR /build
+
+RUN curl -fL -o /tmp/kernel.zip \
+      "https://github.com/Systems-Modeling/SysML-v2-Pilot-Implementation/releases/download/${SYSML_RELEASE_TAG}/${SYSML_KERNEL_ZIP}" \
+    && unzip -q /tmp/kernel.zip -d /tmp/kernel-extract \
+    && find /tmp/kernel-extract -name '*-all.jar' -exec mv {} /build/sysml-kernel-all.jar \; \
+    && rm -rf /tmp/kernel.zip /tmp/kernel-extract \
+    && test -s /build/sysml-kernel-all.jar
+
+# No hand-written reflect-config.json/resource-config.json is supplied here on purpose:
+# the goal of this attempt is to see how far the *unassisted* native-image build gets
+# against a large Guice+EMF+Xtext application, which is the realistic starting point
+# for this class of tool (see README for why full manual reachability-metadata
+# authoring for an app this size is its own multi-week effort, not attempted here).
+RUN native-image \
+      --no-fallback \
+      --report-unsupported-elements-at-runtime \
+      -H:+AddAllCharsets \
+      -cp /build/sysml-kernel-all.jar \
+      org.omg.sysml.xtext.util.SysML2JSON \
+      -o /build/sysml2json-native \
+    || (echo "NATIVE_IMAGE_BUILD_FAILED" && exit 1)
+
+# NOT `FROM scratch`: native-image's default output here is dynamically linked against
+# glibc + libz (confirmed with `ldd` on the builder's output) — scratch has no dynamic
+# linker at all, which fails before the actual reflection/EMF question is even reached.
+# A minimal glibc base is still enormously smaller than the JVM fallback image.
+FROM docker.io/library/debian:12-slim
+RUN apt-get update && apt-get install -y --no-install-recommends zlib1g && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /build/sysml2json-native /sysml2json-native
+COPY sysml.library /app/sysml.library
+ENTRYPOINT ["/sysml2json-native"]
