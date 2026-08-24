@@ -15,7 +15,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use ufo_types::{
     satisfies::{Constraint, Disposition, NodeId, SatisfiesResult, Satisfies},
-    ufo::MomentStereotype,
+    stereotype::UfoStereotype,
     iso::{Currency, Lei},
 };
 
@@ -96,7 +96,7 @@ impl Satisfies<AuRdEligibility> for AuRdActivity {
                 },
                 confidence: 0.0,
                 evidence_nodes: vec![node],
-                ufo_category: MomentStereotype::Mode,
+                ufo_category: UfoStereotype::Mode("AuRdActivity".into()),
             };
         }
 
@@ -112,7 +112,7 @@ impl Satisfies<AuRdEligibility> for AuRdActivity {
                 },
                 confidence: 0.0,
                 evidence_nodes: vec![node],
-                ufo_category: MomentStereotype::Mode,
+                ufo_category: UfoStereotype::Mode("AuRdActivity".into()),
             };
         }
 
@@ -125,7 +125,7 @@ impl Satisfies<AuRdEligibility> for AuRdActivity {
             disposition: Disposition::Satisfied,
             confidence,
             evidence_nodes: vec![node],
-            ufo_category: MomentStereotype::Relator,
+            ufo_category: UfoStereotype::Relator("AuRdActivity".into()),
         }
     }
 }
@@ -210,7 +210,7 @@ impl Satisfies<AuRdEligibility> for AuRdExpenditure {
                 },
                 confidence: 0.0,
                 evidence_nodes: vec![node],
-                ufo_category: MomentStereotype::Mode,
+                ufo_category: UfoStereotype::Mode("AuRdExpenditure".into()),
             };
         }
 
@@ -220,7 +220,7 @@ impl Satisfies<AuRdEligibility> for AuRdExpenditure {
             disposition: Disposition::Satisfied,
             confidence,
             evidence_nodes: vec![node],
-            ufo_category: MomentStereotype::Relator,
+            ufo_category: UfoStereotype::Relator("AuRdExpenditure".into()),
         }
     }
 }
