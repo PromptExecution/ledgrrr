@@ -266,7 +266,7 @@ fn cdp_evaluate(expression: &str) -> Result<Value, String> {
         json!({
             "id": 1,
             "method": "Runtime.evaluate",
-            "params": {"expression": expression, "returnByValue": true}
+            "params": {"expression": expression, "returnByValue": true, "awaitPromise": true}
         }),
     ))
 }
