@@ -18,4 +18,4 @@ proc-macro2 = { workspace = true }
 # a real SysML v2 grammar (ufo_types::sysml, wired to sysml-v2-parser) —
 # see tests/real_grammar_validation.rs. Not a runtime dependency of the
 # proc-macro itself.
-ufo-types = { path = "../ufo-types" }
+ufo-types = { git = "https://github.com/promptexecution/ufo-types", rev = "1881d67", features = ["sysml"] }  # PR #3 branch tip, not yet merged/tagged

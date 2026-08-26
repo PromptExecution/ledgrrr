@@ -133,7 +133,8 @@ fn handle_request(request: Value) -> Option<Value> {
                 }
                 "l3dg3rr_list_accounts" => mcp_adapter::handle_list_accounts(global_raw_service()),
                 "l3dg3rr_get_pipeline_status" => {
-                    mcp_adapter::handle_pipeline_status(true, true, true, Vec::new())
+                    let docling_ready = b00t_iface::docling::DoclingProcessSurface::new().is_ready();
+                    mcp_adapter::handle_pipeline_status(true, true, docling_ready, Vec::new())
                 }
                 "proxy_docling_ingest_pdf" => {
                     let arguments = params.get("arguments").cloned().unwrap_or(Value::Null);

@@ -1,6 +1,5 @@
 [workspace]
 members = [
-  "crates/ufo-types",
   "crates/ledger-core",
   "crates/ledger-attest",
   "crates/ledgerr-focus",

@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Regenerates the two artifacts `just check-drift` watches for staleness
+# (docs/mcp-capability-contract.md, ui/docs/public/viz-manifest.json) and
+# fails the commit locally if either one is out of date — see ledgrrr#194.
+#
+# Deliberately lighter than `just check-drift`: it skips the bindings.ts
+# check (needs a full `cargo build -p ledgerr-host --bin host-tauri`, and
+# specta requires nightly Rust on some platforms — too slow/flaky for a
+# per-commit hook) and only covers the two regen commands that are cheap
+# enough to run on every commit.
+set -euo pipefail
+
+FAIL=0
+
+echo "pre-commit: regenerating docs/mcp-capability-contract.md..."
+if cargo run -p ledgerr-mcp --bin regen-docs >/tmp/pre-commit-regen-docs.log 2>&1; then
+    if ! git diff --exit-code docs/mcp-capability-contract.md; then
+        echo "FAIL: docs/mcp-capability-contract.md was stale — regenerated above."
+        echo "      Review the diff, then: git add docs/mcp-capability-contract.md"
+        FAIL=1
+    fi
+else
+    echo "FAIL: regen-docs failed to run — see /tmp/pre-commit-regen-docs.log"
+    cat /tmp/pre-commit-regen-docs.log
+    FAIL=1
+fi
+
+echo "pre-commit: regenerating ui/docs/public/viz-manifest.json..."
+if cargo run -p xtask-mcpb -- export-viz-manifest >/tmp/pre-commit-export-viz-manifest.log 2>&1; then
+    if ! git diff --exit-code ui/docs/public/viz-manifest.json; then
+        echo "FAIL: ui/docs/public/viz-manifest.json was stale — regenerated above."
+        echo "      Review the diff, then: git add ui/docs/public/viz-manifest.json"
+        FAIL=1
+    fi
+else
+    echo "FAIL: export-viz-manifest failed to run — see /tmp/pre-commit-export-viz-manifest.log"
+    cat /tmp/pre-commit-export-viz-manifest.log
+    FAIL=1
+fi
+
+if [ "$FAIL" -ne 0 ]; then
+    echo ""
+    echo "pre-commit: generated artifacts are out of date (see FAIL lines above)."
+    echo "Stage the regenerated files and re-commit, or run 'just check-drift' for the full check."
+    exit 1
+fi
+
+echo "pre-commit: generated artifacts up to date."
