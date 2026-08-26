@@ -1,3 +1,13 @@
+// cytoscape/cytoscape-dagre used to load as globals via <script src="https://unpkg.com/...">
+// in index.html, which tauri.conf.json's `script-src 'self'` CSP silently blocks (no CDN
+// script survives that policy) -- the Viz panel's cy_div/cytoscape guard below just no-ops
+// instead of throwing, so this was invisible unless you went looking for it. Bundling them
+// as real deps keeps the CSP as-is and the graph runtime local-first, matching the rest of
+// this project's stated design.
+import cytoscape from "cytoscape";
+import cytoscapeDagre from "cytoscape-dagre";
+cytoscape.use(cytoscapeDagre);
+
 function tauriApi(){return window.__TAURI__}
 function invoke(cmd,args){var api=window.__TAURI__;if(!api)return Promise.reject(new Error('no __TAURI__'));if(!api.core)return Promise.reject(new Error('no .core'));return api.core.invoke(cmd,args)}
 function listen(e,h){var api=window.__TAURI__;if(!api)return Promise.reject(new Error('no __TAURI__'));return api.event.listen(e,h)}
