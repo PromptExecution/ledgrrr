@@ -193,7 +193,12 @@ fn main() {
                         let dump_path =
                             remote_pilot::dump_session_log(&pilot_state, &history_debug, &review_log_debug);
                         eprintln!("[remote-pilot] timeout reached — session log dumped to {}", dump_path.display());
-                        app_handle.exit(0);
+                        // Tauri (and its internal tokio runtime) don't tolerate `exit()`
+                        // called from an arbitrary OS thread -- observed panic: "Cannot
+                        // drop a runtime in a context where blocking is not allowed."
+                        // Dispatch onto the main/event-loop thread instead.
+                        let exit_handle = app_handle.clone();
+                        let _ = app_handle.run_on_main_thread(move || exit_handle.exit(0));
                         break;
                     }
                     std::thread::sleep(std::time::Duration::from_secs(1));
