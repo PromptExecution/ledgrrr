@@ -90,13 +90,18 @@ impl ProcessSurface for DoclingProcessSurface {
     }
 
     fn init(&mut self, config: Self::Config) -> Result<(), Self::Error> {
-        if !uv_on_path() {
-            return Err(DoclingError::NotOnPath);
-        }
+        // Checkout-existence checked before the uv binary check so this stays
+        // deterministic in environments (e.g. CI) that have neither uv nor the
+        // checkout — CheckoutMissing is the more specific/actionable error in
+        // that case, and it must not depend on whether uv happens to be
+        // installed on the machine running the check.
         if !config.reqif_opa_mcp_dir.exists() {
             return Err(DoclingError::CheckoutMissing(
                 config.reqif_opa_mcp_dir.display().to_string(),
             ));
+        }
+        if !uv_on_path() {
+            return Err(DoclingError::NotOnPath);
         }
         tracing::info!(
             "DoclingProcessSurface initialized: sidecar at {}",
