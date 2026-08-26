@@ -1,8 +1,27 @@
 import * as esbuild from "esbuild";
-import { readFileSync } from "fs";
+import { readFileSync, copyFileSync, mkdirSync } from "fs";
 
 const isWatch = process.argv.includes("--watch");
 const start = Date.now();
+
+// Self-hosted fonts (CSP is script-src/default-src 'self' -- no CDN fonts,
+// same reason cytoscape/dagre got vendored instead of loaded from unpkg.com;
+// this is also a local-first app, no runtime dependency on fonts.googleapis.com).
+const FONTS = [
+  ["@fontsource/space-grotesk", "space-grotesk-latin-400-normal.woff2"],
+  ["@fontsource/space-grotesk", "space-grotesk-latin-500-normal.woff2"],
+  ["@fontsource/space-grotesk", "space-grotesk-latin-600-normal.woff2"],
+  ["@fontsource/space-grotesk", "space-grotesk-latin-700-normal.woff2"],
+  ["@fontsource/public-sans", "public-sans-latin-400-normal.woff2"],
+  ["@fontsource/public-sans", "public-sans-latin-600-normal.woff2"],
+  ["@fontsource/jetbrains-mono", "jetbrains-mono-latin-400-normal.woff2"],
+  ["@fontsource/jetbrains-mono", "jetbrains-mono-latin-500-normal.woff2"],
+];
+mkdirSync("fonts", { recursive: true });
+for (const [pkg, file] of FONTS) {
+  copyFileSync(`node_modules/${pkg}/files/${file}`, `fonts/${file}`);
+}
+console.log(`[ui] copied ${FONTS.length} font files`);
 
 const ctx = await esbuild.context({
   entryPoints: ["src/main.ts"],
