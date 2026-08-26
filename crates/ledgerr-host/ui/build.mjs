@@ -11,7 +11,6 @@ const ctx = await esbuild.context({
   outfile: "main.js",
   minify: false,
   sourcemap: "inline",
-  external: ["cytoscape", "dagre", "cytoscape-dagre"],
   logLevel: "info",
 });
 

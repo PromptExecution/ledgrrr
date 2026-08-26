@@ -1,3 +1,13 @@
+// cytoscape/cytoscape-dagre used to load as globals via <script src="https://unpkg.com/...">
+// in index.html, which tauri.conf.json's `script-src 'self'` CSP silently blocks (no CDN
+// script survives that policy) -- the Viz panel's cy_div/cytoscape guard below just no-ops
+// instead of throwing, so this was invisible unless you went looking for it. Bundling them
+// as real deps keeps the CSP as-is and the graph runtime local-first, matching the rest of
+// this project's stated design.
+import cytoscape from "cytoscape";
+import cytoscapeDagre from "cytoscape-dagre";
+cytoscape.use(cytoscapeDagre);
+
 function tauriApi(){return window.__TAURI__}
 function invoke(cmd,args){var api=window.__TAURI__;if(!api)return Promise.reject(new Error('no __TAURI__'));if(!api.core)return Promise.reject(new Error('no .core'));return api.core.invoke(cmd,args)}
 function listen(e,h){var api=window.__TAURI__;if(!api)return Promise.reject(new Error('no __TAURI__'));return api.event.listen(e,h)}
@@ -315,17 +325,21 @@ function initVizPanel(){
   var cy_div=document.getElementById('cy');
   if(!cy_div||typeof cytoscape==='undefined')return;
   var graphCmd=_vizActiveGraph==='type'?'get_type_graph':'get_holon_viz_graph';
-  invoke(graphCmd).then(function(data){
+  invoke(graphCmd).then(function(raw){
+    // get_type_graph/get_holon_viz_graph return Result<String, String> on the
+    // Rust side (desktop_json()) -- the resolved value here is a JSON string,
+    // not an object. Without this parse, data.nodes/.edges were always
+    // undefined and the graph silently rendered with zero elements, no error.
+    var data=typeof raw==='string'?JSON.parse(raw):raw;
     var elements=[];
     (data.nodes||[]).forEach(function(n){elements.push({data:n.data});});
     (data.edges||[]).forEach(function(e){elements.push({data:e.data});});
     _vizAllElements=elements;
-    window._cy=cytoscape({
+    var cyOptions={
       container:cy_div,
       elements:elements,
       minZoom:0.18,
       maxZoom:3.0,
-      layout:{name:'dagre',rankDir:'TB',nodeSep:50,rankSep:70,animate:false},
       style:[
         {selector:'node',style:{'label':'data(label)','background-color':'#1a6fa8','color':'#fff',
           'text-valign':'center','text-halign':'center','font-size':'11px',
@@ -370,7 +384,22 @@ function initVizPanel(){
         {selector:'node[z_layer="Document"]',style:{'background-color':'#5f7480'}},
         {selector:'edge',style:{'label':'data(label)','font-size':'9px','color':'#173b4a','text-background-color':'#ffffff','text-background-opacity':0.92,'text-background-padding':'2px'}},
       ]
-    });
+    };
+    function buildCy(layoutName){
+      cyOptions.layout={name:layoutName,rankDir:'TB',nodeSep:50,rankSep:70,animate:false};
+      return cytoscape(cyOptions);
+    }
+    try{
+      window._cy=buildCy('dagre');
+    }catch(e){
+      // dagre's layered-graph algorithm does recursive DFS internally and can
+      // throw "Maximum call stack size exceeded" on larger/cyclic graphs (a
+      // known dagre.js limitation, not specific to this data) -- fall back to
+      // a non-recursive layout instead of leaving the panel permanently blank.
+      console.error('[viz] dagre layout failed, falling back to breadthfirst:',e);
+      if(window._cy&&window._cy.destroy)window._cy.destroy();
+      window._cy=buildCy('breadthfirst');
+    }
     _vizInitialized=true;
     setupVizControls();
     setVizDetail(null);
@@ -384,9 +413,14 @@ function initVizPanel(){
 
 function runVizLayout(){
   if(!window._cy)return;
-  var layout=window._cy.layout({name:'dagre',rankDir:'TB',nodeSep:50,rankSep:70,animate:false});
   window._cy.one('layoutstop',function(){window._cy.fit(window._cy.elements().not('.hidden-filter'),VIZ_FIT_PADDING);});
-  layout.run();
+  try{
+    window._cy.layout({name:'dagre',rankDir:'TB',nodeSep:50,rankSep:70,animate:false}).run();
+  }catch(e){
+    // See initVizPanel's buildCy() for why dagre can throw on this data.
+    console.error('[viz] dagre re-layout failed, falling back to breadthfirst:',e);
+    window._cy.layout({name:'breadthfirst',animate:false}).run();
+  }
 }
 
 function zoomVizBy(factor){

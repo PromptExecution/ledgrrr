@@ -6,6 +6,8 @@
 #[cfg(target_os = "windows")]
 mod commands;
 #[cfg(target_os = "windows")]
+mod remote_pilot;
+#[cfg(target_os = "windows")]
 mod state;
 #[cfg(target_os = "windows")]
 mod tray;
@@ -48,6 +50,33 @@ fn main() {
     }
     if let Ok(shots) = std::env::var("TAURI_TEST_SCREENSHOT_PATH") {
         eprintln!("[telemetry] TAURI_TEST_SCREENSHOT_PATH={shots}");
+    }
+
+    // --timeout <seconds>: test/debug mode. Arms a title-bar countdown and
+    // starts the remote-pilot HTTP interface (remote_pilot::REMOTE_PILOT_ADDR)
+    // so a driver (human or LLM) can evaluate JS / screenshot / switch panels
+    // via CDP and read back what was sent. At 0 the session log (chat
+    // history, review log, every remote-pilot command received) is dumped to
+    // the OS temp dir and the app exits. Absent --timeout, none of this
+    // starts and the app behaves exactly as it did before — no new port
+    // opens for a normal end-user launch.
+    let cli_timeout_secs: Option<u64> = {
+        let args: Vec<String> = std::env::args().collect();
+        args.iter().position(|a| a == "--timeout").and_then(|i| {
+            args.get(i + 1).and_then(|v| v.parse::<u64>().ok())
+        })
+    };
+    let remote_pilot_state = std::sync::Arc::new(remote_pilot::RemotePilotState::default());
+    if let Some(secs) = cli_timeout_secs {
+        remote_pilot_state.arm_timeout(std::time::Duration::from_secs(secs));
+        if let Err(e) = remote_pilot::spawn(remote_pilot_state.clone()) {
+            eprintln!("[remote-pilot] failed to start on {}: {e}", remote_pilot::REMOTE_PILOT_ADDR);
+        } else {
+            eprintln!(
+                "[remote-pilot] listening on {} — timeout {secs}s",
+                remote_pilot::REMOTE_PILOT_ADDR
+            );
+        }
     }
 
     use ledgerr_host::chat::{ChatTurn, ReviewLog};
@@ -114,6 +143,8 @@ fn main() {
         .export(Typescript::default(), "../ui/bindings.ts")
         .expect("Failed to export TS bindings");
 
+    let setup_remote_pilot_state = remote_pilot_state.clone();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(app_state)
@@ -144,6 +175,36 @@ fn main() {
                     tray::setup_tray(app);
                 }
             }
+
+            if setup_remote_pilot_state.remaining().is_some() {
+                let app_handle = app.handle().clone();
+                let pilot_state = setup_remote_pilot_state.clone();
+                let base_title = title.clone();
+                std::thread::spawn(move || loop {
+                    let Some(remaining) = pilot_state.remaining() else { break };
+                    let secs = remaining.as_secs();
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.set_title(&format!("{base_title} — closing in {secs}s"));
+                    }
+                    if secs == 0 {
+                        let state = app_handle.state::<AppState>();
+                        let history_debug = format!("{:?}", state.history.lock().unwrap());
+                        let review_log_debug = format!("{:?}", state.review_log.lock().unwrap());
+                        let dump_path =
+                            remote_pilot::dump_session_log(&pilot_state, &history_debug, &review_log_debug);
+                        eprintln!("[remote-pilot] timeout reached — session log dumped to {}", dump_path.display());
+                        // Tauri (and its internal tokio runtime) don't tolerate `exit()`
+                        // called from an arbitrary OS thread -- observed panic: "Cannot
+                        // drop a runtime in a context where blocking is not allowed."
+                        // Dispatch onto the main/event-loop thread instead.
+                        let exit_handle = app_handle.clone();
+                        let _ = app_handle.run_on_main_thread(move || exit_handle.exit(0));
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(specta_builder.invoke_handler())

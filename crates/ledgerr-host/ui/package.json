@@ -8,6 +8,11 @@
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit"
   },
+  "dependencies": {
+    "cytoscape": "^3.30.0",
+    "cytoscape-dagre": "^2.5.0",
+    "dagre": "^0.8.5"
+  },
   "devDependencies": {
     "typescript": "^5.8.0",
     "esbuild": "^0.25.0",
