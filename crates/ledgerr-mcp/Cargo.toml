@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 agentmesh = { workspace = true }
+b00t-iface = { path = "../b00t-iface" }
 beankeeper-bridge = { path = "../beankeeper-bridge" }
 ofx-rs = { workspace = true }
 arc-kit-au = { path = "../arc-kit-au" }
