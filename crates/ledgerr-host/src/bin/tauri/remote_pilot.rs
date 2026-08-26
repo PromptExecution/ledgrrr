@@ -346,7 +346,7 @@ mod tests {
 
     #[test]
     fn find_header_end_locates_terminator() {
-        assert_eq!(find_header_end(b"POST / HTTP/1.1\r\n\r\n{}"), Some(16));
+        assert_eq!(find_header_end(b"POST / HTTP/1.1\r\n\r\n{}"), Some(15));
         assert_eq!(find_header_end(b"no terminator here"), None);
     }
 
