@@ -4778,6 +4778,7 @@ version = "1.10.0"
 dependencies = [
  "agentmesh",
  "arc-kit-au",
+ "b00t-iface",
  "beankeeper-bridge",
  "blake3",
  "calamine",

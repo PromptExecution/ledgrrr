@@ -54,76 +54,19 @@ mod integration {
     // -------------------------------------------------------------------------
     // Test #6 — PDF ingest via subprocess sidecar
     // -------------------------------------------------------------------------
-
-    /// Verify that `IngestStatementOp::execute()` can process a fixture PDF via
-    /// the Docling sidecar and produce at least one ingested transaction row.
-    ///
-    /// # What needs to be built first
-    /// Phase-2 work: `IngestStatementOp::execute()` must:
-    ///   - Spawn `docling --pdf <path> --output ndjson` (or equivalent)
-    ///   - Parse NDJSON stdout into transaction rows
-    ///   - Compute Blake3 content-hash IDs
-    ///   - Return `OperationResult { success: true, items_processed: N }`
-    ///
-    /// Also requires: `tests/fixtures/sample_hsbc_statement.pdf`
-    #[test]
-    #[ignore = "requires IngestStatementOp::execute() subprocess wiring — phase-2 work; also needs fixture PDF"]
-    fn test_ingest_statement_via_pdf_sidecar() {
-        // DESIRED BEHAVIOR:
-        // IngestStatementOp::execute() should:
-        //   1. Glob ctx.working_dir / self.source_glob for PDF files
-        //   2. For each file, spawn the Docling sidecar CLI:
-        //        docling --pdf <path> --output ndjson
-        //   3. Read NDJSON lines from stdout; deserialize each as a transaction row
-        //   4. Compute Blake3 ID: blake3(account_id + date + amount + description)
-        //   5. Upsert rows (skip duplicates by hash)
-        //   6. Return OperationResult { success: true, items_processed: rows_seen,
-        //                               items_flagged: rows_needing_review }
-        //
-        // The fixture at tests/fixtures/sample_hsbc_statement.pdf should contain
-        // exactly one transaction line for deterministic test assertions.
-        use crate::ledger_ops::{
-            IngestStatementOp, LedgerOpError, LedgerOperation, OperationContext,
-        };
-
-        let op = IngestStatementOp {
-            source_glob: "tests/fixtures/*.pdf".to_string(),
-            vendor_hint: Some("HSBC".to_string()),
-        };
-
-        // Point working_dir at the repo root so the glob resolves correctly.
-        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap() // crates/ledger-core → crates
-            .parent()
-            .unwrap() // crates → repo root
-            .to_path_buf();
-
-        let ctx = OperationContext::new(repo_root, PathBuf::from("/tmp/rules"));
-
-        let result = op.execute(&ctx);
-
-        // Current expectation: returns NotImplemented (phase-1 stub)
-        // Future expectation after phase-2: returns Ok with items_processed > 0
-        match &result {
-            Err(LedgerOpError::NotImplemented(_)) => {
-                panic!(
-                    "IngestStatementOp still returns NotImplemented — implement PDF sidecar \
-                     subprocess call in phase-2 to make this test pass"
-                );
-            }
-            Ok(op_result) if !op_result.success => {
-                panic!("PDF ingest returned success=false: {:?}", op_result.issues);
-            }
-            Ok(op_result) => {
-                assert!(
-                    op_result.items_processed > 0,
-                    "should have ingested at least one row from fixture PDF; got 0"
-                );
-            }
-            Err(e) => panic!("unexpected error during PDF ingest: {e:?}"),
-        }
-    }
+    //
+    // This used to be a `#[ignore]`d spec-as-test documenting desired behavior
+    // for a not-yet-built `IngestStatementOp::execute()` PDF branch that would
+    // shell out directly to a `docling` binary. That's no longer the shape of
+    // the system: PDF ingest is implemented as its own `PdfIngestOp` (see
+    // `ledger_ops.rs`), which shells out to a `reqif-opa-mcp` Python sidecar
+    // via `uv run python -m reqif_ingest_cli extract` and parses its output as
+    // a `docling_bridge::DoclingDocumentGraph`. `IngestStatementOp::execute()`
+    // now deliberately rejects `.pdf` input and points callers at `PdfIngestOp`
+    // instead (see `ingest_statement_op_rejects_pdf_with_clear_error` in
+    // `ledger_ops.rs`). `PdfIngestOp`'s own tests, including a real
+    // (`#[ignore]`d) subprocess integration test, live alongside it in
+    // `ledger_ops.rs` rather than here.
 
     // -------------------------------------------------------------------------
     // Test #7 — Cedar/AGT gate filters transactions by compliance grade

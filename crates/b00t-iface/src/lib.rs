@@ -20,6 +20,7 @@
 //! - `autoresearch`: adds reqwest for remote eval dispatch
 
 pub mod core;
+pub mod docling;
 pub mod exec;
 pub mod metric;
 pub mod sarif;
