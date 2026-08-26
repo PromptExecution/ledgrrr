@@ -128,6 +128,7 @@ fn route(raw: &[u8], state: &Arc<RemotePilotState>) -> String {
     };
     let body = &raw[header_end + 4..];
     let Ok(request) = serde_json::from_slice::<Value>(body) else {
+        let _ = std::fs::write(std::env::temp_dir().join("host-tauri-remote-pilot-badrequest.txt"), raw);
         return json_response(400, &json!({"error": "invalid json body"}));
     };
     let method = request.get("method").and_then(Value::as_str).unwrap_or("");
