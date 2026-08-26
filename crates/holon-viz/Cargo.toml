@@ -3,6 +3,7 @@ name = "holon-viz"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Holonic visualization engine — Cytoscape.js JSON, SysML-v2, OWL2/Turtle emission, and append-only process control"
 
 [dependencies]
