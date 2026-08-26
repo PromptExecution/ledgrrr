@@ -115,8 +115,15 @@ function refreshDashboard(){
       });
     }
   }).catch(function(err){
+    var message=err&&err.message||err||'unknown error';
     var sb=document.getElementById('status-bar');
-    if(sb)sb.textContent='Dashboard refresh failed: '+(err&&err.message||err||'unknown error');
+    if(sb)sb.textContent='Dashboard refresh failed: '+message;
+    // Without this, #ev-last-action/#ev-provider-status stay on their
+    // template's hardcoded "Loading..." forever on failure -- indistinguishable
+    // from "still fetching" when it's actually "will never succeed until the
+    // backend service is running." Say so plainly instead.
+    setTextSafe(document.getElementById('ev-last-action'),'Unavailable — '+message);
+    setTextSafe(document.getElementById('ev-provider-status'),'Unavailable — '+message);
   });
 }
 
