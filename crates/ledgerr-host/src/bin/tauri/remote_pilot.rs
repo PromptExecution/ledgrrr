@@ -339,3 +339,196 @@ pub fn dump_session_log(state: &RemotePilotState, history_debug: &str, review_lo
     let _ = std::fs::write(&path, serde_json::to_string_pretty(&dump).unwrap_or_default());
     path
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn find_header_end_locates_terminator() {
+        assert_eq!(find_header_end(b"POST / HTTP/1.1\r\n\r\n{}"), Some(16));
+        assert_eq!(find_header_end(b"no terminator here"), None);
+    }
+
+    #[test]
+    fn parse_content_length_is_case_insensitive_and_tolerant() {
+        assert_eq!(
+            parse_content_length("POST / HTTP/1.1\r\nContent-Length: 42\r\n"),
+            Some(42)
+        );
+        assert_eq!(
+            parse_content_length("POST / HTTP/1.1\r\ncontent-length:  7\r\n"),
+            Some(7)
+        );
+        assert_eq!(parse_content_length("POST / HTTP/1.1\r\n"), None);
+        assert_eq!(
+            parse_content_length("POST / HTTP/1.1\r\nContent-Length: not-a-number\r\n"),
+            None
+        );
+    }
+
+    #[test]
+    fn json_response_sets_status_and_content_length() {
+        let body = json!({"ok": true});
+        let response = json_response(200, &body);
+        assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
+        let expected_len = serde_json::to_string(&body).unwrap().len();
+        assert!(response.contains(&format!("Content-Length: {expected_len}\r\n")));
+        assert!(response.ends_with(&serde_json::to_string(&body).unwrap()));
+
+        let error_response = json_response(400, &json!({"error": "bad"}));
+        assert!(error_response.starts_with("HTTP/1.1 400 Bad Request\r\n"));
+    }
+
+    #[test]
+    fn remote_pilot_state_remaining_before_and_after_arming() {
+        let state = RemotePilotState::default();
+        assert_eq!(state.remaining(), None, "unarmed state has no countdown");
+
+        state.arm_timeout(Duration::from_secs(60));
+        let remaining = state.remaining().expect("armed state has a countdown");
+        assert!(
+            remaining <= Duration::from_secs(60) && remaining > Duration::from_secs(55),
+            "expected ~60s remaining immediately after arming, got {remaining:?}"
+        );
+    }
+
+    #[test]
+    fn tool_descriptors_lists_all_five_tools() {
+        let tools = tool_descriptors();
+        let names: Vec<&str> = tools
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                "remote_evaluate_js",
+                "remote_screenshot",
+                "remote_show_panel",
+                "remote_get_logs",
+                "remote_remaining_timeout",
+            ]
+        );
+    }
+
+    fn http_request(body: &str) -> Vec<u8> {
+        format!(
+            "POST / HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            body.len(),
+            body
+        )
+        .into_bytes()
+    }
+
+    #[test]
+    fn route_tools_list_returns_all_tools() {
+        let state = Arc::new(RemotePilotState::default());
+        let raw = http_request(r#"{"method":"tools/list"}"#);
+        let response = route(&raw, &state);
+        assert!(response.starts_with("HTTP/1.1 200 OK"));
+        assert!(response.contains("remote_screenshot"));
+        assert!(response.contains("remote_remaining_timeout"));
+    }
+
+    #[test]
+    fn route_rejects_missing_header_terminator() {
+        let state = Arc::new(RemotePilotState::default());
+        let response = route(b"not even a real http request", &state);
+        assert!(response.starts_with("HTTP/1.1 400"));
+        assert!(response.contains("invalid request"));
+    }
+
+    #[test]
+    fn route_rejects_invalid_json_body() {
+        let state = Arc::new(RemotePilotState::default());
+        let raw = http_request("not json");
+        let response = route(&raw, &state);
+        assert!(response.starts_with("HTTP/1.1 400"));
+        assert!(response.contains("invalid json body"));
+    }
+
+    #[test]
+    fn route_rejects_unknown_method() {
+        let state = Arc::new(RemotePilotState::default());
+        let raw = http_request(r#"{"method":"tools/frobnicate"}"#);
+        let response = route(&raw, &state);
+        assert!(response.starts_with("HTTP/1.1 400"));
+        assert!(response.contains("unknown method"));
+    }
+
+    #[test]
+    fn dispatch_unknown_tool_reports_ok_false() {
+        let state = Arc::new(RemotePilotState::default());
+        let result = dispatch("not_a_real_tool", &json!({}), &state);
+        assert_eq!(result["ok"], json!(false));
+        assert!(result["error"].as_str().unwrap().contains("not_a_real_tool"));
+    }
+
+    #[test]
+    fn dispatch_remote_show_panel_rejects_unknown_panel() {
+        let state = Arc::new(RemotePilotState::default());
+        let result = dispatch("remote_show_panel", &json!({"panel": "nonexistent"}), &state);
+        assert_eq!(result["ok"], json!(false));
+        assert!(result["error"].as_str().unwrap().contains("unknown panel"));
+    }
+
+    #[test]
+    fn dispatch_remote_remaining_timeout_reflects_state() {
+        let state = Arc::new(RemotePilotState::default());
+        assert_eq!(
+            dispatch("remote_remaining_timeout", &json!({}), &state)["seconds_remaining"],
+            json!(null)
+        );
+        state.arm_timeout(Duration::from_secs(30));
+        let seconds_remaining = dispatch("remote_remaining_timeout", &json!({}), &state)
+            ["seconds_remaining"]
+            .as_u64()
+            .unwrap();
+        assert!(seconds_remaining <= 30);
+    }
+
+    #[test]
+    fn dispatch_remote_get_logs_reflects_prior_calls_via_route() {
+        // Route (not dispatch directly) so the command actually gets logged —
+        // logging happens in route()'s tools/call branch, not in dispatch().
+        let state = Arc::new(RemotePilotState::default());
+        let _ = route(&http_request(r#"{"method":"tools/list"}"#), &state);
+        let _ = route(
+            &http_request(r#"{"method":"tools/call","params":{"name":"remote_remaining_timeout","arguments":{}}}"#),
+            &state,
+        );
+        let logs_response = route(
+            &http_request(r#"{"method":"tools/call","params":{"name":"remote_get_logs","arguments":{}}}"#),
+            &state,
+        );
+        assert!(logs_response.contains("remote_remaining_timeout"));
+        assert_eq!(state.command_log.lock().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn cdp_port_reports_a_clear_error_when_unset() {
+        std::env::remove_var("TAURI_CDP_PORT");
+        let error = cdp_port().expect_err("TAURI_CDP_PORT should be unset in this test process");
+        assert!(error.contains("TAURI_CDP_PORT"));
+    }
+
+    #[test]
+    fn dump_session_log_writes_expected_fields() {
+        let state = RemotePilotState::default();
+        state.command_log.lock().unwrap().push(RemoteCommandLogEntry {
+            tool: "remote_get_logs".to_string(),
+            arguments: json!({}),
+            result: json!({"ok": true}),
+            elapsed_ms: 5,
+        });
+        let path = dump_session_log(&state, "[]", "ReviewLog { entries: [] }");
+        let contents = std::fs::read_to_string(&path).expect("dump file should exist");
+        let _ = std::fs::remove_file(&path);
+        let parsed: Value = serde_json::from_str(&contents).unwrap();
+        assert_eq!(parsed["chat_history_debug"], json!("[]"));
+        assert_eq!(parsed["remote_commands"][0]["tool"], json!("remote_get_logs"));
+    }
+}
