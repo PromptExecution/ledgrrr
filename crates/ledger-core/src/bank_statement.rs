@@ -115,7 +115,7 @@ impl Satisfies<CategoryConstraint> for DoclingNode {
                 disposition: Disposition::Satisfied,
                 confidence: 1.0,
                 evidence_nodes: evidence,
-                ufo_category: ufo_types::ufo::MomentStereotype::Mode,
+                ufo_category: ufo_types::UfoStereotype::Mode("BankStatementNode".into()),
             }
         } else {
             SatisfiesResult::violated("no pattern match for this category")

@@ -12,7 +12,7 @@ arc-kit-au = { path = "../arc-kit-au" }
 blake3 = "1.8.3"
 chrono = { workspace = true }
 ledger-core = { version = "=1.10.0", path = "../ledger-core" }
-ufo-types = { path = "../ufo-types" }
+ufo-types = { git = "https://github.com/promptexecution/ufo-types", rev = "1881d67" }  # PR #3 branch tip, not yet merged/tagged
 ledgerr-cloud = { path = "../ledgerr-cloud" }
 ledgerr-focus = { workspace = true }
 ledgerr-mcp-core = { workspace = true }

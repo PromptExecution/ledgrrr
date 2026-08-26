@@ -10178,8 +10178,10 @@ dependencies = [
 
 [[package]]
 name = "ufo-types"
-version = "1.10.0"
+version = "0.11.0"
+source = "git+https://github.com/promptexecution/ufo-types?rev=1881d67#1881d671876a6b46939205f7f9664637bf3abf54"
 dependencies = [
+ "chrono",
  "schemars 0.8.22",
  "serde",
  "serde_json",
