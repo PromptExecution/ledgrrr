@@ -325,7 +325,12 @@ function initVizPanel(){
   var cy_div=document.getElementById('cy');
   if(!cy_div||typeof cytoscape==='undefined')return;
   var graphCmd=_vizActiveGraph==='type'?'get_type_graph':'get_holon_viz_graph';
-  invoke(graphCmd).then(function(data){
+  invoke(graphCmd).then(function(raw){
+    // get_type_graph/get_holon_viz_graph return Result<String, String> on the
+    // Rust side (desktop_json()) -- the resolved value here is a JSON string,
+    // not an object. Without this parse, data.nodes/.edges were always
+    // undefined and the graph silently rendered with zero elements, no error.
+    var data=typeof raw==='string'?JSON.parse(raw):raw;
     var elements=[];
     (data.nodes||[]).forEach(function(n){elements.push({data:n.data});});
     (data.edges||[]).forEach(function(e){elements.push({data:e.data});});
