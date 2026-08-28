@@ -23,6 +23,9 @@ pub enum ChatRole {
     /// A tool call or tool result from the tool-calling loop, rendered
     /// distinctly from model text in the transcript.
     Tool,
+    /// A mutation tool call blocked awaiting explicit operator confirmation
+    /// — see `ChatEvent::PendingConfirmation` / `pending_confirmation_card`.
+    PendingConfirmation,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -146,8 +149,8 @@ pub fn send_chat_message(
 pub const DEFAULT_MAX_TOOL_TURNS: usize = 6;
 
 /// One event in a tool-calling exchange, for transcript rendering — lets the
-/// UI show tool calls/results distinctly from model text instead of flattening
-/// everything into one assistant turn.
+/// UI show tool calls/results/pending-confirmations distinctly from model
+/// text instead of flattening everything into one assistant turn.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChatEvent {
     ToolCall {
@@ -158,37 +161,102 @@ pub enum ChatEvent {
         name: String,
         result: serde_json::Value,
     },
+    /// A mutation tool call is blocked awaiting explicit operator
+    /// confirmation (approve/reject) before it is dispatched — see
+    /// [`PendingToolCall`] and [`resume_after_confirmation`].
+    PendingConfirmation {
+        id: String,
+        name: String,
+        arguments: serde_json::Value,
+    },
     Assistant(String),
 }
 
-/// Result of running the tool-calling loop to completion (or budget
-/// exhaustion).
+/// A mutation tool call the model requested, held back from dispatch until
+/// the operator explicitly approves or rejects it via a Tauri command (see
+/// `bin/tauri/commands.rs::confirm_pending_tool_call`). Never dispatched off
+/// raw model output — see `chat_tools::is_mutation_tool`.
 #[derive(Debug, Clone, PartialEq)]
-pub struct ToolLoopOutcome {
-    /// Every tool call/result pair and the final assistant reply, in order.
-    pub events: Vec<ChatEvent>,
-    /// The model's final plain-text reply, or an explanatory budget-exhausted
-    /// message — never silently empty.
-    pub final_text: String,
-    /// True if the loop hit `max_turns` while the model was still requesting
-    /// tool calls, rather than stopping naturally on a plain-text reply.
-    pub budget_exhausted: bool,
+pub struct PendingToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: serde_json::Value,
+}
+
+/// Everything needed to resume a suspended tool-calling loop once every
+/// entry in `pending` has been resolved (approved or rejected) by the
+/// operator. Opaque to callers other than `resume_after_confirmation` — the
+/// Tauri layer holds this in `AppState` between the `send_message` call that
+/// produced it and the `confirm_pending_tool_call` call(s) that resolve it.
+#[derive(Debug, Clone)]
+pub struct SuspendedToolLoop {
+    settings: ChatSettings,
+    tools: Vec<ModelToolSpec>,
+    turns_so_far: Vec<ModelTurn>,
+    /// Model round-trips already consumed by this exchange. Time spent
+    /// waiting for operator confirmation does NOT advance this — the budget
+    /// only counts actual calls to the model, so a slow human response can
+    /// never starve the loop of its turn budget (issue #208 follow-up,
+    /// requirement 5).
+    turns_used: usize,
+    max_turns: usize,
+    pub pending: Vec<PendingToolCall>,
+}
+
+impl SuspendedToolLoop {
+    /// The tool-call ids awaiting a resolution, in the order the model
+    /// requested them.
+    pub fn pending_ids(&self) -> Vec<&str> {
+        self.pending.iter().map(|call| call.id.as_str()).collect()
+    }
+
+    /// The chat settings this loop was running under — needed by callers to
+    /// rebuild an `AgentRuntime` to pass to `resume_after_confirmation`.
+    pub fn settings(&self) -> &ChatSettings {
+        &self.settings
+    }
+}
+
+/// Result of running (or resuming) the tool-calling loop.
+#[derive(Debug, Clone)]
+pub enum ToolLoopOutcome {
+    /// The model produced a final plain-text reply.
+    Completed {
+        events: Vec<ChatEvent>,
+        final_text: String,
+    },
+    /// The turn budget was exhausted before a final reply.
+    BudgetExhausted {
+        events: Vec<ChatEvent>,
+        final_text: String,
+    },
+    /// One or more mutation tool calls need operator confirmation before the
+    /// loop can continue. Call `resume_after_confirmation` once every id in
+    /// `suspended.pending` has a resolution.
+    AwaitingConfirmation {
+        events: Vec<ChatEvent>,
+        suspended: SuspendedToolLoop,
+    },
 }
 
 /// Runs the chat<->tool loop: send with the allowlisted tool schema, dispatch
-/// any `tool_calls` the model requests via `dispatch`, feed results back, and
-/// repeat until the model replies with plain text or `max_turns` round-trips
-/// are exhausted.
+/// any read-only `tool_calls` the model requests via `dispatch`, hold
+/// mutation tool calls for operator confirmation (see [`ChatEvent::PendingConfirmation`]),
+/// feed results back, and repeat until the model replies with plain text, the
+/// loop suspends awaiting confirmation, or `max_turns` round-trips are
+/// exhausted.
 ///
 /// `runtime` is generic over [`AgentRuntime`] (rather than this function
 /// constructing a `RigAgentRuntime` itself) and `dispatch` is injected
 /// (rather than this module calling `chat_tools::dispatch_mcp_tool`
-/// directly) so the whole loop — including the turn-budget cap — is
-/// unit-testable with a fake backend, without a live model endpoint or a
-/// `TurboLedgerService`/Tauri `AppState`. See `bin/tauri/commands.rs` for the
-/// real wiring. Allowlist enforcement lives in `dispatch`, not here: this
-/// loop calls whatever `dispatch` returns for any tool name the model asks
-/// for and feeds that back as the tool result, same as a rejection.
+/// directly) so the whole loop — including the turn-budget cap and the
+/// confirmation gate — is unit-testable with a fake backend, without a live
+/// model endpoint or a `TurboLedgerService`/Tauri `AppState`. See
+/// `bin/tauri/commands.rs` for the real wiring. Allowlist enforcement lives
+/// in `dispatch`, not here: this loop calls whatever `dispatch` returns for
+/// any read-only tool name the model asks for and feeds that back as the
+/// tool result, same as a rejection. `dispatch` is never called for a
+/// mutation tool name from this function — see `drive_tool_loop`.
 pub fn send_message_with_tools<R: AgentRuntime>(
     runtime: &R,
     settings: &ChatSettings,
@@ -198,8 +266,6 @@ pub fn send_message_with_tools<R: AgentRuntime>(
     dispatch: &dyn Fn(&str, &serde_json::Value) -> serde_json::Value,
     max_turns: usize,
 ) -> Result<ToolLoopOutcome, ChatError> {
-    let mut events = Vec::new();
-
     let mut turns_so_far: Vec<ModelTurn> = history.iter().map(model_turn).collect();
     turns_so_far.push(ModelTurn {
         role: ModelRole::User,
@@ -207,26 +273,165 @@ pub fn send_message_with_tools<R: AgentRuntime>(
         ..Default::default()
     });
 
-    let mut request = ModelRequest::text(pending_message)
-        .with_system_prompt(settings.system_prompt.clone())
-        .with_history(history.iter().map(model_turn))
-        .with_tools(tools.to_vec());
+    drive_tool_loop(
+        runtime,
+        settings,
+        tools,
+        turns_so_far,
+        0,
+        max_turns,
+        dispatch,
+        Vec::new(),
+    )
+}
 
-    for _ in 0..max_turns {
+/// Resumes a loop suspended by [`ToolLoopOutcome::AwaitingConfirmation`].
+///
+/// `resolutions` maps each pending call's id to the operator's decision
+/// (`true` = approved). A pending id with no entry in `resolutions` is
+/// treated as rejected — fail safe: a mutation call is only ever dispatched
+/// on an explicit `true`, never on a missing/ambiguous answer. Approved
+/// calls are dispatched via `dispatch` (the same injected dispatcher used
+/// for read-only tools); rejected calls get a synthesized "operator
+/// declined" tool result fed back to the model with the correct
+/// `tool_call_id`, so the model can acknowledge it and continue rather than
+/// the conversation just dying.
+pub fn resume_after_confirmation<R: AgentRuntime>(
+    runtime: &R,
+    suspended: SuspendedToolLoop,
+    resolutions: &std::collections::HashMap<String, bool>,
+    dispatch: &dyn Fn(&str, &serde_json::Value) -> serde_json::Value,
+) -> Result<ToolLoopOutcome, ChatError> {
+    let SuspendedToolLoop {
+        settings,
+        tools,
+        mut turns_so_far,
+        turns_used,
+        max_turns,
+        pending,
+    } = suspended;
+    let mut events = Vec::new();
+
+    for call in &pending {
+        let approved = resolutions.get(&call.id).copied().unwrap_or(false);
+        let result = if approved {
+            events.push(ChatEvent::ToolCall {
+                name: call.name.clone(),
+                arguments: call.arguments.clone(),
+            });
+            let result = dispatch(&call.name, &call.arguments);
+            events.push(ChatEvent::ToolResult {
+                name: call.name.clone(),
+                result: result.clone(),
+            });
+            result
+        } else {
+            let declined = serde_json::json!({
+                "ok": false,
+                "operator_declined": true,
+                "error": format!(
+                    "The operator reviewed this {} call and declined to approve it. \
+                     Do not retry it verbatim; ask the operator what they'd like instead \
+                     or continue without it.",
+                    call.name
+                )
+            });
+            events.push(ChatEvent::ToolResult {
+                name: call.name.clone(),
+                result: declined.clone(),
+            });
+            declined
+        };
+        let content = serde_json::to_string(&result).unwrap_or_else(|_| "{}".to_string());
+        turns_so_far.push(ModelTurn::tool_result(call.id.clone(), content));
+    }
+
+    drive_tool_loop(
+        runtime,
+        &settings,
+        &tools,
+        turns_so_far,
+        turns_used,
+        max_turns,
+        dispatch,
+        events,
+    )
+}
+
+/// Shared core of `send_message_with_tools`/`resume_after_confirmation`:
+/// repeatedly asks the model to continue from `turns_so_far` (whose last
+/// entry is always the trailing/prompt turn — a fresh user message on the
+/// very first call, a tool result on every call after) until it replies in
+/// plain text, requests a mutation tool call (suspend), or the turn budget
+/// (`turns_used` vs `max_turns`) is exhausted.
+#[allow(clippy::too_many_arguments)]
+fn drive_tool_loop<R: AgentRuntime>(
+    runtime: &R,
+    settings: &ChatSettings,
+    tools: &[ModelToolSpec],
+    mut turns_so_far: Vec<ModelTurn>,
+    mut turns_used: usize,
+    max_turns: usize,
+    dispatch: &dyn Fn(&str, &serde_json::Value) -> serde_json::Value,
+    mut events: Vec<ChatEvent>,
+) -> Result<ToolLoopOutcome, ChatError> {
+    loop {
+        if turns_used >= max_turns {
+            let exhausted_text = format!(
+                "Tool budget exhausted after {max_turns} round-trip(s) without a final reply. \
+                 Ask a narrower question, or increase the turn budget, and try again."
+            );
+            events.push(ChatEvent::Assistant(exhausted_text.clone()));
+            return Ok(ToolLoopOutcome::BudgetExhausted {
+                events,
+                final_text: exhausted_text,
+            });
+        }
+
+        let Some(trailing) = turns_so_far.last().cloned() else {
+            // Unreachable: turns_so_far always has at least the seeded user
+            // turn (send_message_with_tools) or a freshly pushed tool-result
+            // turn (resume_after_confirmation). Fail safe rather than
+            // index/unwrap if that invariant is ever broken.
+            return Ok(ToolLoopOutcome::BudgetExhausted {
+                events,
+                final_text: String::new(),
+            });
+        };
+        let history_for_request = turns_so_far[..turns_so_far.len() - 1].to_vec();
+        let request = ModelRequest::continue_with(history_for_request, trailing)
+            .with_system_prompt(settings.system_prompt.clone())
+            .with_tools(tools.to_vec());
+
         let response = AgentRuntime::complete(runtime, request).map_err(ChatError::from)?;
+        turns_used += 1;
 
         if response.tool_calls.is_empty() {
             events.push(ChatEvent::Assistant(response.assistant_text.clone()));
-            return Ok(ToolLoopOutcome {
+            return Ok(ToolLoopOutcome::Completed {
                 events,
                 final_text: response.assistant_text,
-                budget_exhausted: false,
             });
         }
 
         turns_so_far.push(ModelTurn::assistant_tool_calls(response.tool_calls.clone()));
 
+        let mut pending = Vec::new();
         for call in &response.tool_calls {
+            if crate::chat_tools::is_mutation_tool(&call.name) {
+                pending.push(PendingToolCall {
+                    id: call.id.clone(),
+                    name: call.name.clone(),
+                    arguments: call.arguments.clone(),
+                });
+                events.push(ChatEvent::PendingConfirmation {
+                    id: call.id.clone(),
+                    name: call.name.clone(),
+                    arguments: call.arguments.clone(),
+                });
+                continue;
+            }
+
             events.push(ChatEvent::ToolCall {
                 name: call.name.clone(),
                 arguments: call.arguments.clone(),
@@ -240,28 +445,105 @@ pub fn send_message_with_tools<R: AgentRuntime>(
             turns_so_far.push(ModelTurn::tool_result(call.id.clone(), content));
         }
 
-        let Some(trailing) = turns_so_far.last().cloned() else {
-            // Unreachable: the loop above just pushed at least one tool-result
-            // turn (response.tool_calls was checked non-empty). Fail safe
-            // rather than index/unwrap if that invariant is ever broken.
-            break;
-        };
-        let history_for_request = turns_so_far[..turns_so_far.len() - 1].to_vec();
-        request = ModelRequest::continue_with(history_for_request, trailing)
-            .with_system_prompt(settings.system_prompt.clone())
-            .with_tools(tools.to_vec());
+        if !pending.is_empty() {
+            return Ok(ToolLoopOutcome::AwaitingConfirmation {
+                events,
+                suspended: SuspendedToolLoop {
+                    settings: settings.clone(),
+                    tools: tools.to_vec(),
+                    turns_so_far,
+                    turns_used,
+                    max_turns,
+                    pending,
+                },
+            });
+        }
+    }
+}
+
+/// Renders the human-readable confirmation card for a pending mutation tool
+/// call — the transcript text and the detail shown in the Tauri-side popup
+/// both come from this, so they can never drift apart. Tool-specific so the
+/// operator sees the fields that actually matter for that action (tx_ids,
+/// proposed category/confidence, resolution action, ...) without needing to
+/// inspect logs — see issue #208's follow-up requirement 2.
+pub fn pending_confirmation_card(name: &str, arguments: &serde_json::Value) -> String {
+    fn as_str<'a>(arguments: &'a serde_json::Value, key: &str) -> &'a str {
+        arguments
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("<missing>")
     }
 
-    let exhausted_text = format!(
-        "Tool budget exhausted after {max_turns} round-trip(s) without a final reply. \
-         Ask a narrower question, or increase the turn budget, and try again."
-    );
-    events.push(ChatEvent::Assistant(exhausted_text.clone()));
-    Ok(ToolLoopOutcome {
-        events,
-        final_text: exhausted_text,
-        budget_exhausted: true,
-    })
+    fn tx_ids(arguments: &serde_json::Value) -> Vec<String> {
+        arguments
+            .get("tx_ids")
+            .and_then(serde_json::Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    match name {
+        "classify_transaction" => {
+            let mut lines = vec![
+                "CONFIRMATION REQUIRED — classify_transaction".to_string(),
+                format!("  transaction: {}", as_str(arguments, "tx_id")),
+                format!("  proposed category: {}", as_str(arguments, "category")),
+                format!("  confidence: {}", as_str(arguments, "confidence")),
+            ];
+            if let Some(note) = arguments.get("note").and_then(serde_json::Value::as_str) {
+                lines.push(format!("  note: {note}"));
+            }
+            lines.push("Approve or reject before this classification is written.".to_string());
+            lines.join("\n")
+        }
+        "batch_classify" => {
+            let ids = tx_ids(arguments);
+            let dry_run = arguments
+                .get("dry_run")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+            let mut lines = vec![
+                "CONFIRMATION REQUIRED — batch_classify".to_string(),
+                format!("  {} transaction(s): {}", ids.len(), ids.join(", ")),
+                format!(
+                    "  proposed category (uniform across the batch): {}",
+                    as_str(arguments, "category")
+                ),
+                format!("  confidence: {}", as_str(arguments, "confidence")),
+                format!("  dry_run: {dry_run}"),
+            ];
+            if let Some(note) = arguments.get("note").and_then(serde_json::Value::as_str) {
+                lines.push(format!("  note: {note}"));
+            }
+            lines.push(
+                "Approve or reject before any of these classifications are written.".to_string(),
+            );
+            lines.join("\n")
+        }
+        "bulk_resolve_flags" => {
+            let ids = tx_ids(arguments);
+            let mut lines = vec![
+                "CONFIRMATION REQUIRED — bulk_resolve_flags".to_string(),
+                format!("  {} flagged transaction(s): {}", ids.len(), ids.join(", ")),
+                format!("  resolution action: {}", as_str(arguments, "resolution")),
+            ];
+            if let Some(reason) = arguments.get("reason").and_then(serde_json::Value::as_str) {
+                lines.push(format!("  reason: {reason}"));
+            }
+            lines.push("Approve or reject before these flags are resolved.".to_string());
+            lines.join("\n")
+        }
+        other => format!(
+            "CONFIRMATION REQUIRED — {other}\n  arguments: {arguments}\n\
+             Approve or reject before this action runs."
+        ),
+    }
 }
 
 pub fn build_rig_prompt_preview(
@@ -318,6 +600,7 @@ pub fn render_transcript(history: &[ChatTurn]) -> String {
                 ChatRole::User => "You",
                 ChatRole::Assistant => "Assistant",
                 ChatRole::Tool => "Tool",
+                ChatRole::PendingConfirmation => "CONFIRM",
             };
             format!("{speaker}\n{}\n", turn.content.trim())
         })
@@ -331,6 +614,7 @@ fn chat_role_name(role: ChatRole) -> &'static str {
         ChatRole::User => "user",
         ChatRole::Assistant => "assistant",
         ChatRole::Tool => "tool",
+        ChatRole::PendingConfirmation => "pending_confirmation",
     }
 }
 
@@ -504,6 +788,10 @@ fn model_turn(turn: &ChatTurn) -> ModelTurn {
             // the loop's own ephemeral turn list — it never goes through
             // this function.
             ChatRole::Tool => ModelRole::User,
+            // Same reasoning as ChatRole::Tool above: a persisted
+            // confirmation card is historical context by the time it's
+            // replayed on a later message, not a live protocol turn.
+            ChatRole::PendingConfirmation => ModelRole::User,
         },
         content: turn.content.clone(),
         ..Default::default()
@@ -530,6 +818,12 @@ pub fn tool_event_chat_turns(events: &[ChatEvent]) -> Vec<ChatTurn> {
                     "{name} ->\n{}",
                     serde_json::to_string_pretty(result).unwrap_or_else(|_| result.to_string())
                 ),
+            }),
+            ChatEvent::PendingConfirmation {
+                name, arguments, ..
+            } => Some(ChatTurn {
+                role: ChatRole::PendingConfirmation,
+                content: pending_confirmation_card(name, arguments),
             }),
             ChatEvent::Assistant(_) => None,
         })
@@ -769,14 +1063,14 @@ mod tests {
         )
         .expect("the loop returns Ok even when the turn budget is exhausted");
 
-        assert!(outcome.budget_exhausted);
+        let ToolLoopOutcome::BudgetExhausted { events, final_text } = outcome else {
+            panic!("expected BudgetExhausted, got {outcome:?}");
+        };
         assert!(
-            outcome.final_text.contains("Tool budget exhausted"),
-            "budget exhaustion must be a visible transcript entry, not a silent truncation: {}",
-            outcome.final_text
+            final_text.contains("Tool budget exhausted"),
+            "budget exhaustion must be a visible transcript entry, not a silent truncation: {final_text}"
         );
-        let tool_call_events = outcome
-            .events
+        let tool_call_events = events
             .iter()
             .filter(|event| matches!(event, ChatEvent::ToolCall { .. }))
             .count();
@@ -795,9 +1089,10 @@ mod tests {
             send_message_with_tools(&runtime, &test_settings(), &[], "hello", &[], &dispatch, 0)
                 .expect("zero turns is a valid, non-panicking budget");
 
-        assert!(outcome.budget_exhausted);
-        assert!(outcome
-            .events
+        let ToolLoopOutcome::BudgetExhausted { events, .. } = outcome else {
+            panic!("expected BudgetExhausted, got {outcome:?}");
+        };
+        assert!(events
             .iter()
             .all(|event| !matches!(event, ChatEvent::ToolCall { .. })));
     }
@@ -864,10 +1159,282 @@ mod tests {
         )
         .expect("loop completes once the model stops requesting tools");
 
-        assert!(!outcome.budget_exhausted);
-        assert_eq!(outcome.final_text, "understood, that tool is not available");
-        assert!(outcome.events.iter().any(
+        let ToolLoopOutcome::Completed { events, final_text } = outcome else {
+            panic!("expected Completed, got {outcome:?}");
+        };
+        assert_eq!(final_text, "understood, that tool is not available");
+        assert!(events.iter().any(
             |event| matches!(event, ChatEvent::ToolResult { name, .. } if name == "reconcile_postings")
         ));
+    }
+
+    // ── Mutation-tool confirmation gate (issue #208 follow-up) ─────────────
+
+    /// A fake backend that requests a `batch_classify` mutation call on its
+    /// first invocation, then (if ever called again) asserts the resumed
+    /// request's trailing tool-result content and replies in plain text.
+    /// Counts total `complete()` calls so tests can assert the budget only
+    /// advances on real model round-trips, never while waiting on a human.
+    struct MutationCallThenTextRuntime {
+        call_count: std::sync::atomic::AtomicUsize,
+    }
+
+    impl MutationCallThenTextRuntime {
+        fn new() -> Self {
+            Self {
+                call_count: std::sync::atomic::AtomicUsize::new(0),
+            }
+        }
+
+        fn calls_made(&self) -> usize {
+            self.call_count.load(std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+
+    impl AgentRuntime for MutationCallThenTextRuntime {
+        fn complete(&self, request: ModelRequest) -> Result<ModelResponse, AgentRuntimeError> {
+            let call = self
+                .call_count
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if call == 0 {
+                Ok(ModelResponse {
+                    assistant_text: String::new(),
+                    tool_calls: vec![ModelToolCall {
+                        id: "call_mut_1".to_string(),
+                        name: "batch_classify".to_string(),
+                        arguments: serde_json::json!({
+                            "tx_ids": ["tx_1", "tx_2"],
+                            "category": "Meals",
+                            "confidence": "0.9",
+                            "actor": "agent"
+                        }),
+                    }],
+                })
+            } else {
+                let trailing = request
+                    .trailing_turn
+                    .expect("a continuation call must set trailing_turn");
+                assert_eq!(trailing.tool_call_id.as_deref(), Some("call_mut_1"));
+                Ok(ModelResponse::text(format!(
+                    "acknowledged: {}",
+                    trailing.content
+                )))
+            }
+        }
+    }
+
+    fn panics_dispatch() -> impl Fn(&str, &serde_json::Value) -> serde_json::Value {
+        |name: &str, _args: &serde_json::Value| {
+            panic!("dispatch must never be called for a gated mutation tool call without operator approval: {name}")
+        }
+    }
+
+    #[test]
+    fn send_message_with_tools_suspends_on_a_mutation_tool_call_without_dispatching_it() {
+        let runtime = MutationCallThenTextRuntime::new();
+        let dispatch = panics_dispatch();
+
+        let outcome = send_message_with_tools(
+            &runtime,
+            &test_settings(),
+            &[],
+            "classify these two transactions as Meals",
+            &[],
+            &dispatch,
+            DEFAULT_MAX_TOOL_TURNS,
+        )
+        .expect("suspending is an Ok outcome, not an error");
+
+        let ToolLoopOutcome::AwaitingConfirmation { events, suspended } = outcome else {
+            panic!("expected AwaitingConfirmation, got {outcome:?}");
+        };
+        assert_eq!(suspended.pending.len(), 1);
+        assert_eq!(suspended.pending[0].id, "call_mut_1");
+        assert_eq!(suspended.pending[0].name, "batch_classify");
+        assert_eq!(suspended.pending_ids(), vec!["call_mut_1"]);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            ChatEvent::PendingConfirmation { name, .. } if name == "batch_classify"
+        )));
+        // The gate must never have let dispatch run — panics_dispatch()
+        // would have aborted the test above if it had.
+        assert_eq!(runtime.calls_made(), 1);
+    }
+
+    #[test]
+    fn resume_after_confirmation_dispatches_on_approval_with_matching_call_id() {
+        let runtime = MutationCallThenTextRuntime::new();
+        let outcome = send_message_with_tools(
+            &runtime,
+            &test_settings(),
+            &[],
+            "classify these two transactions as Meals",
+            &[],
+            &panics_dispatch(),
+            DEFAULT_MAX_TOOL_TURNS,
+        )
+        .expect("suspends cleanly");
+        let ToolLoopOutcome::AwaitingConfirmation { suspended, .. } = outcome else {
+            panic!("expected AwaitingConfirmation");
+        };
+
+        let dispatch_calls = std::sync::Mutex::new(Vec::new());
+        let dispatch = |name: &str, arguments: &serde_json::Value| -> serde_json::Value {
+            dispatch_calls
+                .lock()
+                .unwrap()
+                .push((name.to_string(), arguments.clone()));
+            serde_json::json!({"isError": false, "content": "classified"})
+        };
+
+        let mut resolutions = std::collections::HashMap::new();
+        resolutions.insert("call_mut_1".to_string(), true);
+
+        let resumed = resume_after_confirmation(&runtime, suspended, &resolutions, &dispatch)
+            .expect("resume completes once approved");
+
+        let ToolLoopOutcome::Completed { events, final_text } = resumed else {
+            panic!("expected Completed after approval");
+        };
+        assert!(final_text.contains("isError"), "final_text: {final_text}");
+        assert_eq!(dispatch_calls.lock().unwrap().len(), 1);
+        assert_eq!(dispatch_calls.lock().unwrap()[0].0, "batch_classify");
+        assert!(events.iter().any(
+            |event| matches!(event, ChatEvent::ToolCall { name, .. } if name == "batch_classify")
+        ));
+        assert!(events.iter().any(
+            |event| matches!(event, ChatEvent::ToolResult { name, .. } if name == "batch_classify")
+        ));
+        // Exactly two model round-trips total: the one that produced the
+        // pending call, and the one after resume — matches
+        // DEFAULT_MAX_TOOL_TURNS-budget expectations for a single confirm.
+        assert_eq!(runtime.calls_made(), 2);
+    }
+
+    #[test]
+    fn resume_after_confirmation_synthesizes_a_decline_threaded_with_the_correct_call_id() {
+        let runtime = MutationCallThenTextRuntime::new();
+        let outcome = send_message_with_tools(
+            &runtime,
+            &test_settings(),
+            &[],
+            "classify these two transactions as Meals",
+            &[],
+            &panics_dispatch(),
+            DEFAULT_MAX_TOOL_TURNS,
+        )
+        .expect("suspends cleanly");
+        let ToolLoopOutcome::AwaitingConfirmation { suspended, .. } = outcome else {
+            panic!("expected AwaitingConfirmation");
+        };
+
+        let mut resolutions = std::collections::HashMap::new();
+        resolutions.insert("call_mut_1".to_string(), false);
+
+        // dispatch must never be invoked on a rejection.
+        let resumed =
+            resume_after_confirmation(&runtime, suspended, &resolutions, &panics_dispatch())
+                .expect("resume completes once rejected");
+
+        let ToolLoopOutcome::Completed { events, final_text } = resumed else {
+            panic!("expected Completed after rejection, got a different outcome");
+        };
+        // MutationCallThenTextRuntime's second call asserts
+        // trailing.tool_call_id == "call_mut_1" itself; reaching here at all
+        // proves that held.
+        assert!(
+            final_text.contains("operator_declined"),
+            "the model must see that the operator declined: {final_text}"
+        );
+        let declined_result = events.iter().find_map(|event| match event {
+            ChatEvent::ToolResult { name, result } if name == "batch_classify" => Some(result),
+            _ => None,
+        });
+        let declined_result = declined_result.expect("a ToolResult event for the declined call");
+        assert_eq!(
+            declined_result["operator_declined"],
+            serde_json::json!(true)
+        );
+        assert_eq!(declined_result["ok"], serde_json::json!(false));
+    }
+
+    #[test]
+    fn resume_after_confirmation_treats_a_missing_resolution_as_rejected_fail_safe() {
+        let runtime = MutationCallThenTextRuntime::new();
+        let outcome = send_message_with_tools(
+            &runtime,
+            &test_settings(),
+            &[],
+            "classify these two transactions as Meals",
+            &[],
+            &panics_dispatch(),
+            DEFAULT_MAX_TOOL_TURNS,
+        )
+        .expect("suspends cleanly");
+        let ToolLoopOutcome::AwaitingConfirmation { suspended, .. } = outcome else {
+            panic!("expected AwaitingConfirmation");
+        };
+
+        // Empty resolutions map: call_mut_1 has no entry at all.
+        let resolutions = std::collections::HashMap::new();
+        let resumed =
+            resume_after_confirmation(&runtime, suspended, &resolutions, &panics_dispatch())
+                .expect("resume completes even with no resolution recorded");
+
+        let ToolLoopOutcome::Completed { final_text, .. } = resumed else {
+            panic!("expected Completed");
+        };
+        assert!(final_text.contains("operator_declined"));
+    }
+
+    #[test]
+    fn waiting_for_confirmation_does_not_consume_turn_budget() {
+        // max_turns(1): the single model call that discovers the pending
+        // mutation call is allowed, but the loop must NOT call the model
+        // again just because a human took a while to respond — the budget
+        // check happens before the next model call, and approval dispatch
+        // itself is not a model call.
+        let runtime = MutationCallThenTextRuntime::new();
+        let outcome = send_message_with_tools(
+            &runtime,
+            &test_settings(),
+            &[],
+            "classify these two transactions as Meals",
+            &[],
+            &panics_dispatch(),
+            1,
+        )
+        .expect("suspends cleanly even at a tight budget");
+        let ToolLoopOutcome::AwaitingConfirmation { suspended, .. } = outcome else {
+            panic!("expected AwaitingConfirmation");
+        };
+        assert_eq!(
+            runtime.calls_made(),
+            1,
+            "one model call to discover the pending mutation"
+        );
+
+        let dispatched = std::sync::Mutex::new(false);
+        let dispatch = |_name: &str, _args: &serde_json::Value| -> serde_json::Value {
+            *dispatched.lock().unwrap() = true;
+            serde_json::json!({"isError": false})
+        };
+        let mut resolutions = std::collections::HashMap::new();
+        resolutions.insert("call_mut_1".to_string(), true);
+
+        let resumed = resume_after_confirmation(&runtime, suspended, &resolutions, &dispatch)
+            .expect("resume returns Ok even when the budget is already exhausted");
+
+        // The approved call WAS dispatched (waiting for confirmation didn't
+        // block that)...
+        assert!(*dispatched.lock().unwrap());
+        // ...but the already-exhausted budget (1 turn already used, cap is
+        // 1) means no second model call happens after resuming.
+        assert_eq!(
+            runtime.calls_made(),
+            1,
+            "resume must not spend a model call once the budget is already used up"
+        );
+        assert!(matches!(resumed, ToolLoopOutcome::BudgetExhausted { .. }));
     }
 }

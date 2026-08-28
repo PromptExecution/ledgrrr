@@ -55,6 +55,21 @@ pub fn is_allowlisted(name: &str) -> bool {
     ALLOWLISTED_TOOL_NAMES.contains(&name)
 }
 
+/// The three allowlisted tools that mutate ledger/flag state. A call to any
+/// of these must go through the chat tool loop's operator-confirmation gate
+/// (see `chat::send_message_with_tools` / `chat::resume_after_confirmation`)
+/// before `dispatch_mcp_tool` ever runs it — never dispatched inline off raw
+/// model output. Every other allowlisted tool is read-only and unaffected.
+pub const MUTATION_TOOL_NAMES: &[&str] = &[
+    "classify_transaction",
+    "batch_classify",
+    "bulk_resolve_flags",
+];
+
+pub fn is_mutation_tool(name: &str) -> bool {
+    MUTATION_TOOL_NAMES.contains(&name)
+}
+
 /// OpenAI function-calling descriptors for every allowlisted tool, in the
 /// shape `ModelRequest::with_tools` expects.
 pub fn tool_specs() -> Vec<ModelToolSpec> {
@@ -379,6 +394,31 @@ mod tests {
     }
 
     #[test]
+    fn every_mutation_tool_is_allowlisted_and_vice_versa_for_exactly_these_three() {
+        for name in MUTATION_TOOL_NAMES {
+            assert!(
+                is_allowlisted(name),
+                "mutation tool '{name}' must also be an allowlisted tool"
+            );
+        }
+        for name in [
+            "classify_transaction",
+            "batch_classify",
+            "bulk_resolve_flags",
+        ] {
+            assert!(is_mutation_tool(name), "'{name}' must require confirmation");
+        }
+        for name in ALLOWLISTED_TOOL_NAMES {
+            let should_be_mutation = MUTATION_TOOL_NAMES.contains(name);
+            assert_eq!(
+                is_mutation_tool(name),
+                should_be_mutation,
+                "read-only tool '{name}' must not be gated as a mutation tool"
+            );
+        }
+    }
+
+    #[test]
     fn non_allowlisted_tool_name_is_rejected() {
         let result = dispatch_mcp_tool("export_cpa_workbook", &json!({}));
         assert_eq!(result["ok"], json!(false));
@@ -449,7 +489,11 @@ mod tests {
         // to a phantom workbook. (We never call `std::env::set_var` anywhere
         // in this crate — `unsafe_code` is denied workspace-wide — so this
         // env var is reliably unset for the whole test binary.)
-        for name in ["query_audit_log", "document_inventory", "classify_transaction"] {
+        for name in [
+            "query_audit_log",
+            "document_inventory",
+            "classify_transaction",
+        ] {
             let result = dispatch_mcp_tool(name, &json!({}));
             assert_eq!(result["ok"], json!(false), "tool: {name}");
             let error = result["error"].as_str().unwrap_or_default();

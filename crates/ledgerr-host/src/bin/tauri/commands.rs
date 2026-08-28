@@ -4,10 +4,11 @@ use tauri::Emitter;
 
 use ledgerr_host::agent_runtime::RigAgentRuntime;
 use ledgerr_host::chat::{
-    assistant_decision_log, build_rig_prompt_preview, render_rig_exchange_log, render_transcript,
-    rhai_rule_prompt_seed, rhai_rule_prompt_seed_log, send_message_with_tools,
-    tool_event_chat_turns, user_request_log, ChatRole, ChatTurn, DEFAULT_MAX_TOOL_TURNS,
-    DEFAULT_RHAI_RULE_MODEL, RHAI_RULE_SYSTEM_PROMPT,
+    assistant_decision_log, build_rig_prompt_preview, pending_confirmation_card,
+    render_rig_exchange_log, render_transcript, resume_after_confirmation, rhai_rule_prompt_seed,
+    rhai_rule_prompt_seed_log, send_message_with_tools, tool_event_chat_turns, user_request_log,
+    ChatError, ChatEvent, ChatRole, ChatTurn, ReviewLog, RigPromptPreview, ToolLoopOutcome,
+    DEFAULT_MAX_TOOL_TURNS, DEFAULT_RHAI_RULE_MODEL, RHAI_RULE_SYSTEM_PROMPT,
 };
 use ledgerr_host::chat_tools::{self, GET_EVIDENCE_DASHBOARD};
 use ledgerr_host::evidence::{EvidenceState, TodayQueue};
@@ -20,7 +21,7 @@ use ledgerr_host::internal_openai::{
 use ledgerr_host::settings::ChatSettings;
 use ledgerr_host::settings_client::SettingsClient;
 
-use super::state::AppState;
+use super::state::{AppState, PendingToolLoopSession};
 use holon_viz::{Holon, HolonKind, TypeRelationshipGraph};
 
 fn desktop_json<T: serde::Serialize>(value: &T) -> Result<String, String> {
@@ -262,6 +263,20 @@ pub async fn send_message(
         return Err("Enter a message before sending.".to_string());
     }
 
+    {
+        let guard = state
+            .pending_tool_loop
+            .lock()
+            .map_err(|_| "pending tool loop lock poisoned".to_string())?;
+        if guard.is_some() {
+            return Err(
+                "A previous tool call is still awaiting your approval — approve or reject it \
+                 before sending another message."
+                    .to_string(),
+            );
+        }
+    }
+
     let mut settings = state.store.load().map_err(|e| e.to_string())?;
 
     settings.chat = ChatSettings {
@@ -335,6 +350,7 @@ pub async fn send_message(
     let review_log_arc = Arc::clone(&state.review_log);
     let evidence_arc = Arc::clone(&state.evidence);
     let store_arc = Arc::clone(&state.store);
+    let pending_tool_loop_arc = Arc::clone(&state.pending_tool_loop);
     let chat_settings = settings.chat.clone();
     // history_snapshot already excludes the current turn for the context window;
     // the current turn was appended above, so pass all but last.
@@ -347,13 +363,7 @@ pub async fn send_message(
     tauri::async_runtime::spawn_blocking(move || {
         let runtime = RigAgentRuntime::new(chat_settings.clone());
         let tool_specs = chat_tools::tool_specs();
-        let dispatch = move |name: &str, arguments: &serde_json::Value| -> serde_json::Value {
-            if name == GET_EVIDENCE_DASHBOARD {
-                dispatch_get_evidence_dashboard(&evidence_arc, &store_arc)
-            } else {
-                chat_tools::dispatch_mcp_tool(name, arguments)
-            }
-        };
+        let dispatch = build_dispatch_fn(evidence_arc, store_arc);
         let result = send_message_with_tools(
             &runtime,
             &chat_settings,
@@ -364,88 +374,330 @@ pub async fn send_message(
             DEFAULT_MAX_TOOL_TURNS,
         );
 
-        match result {
-            Ok(outcome) => {
-                let review_text = {
-                    match review_log_arc.lock() {
-                        Ok(mut rl) => {
-                            rl.push(assistant_decision_log(&previous_rhai, &outcome.final_text));
-                            rl.render()
-                        }
-                        Err(_) => "review log poisoned".to_string(),
-                    }
-                };
-
-                let rig_log = render_rig_exchange_log(
-                    &request_preview_clone,
-                    &backend_status_clone,
-                    Some(&outcome.final_text),
-                    None,
-                );
-
-                let transcript = {
-                    match history_arc.lock() {
-                        Ok(mut h) => {
-                            h.extend(tool_event_chat_turns(&outcome.events));
-                            h.push(ChatTurn {
-                                role: ChatRole::Assistant,
-                                content: outcome.final_text,
-                            });
-                            render_transcript(&h)
-                        }
-                        Err(_) => "history poisoned".to_string(),
-                    }
-                };
-
-                let status_text = if outcome.budget_exhausted {
-                    format!(
-                        "Chat tool budget exhausted after {DEFAULT_MAX_TOOL_TURNS} round-trip(s) — see the transcript for the last tool result."
-                    )
-                } else {
-                    "Remote chat response received.".to_string()
-                };
-
-                let _ = window.emit(
-                    "chat-update",
-                    ChatUpdateEvent {
-                        transcript_text: transcript,
-                        review_log_text: Some(review_text),
-                        rig_log_text: rig_log,
-                        draft_message_text: String::new(),
-                        status_text,
-                        busy: false,
-                    },
-                );
-            }
-            Err(error) => {
-                let transcript = {
-                    match history_arc.lock() {
-                        Ok(h) => render_transcript(&h),
-                        Err(_) => "history poisoned".to_string(),
-                    }
-                };
-                let rig_log = render_rig_exchange_log(
-                    &request_preview_clone,
-                    &backend_status_clone,
-                    None,
-                    Some(&error.to_string()),
-                );
-                let _ = window.emit(
-                    "chat-update",
-                    ChatUpdateEvent {
-                        transcript_text: transcript,
-                        review_log_text: None,
-                        rig_log_text: rig_log,
-                        draft_message_text: draft,
-                        status_text: format!("Chat request failed: {error}"),
-                        busy: false,
-                    },
-                );
-            }
-        }
+        apply_tool_loop_outcome(
+            &window,
+            &history_arc,
+            &review_log_arc,
+            &pending_tool_loop_arc,
+            &previous_rhai,
+            &request_preview_clone,
+            &backend_status_clone,
+            result,
+            draft,
+        );
     });
 
     Ok(sending_status)
+}
+
+/// Records the operator's approve/reject decision for one pending mutation
+/// tool call (see issue #208's follow-up). Once every pending id from the
+/// same round has a resolution, resumes the suspended tool-calling loop —
+/// dispatching approved calls via the same `chat_tools::dispatch_mcp_tool`
+/// path as any other tool call, and synthesizing a declined-tool-result for
+/// rejected ones — and emits the same `chat-update` event `send_message`
+/// does. Until every pending id is resolved, only records the decision and
+/// returns a short status string; nothing is dispatched early.
+#[tauri::command]
+#[specta::specta]
+pub async fn confirm_pending_tool_call(
+    window: tauri::Window,
+    call_id: String,
+    approved: bool,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let all_resolved = {
+        let mut guard = state
+            .pending_tool_loop
+            .lock()
+            .map_err(|_| "pending tool loop lock poisoned".to_string())?;
+        let session = guard
+            .as_mut()
+            .ok_or_else(|| "no chat tool call is awaiting confirmation".to_string())?;
+        if !session
+            .suspended
+            .pending_ids()
+            .iter()
+            .any(|id| *id == call_id)
+        {
+            return Err(format!(
+                "'{call_id}' is not one of the tool calls currently awaiting confirmation"
+            ));
+        }
+        session.resolutions.insert(call_id.clone(), approved);
+        session
+            .suspended
+            .pending_ids()
+            .iter()
+            .all(|id| session.resolutions.contains_key(*id))
+    };
+
+    if !all_resolved {
+        return Ok(format!(
+            "Recorded {} for {call_id}; waiting on the remaining pending confirmation(s) before continuing.",
+            if approved { "approval" } else { "rejection" }
+        ));
+    }
+
+    let session = {
+        let mut guard = state
+            .pending_tool_loop
+            .lock()
+            .map_err(|_| "pending tool loop lock poisoned".to_string())?;
+        guard
+            .take()
+            .ok_or_else(|| "no chat tool call is awaiting confirmation".to_string())?
+    };
+
+    let history_arc = Arc::clone(&state.history);
+    let review_log_arc = Arc::clone(&state.review_log);
+    let evidence_arc = Arc::clone(&state.evidence);
+    let store_arc = Arc::clone(&state.store);
+    let pending_tool_loop_arc = Arc::clone(&state.pending_tool_loop);
+    let chat_settings = session.suspended.settings().clone();
+    let request_preview = RigPromptPreview {
+        endpoint_url: chat_settings.endpoint_url.clone(),
+        model: chat_settings.model.clone(),
+        messages_json: format!(
+            "(resumed after operator confirmation of {} pending tool call(s))",
+            session.resolutions.len()
+        ),
+    };
+    let backend_status = internal_phi_backend_status();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = RigAgentRuntime::new(chat_settings);
+        let dispatch = build_dispatch_fn(evidence_arc, store_arc);
+        let result =
+            resume_after_confirmation(&runtime, session.suspended, &session.resolutions, &dispatch);
+
+        apply_tool_loop_outcome(
+            &window,
+            &history_arc,
+            &review_log_arc,
+            &pending_tool_loop_arc,
+            "",
+            &request_preview,
+            &backend_status,
+            result,
+            String::new(),
+        );
+    });
+
+    Ok("All pending confirmations resolved; resuming the tool-calling loop.".to_string())
+}
+
+/// Builds the tool dispatcher shared by `send_message` and
+/// `confirm_pending_tool_call`: `get_evidence_dashboard` is Tauri-state-bound
+/// (needs `AppState.evidence`/`AppState.store`) so it's special-cased here;
+/// every other allowlisted tool goes through `chat_tools::dispatch_mcp_tool`.
+fn build_dispatch_fn(
+    evidence_arc: Arc<std::sync::Mutex<EvidenceState>>,
+    store_arc: Arc<SettingsClient>,
+) -> impl Fn(&str, &serde_json::Value) -> serde_json::Value {
+    move |name: &str, arguments: &serde_json::Value| -> serde_json::Value {
+        if name == GET_EVIDENCE_DASHBOARD {
+            dispatch_get_evidence_dashboard(&evidence_arc, &store_arc)
+        } else {
+            chat_tools::dispatch_mcp_tool(name, arguments)
+        }
+    }
+}
+
+/// Shared `chat-update`-emitting outcome handler for both `send_message` and
+/// `confirm_pending_tool_call`. `previous_rhai` and `draft_on_error` are only
+/// meaningful for the `send_message` path (a resumed call has no new user
+/// message and no draft to restore on failure) — pass `""`/`String::new()`
+/// from `confirm_pending_tool_call`.
+#[allow(clippy::too_many_arguments)]
+fn apply_tool_loop_outcome(
+    window: &tauri::Window,
+    history_arc: &Arc<std::sync::Mutex<Vec<ChatTurn>>>,
+    review_log_arc: &Arc<std::sync::Mutex<ReviewLog>>,
+    pending_tool_loop_arc: &Arc<std::sync::Mutex<Option<PendingToolLoopSession>>>,
+    previous_rhai: &str,
+    request_preview: &RigPromptPreview,
+    backend_status: &str,
+    result: Result<ToolLoopOutcome, ChatError>,
+    draft_on_error: String,
+) {
+    match result {
+        Ok(ToolLoopOutcome::Completed { events, final_text }) => finish_tool_loop(
+            window,
+            history_arc,
+            review_log_arc,
+            previous_rhai,
+            request_preview,
+            backend_status,
+            events,
+            final_text,
+            "Remote chat response received.".to_string(),
+        ),
+        Ok(ToolLoopOutcome::BudgetExhausted { events, final_text }) => {
+            let status_text = format!(
+                "Chat tool budget exhausted after {DEFAULT_MAX_TOOL_TURNS} round-trip(s) — see the transcript for the last tool result."
+            );
+            finish_tool_loop(
+                window,
+                history_arc,
+                review_log_arc,
+                previous_rhai,
+                request_preview,
+                backend_status,
+                events,
+                final_text,
+                status_text,
+            );
+        }
+        Ok(ToolLoopOutcome::AwaitingConfirmation { events, suspended }) => {
+            let pending_payloads: Vec<PendingConfirmationPayload> = suspended
+                .pending
+                .iter()
+                .map(|call| PendingConfirmationPayload {
+                    id: call.id.clone(),
+                    name: call.name.clone(),
+                    arguments_json: serde_json::to_string(&call.arguments)
+                        .unwrap_or_else(|_| "{}".to_string()),
+                    card_text: pending_confirmation_card(&call.name, &call.arguments),
+                })
+                .collect();
+
+            let transcript = {
+                match history_arc.lock() {
+                    Ok(mut h) => {
+                        h.extend(tool_event_chat_turns(&events));
+                        render_transcript(&h)
+                    }
+                    Err(_) => "history poisoned".to_string(),
+                }
+            };
+            let rig_log = render_rig_exchange_log(request_preview, backend_status, None, None);
+
+            if let Ok(mut guard) = pending_tool_loop_arc.lock() {
+                *guard = Some(PendingToolLoopSession {
+                    suspended,
+                    resolutions: std::collections::HashMap::new(),
+                });
+            }
+
+            let status_text = format!(
+                "{} action(s) need your approval before I can continue — see the transcript.",
+                pending_payloads.len()
+            );
+
+            let _ = window.emit(
+                "chat-update",
+                ChatUpdateEvent {
+                    transcript_text: transcript,
+                    review_log_text: None,
+                    rig_log_text: rig_log,
+                    draft_message_text: String::new(),
+                    status_text,
+                    busy: true,
+                },
+            );
+            let _ = window.emit(
+                "tool-confirmation-required",
+                ToolConfirmationRequiredEvent {
+                    pending: pending_payloads,
+                },
+            );
+        }
+        Err(error) => {
+            let transcript = {
+                match history_arc.lock() {
+                    Ok(h) => render_transcript(&h),
+                    Err(_) => "history poisoned".to_string(),
+                }
+            };
+            let rig_log = render_rig_exchange_log(
+                request_preview,
+                backend_status,
+                None,
+                Some(&error.to_string()),
+            );
+            let _ = window.emit(
+                "chat-update",
+                ChatUpdateEvent {
+                    transcript_text: transcript,
+                    review_log_text: None,
+                    rig_log_text: rig_log,
+                    draft_message_text: draft_on_error,
+                    status_text: format!("Chat request failed: {error}"),
+                    busy: false,
+                },
+            );
+        }
+    }
+}
+
+/// Finishes a tool loop that ended in either a final reply or a budget
+/// exhaustion — the two cases share everything except the status text.
+#[allow(clippy::too_many_arguments)]
+fn finish_tool_loop(
+    window: &tauri::Window,
+    history_arc: &Arc<std::sync::Mutex<Vec<ChatTurn>>>,
+    review_log_arc: &Arc<std::sync::Mutex<ReviewLog>>,
+    previous_rhai: &str,
+    request_preview: &RigPromptPreview,
+    backend_status: &str,
+    events: Vec<ChatEvent>,
+    final_text: String,
+    status_text: String,
+) {
+    let review_text = {
+        match review_log_arc.lock() {
+            Ok(mut rl) => {
+                rl.push(assistant_decision_log(previous_rhai, &final_text));
+                rl.render()
+            }
+            Err(_) => "review log poisoned".to_string(),
+        }
+    };
+
+    let rig_log = render_rig_exchange_log(request_preview, backend_status, Some(&final_text), None);
+
+    let transcript = {
+        match history_arc.lock() {
+            Ok(mut h) => {
+                h.extend(tool_event_chat_turns(&events));
+                h.push(ChatTurn {
+                    role: ChatRole::Assistant,
+                    content: final_text,
+                });
+                render_transcript(&h)
+            }
+            Err(_) => "history poisoned".to_string(),
+        }
+    };
+
+    let _ = window.emit(
+        "chat-update",
+        ChatUpdateEvent {
+            transcript_text: transcript,
+            review_log_text: Some(review_text),
+            rig_log_text: rig_log,
+            draft_message_text: String::new(),
+            status_text,
+            busy: false,
+        },
+    );
+}
+
+/// Payload for one pending mutation tool call, sent to the frontend via the
+/// `tool-confirmation-required` event so it can render a blocking popup
+/// without needing to inspect logs — see issue #208's follow-up.
+#[derive(serde::Serialize, Clone, specta::Type)]
+pub struct PendingConfirmationPayload {
+    pub id: String,
+    pub name: String,
+    pub arguments_json: String,
+    pub card_text: String,
+}
+
+#[derive(serde::Serialize, Clone, specta::Type)]
+pub struct ToolConfirmationRequiredEvent {
+    pub pending: Vec<PendingConfirmationPayload>,
 }
 
 #[tauri::command]
