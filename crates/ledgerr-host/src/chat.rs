@@ -1,7 +1,8 @@
 use thiserror::Error;
 
 use crate::agent_runtime::{
-    AgentRuntime, AgentRuntimeError, ModelRequest, ModelRole, ModelTurn, RigAgentRuntime,
+    AgentRuntime, AgentRuntimeError, ModelRequest, ModelRole, ModelToolSpec, ModelTurn,
+    RigAgentRuntime,
 };
 use crate::settings::ChatSettings;
 
@@ -19,6 +20,9 @@ pub enum ChatRole {
     System,
     User,
     Assistant,
+    /// A tool call or tool result from the tool-calling loop, rendered
+    /// distinctly from model text in the transcript.
+    Tool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -134,6 +138,132 @@ pub fn send_chat_message(
     Ok(response.assistant_text)
 }
 
+/// Default cap on model<->tool round-trips within a single
+/// `send_message_with_tools` call before giving up and returning a
+/// budget-exhausted outcome. Generous enough for a multi-step
+/// lookup-then-classify flow while still bounding worst-case latency/cost if
+/// the model loops on a tool.
+pub const DEFAULT_MAX_TOOL_TURNS: usize = 6;
+
+/// One event in a tool-calling exchange, for transcript rendering — lets the
+/// UI show tool calls/results distinctly from model text instead of flattening
+/// everything into one assistant turn.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ChatEvent {
+    ToolCall {
+        name: String,
+        arguments: serde_json::Value,
+    },
+    ToolResult {
+        name: String,
+        result: serde_json::Value,
+    },
+    Assistant(String),
+}
+
+/// Result of running the tool-calling loop to completion (or budget
+/// exhaustion).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ToolLoopOutcome {
+    /// Every tool call/result pair and the final assistant reply, in order.
+    pub events: Vec<ChatEvent>,
+    /// The model's final plain-text reply, or an explanatory budget-exhausted
+    /// message — never silently empty.
+    pub final_text: String,
+    /// True if the loop hit `max_turns` while the model was still requesting
+    /// tool calls, rather than stopping naturally on a plain-text reply.
+    pub budget_exhausted: bool,
+}
+
+/// Runs the chat<->tool loop: send with the allowlisted tool schema, dispatch
+/// any `tool_calls` the model requests via `dispatch`, feed results back, and
+/// repeat until the model replies with plain text or `max_turns` round-trips
+/// are exhausted.
+///
+/// `runtime` is generic over [`AgentRuntime`] (rather than this function
+/// constructing a `RigAgentRuntime` itself) and `dispatch` is injected
+/// (rather than this module calling `chat_tools::dispatch_mcp_tool`
+/// directly) so the whole loop — including the turn-budget cap — is
+/// unit-testable with a fake backend, without a live model endpoint or a
+/// `TurboLedgerService`/Tauri `AppState`. See `bin/tauri/commands.rs` for the
+/// real wiring. Allowlist enforcement lives in `dispatch`, not here: this
+/// loop calls whatever `dispatch` returns for any tool name the model asks
+/// for and feeds that back as the tool result, same as a rejection.
+pub fn send_message_with_tools<R: AgentRuntime>(
+    runtime: &R,
+    settings: &ChatSettings,
+    history: &[ChatTurn],
+    pending_message: &str,
+    tools: &[ModelToolSpec],
+    dispatch: &dyn Fn(&str, &serde_json::Value) -> serde_json::Value,
+    max_turns: usize,
+) -> Result<ToolLoopOutcome, ChatError> {
+    let mut events = Vec::new();
+
+    let mut turns_so_far: Vec<ModelTurn> = history.iter().map(model_turn).collect();
+    turns_so_far.push(ModelTurn {
+        role: ModelRole::User,
+        content: pending_message.to_string(),
+        ..Default::default()
+    });
+
+    let mut request = ModelRequest::text(pending_message)
+        .with_system_prompt(settings.system_prompt.clone())
+        .with_history(history.iter().map(model_turn))
+        .with_tools(tools.to_vec());
+
+    for _ in 0..max_turns {
+        let response = AgentRuntime::complete(runtime, request).map_err(ChatError::from)?;
+
+        if response.tool_calls.is_empty() {
+            events.push(ChatEvent::Assistant(response.assistant_text.clone()));
+            return Ok(ToolLoopOutcome {
+                events,
+                final_text: response.assistant_text,
+                budget_exhausted: false,
+            });
+        }
+
+        turns_so_far.push(ModelTurn::assistant_tool_calls(response.tool_calls.clone()));
+
+        for call in &response.tool_calls {
+            events.push(ChatEvent::ToolCall {
+                name: call.name.clone(),
+                arguments: call.arguments.clone(),
+            });
+            let result = dispatch(&call.name, &call.arguments);
+            events.push(ChatEvent::ToolResult {
+                name: call.name.clone(),
+                result: result.clone(),
+            });
+            let content = serde_json::to_string(&result).unwrap_or_else(|_| "{}".to_string());
+            turns_so_far.push(ModelTurn::tool_result(call.id.clone(), content));
+        }
+
+        let Some(trailing) = turns_so_far.last().cloned() else {
+            // Unreachable: the loop above just pushed at least one tool-result
+            // turn (response.tool_calls was checked non-empty). Fail safe
+            // rather than index/unwrap if that invariant is ever broken.
+            break;
+        };
+        let history_for_request = turns_so_far[..turns_so_far.len() - 1].to_vec();
+        request = ModelRequest::continue_with(history_for_request, trailing)
+            .with_system_prompt(settings.system_prompt.clone())
+            .with_tools(tools.to_vec());
+    }
+
+    let exhausted_text = format!(
+        "Tool budget exhausted after {max_turns} round-trip(s) without a final reply. \
+         Ask a narrower question, or increase the turn budget, and try again."
+    );
+    events.push(ChatEvent::Assistant(exhausted_text.clone()));
+    Ok(ToolLoopOutcome {
+        events,
+        final_text: exhausted_text,
+        budget_exhausted: true,
+    })
+}
+
 pub fn build_rig_prompt_preview(
     settings: &ChatSettings,
     history: &[ChatTurn],
@@ -187,6 +317,7 @@ pub fn render_transcript(history: &[ChatTurn]) -> String {
                 ChatRole::System => "System",
                 ChatRole::User => "You",
                 ChatRole::Assistant => "Assistant",
+                ChatRole::Tool => "Tool",
             };
             format!("{speaker}\n{}\n", turn.content.trim())
         })
@@ -199,6 +330,7 @@ fn chat_role_name(role: ChatRole) -> &'static str {
         ChatRole::System => "system",
         ChatRole::User => "user",
         ChatRole::Assistant => "assistant",
+        ChatRole::Tool => "tool",
     }
 }
 
@@ -359,9 +491,49 @@ fn model_turn(turn: &ChatTurn) -> ModelTurn {
             ChatRole::System => ModelRole::System,
             ChatRole::User => ModelRole::User,
             ChatRole::Assistant => ModelRole::Assistant,
+            // Persisted tool-activity turns are folded back in as plain
+            // context on later user messages, not replayed as literal
+            // OpenAI tool-role messages: we deliberately don't try to
+            // reconstruct the original `tool_call_id` pairing across
+            // separate `send_message` calls, since a `tool`-role message
+            // that doesn't immediately follow its matching assistant
+            // `tool_calls` message is a protocol error most OpenAI-compatible
+            // endpoints reject outright. Within a single tool-calling loop
+            // (`send_message_with_tools`), the real id-correct threading
+            // happens via `ModelTurn::assistant_tool_calls`/`tool_result` on
+            // the loop's own ephemeral turn list — it never goes through
+            // this function.
+            ChatRole::Tool => ModelRole::User,
         },
         content: turn.content.clone(),
+        ..Default::default()
     }
+}
+
+/// Renders the tool-call/tool-result events from a [`ToolLoopOutcome`] as
+/// `ChatRole::Tool` turns, so callers can append them to the persisted chat
+/// history and `render_transcript` shows them distinctly from model text.
+/// The trailing `ChatEvent::Assistant` (the final reply) is intentionally
+/// skipped — callers append that themselves as an ordinary
+/// `ChatRole::Assistant` turn, same as the no-tools path.
+pub fn tool_event_chat_turns(events: &[ChatEvent]) -> Vec<ChatTurn> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            ChatEvent::ToolCall { name, arguments } => Some(ChatTurn {
+                role: ChatRole::Tool,
+                content: format!("Called {name}({arguments})"),
+            }),
+            ChatEvent::ToolResult { name, result } => Some(ChatTurn {
+                role: ChatRole::Tool,
+                content: format!(
+                    "{name} ->\n{}",
+                    serde_json::to_string_pretty(result).unwrap_or_else(|_| result.to_string())
+                ),
+            }),
+            ChatEvent::Assistant(_) => None,
+        })
+        .collect()
 }
 
 impl From<AgentRuntimeError> for ChatError {
@@ -385,6 +557,7 @@ impl From<AgentRuntimeError> for ChatError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent_runtime::{ModelResponse, ModelToolCall};
 
     fn test_settings() -> ChatSettings {
         ChatSettings {
@@ -428,6 +601,29 @@ mod tests {
             send_chat_message(&test_settings(), &[], "   "),
             Err(ChatError::EmptyMessage)
         ));
+    }
+
+    #[test]
+    fn tool_event_chat_turns_skips_the_final_assistant_event_and_labels_the_rest_tool() {
+        let events = vec![
+            ChatEvent::ToolCall {
+                name: "query_audit_log".to_string(),
+                arguments: serde_json::json!({}),
+            },
+            ChatEvent::ToolResult {
+                name: "query_audit_log".to_string(),
+                result: serde_json::json!({"isError": false}),
+            },
+            ChatEvent::Assistant("here is what I found".to_string()),
+        ];
+
+        let turns = tool_event_chat_turns(&events);
+
+        assert_eq!(turns.len(), 2);
+        assert!(turns.iter().all(|turn| turn.role == ChatRole::Tool));
+        assert!(turns[0].content.contains("Called query_audit_log"));
+        assert!(turns[1].content.contains("query_audit_log"));
+        assert!(turns[1].content.contains("isError"));
     }
 
     #[test]
@@ -537,5 +733,141 @@ mod tests {
         assert!(rendered.contains("#1: submit_chat_request"));
         assert!(rendered.contains("Diffset:"));
         assert!(rendered.contains("pending_request"));
+    }
+
+    /// A fake backend that always asks to call the same tool, forever — used
+    /// to prove the turn-budget cap actually stops the loop instead of
+    /// looping until the model produces text (which it never will here).
+    struct AlwaysToolCallRuntime;
+
+    impl AgentRuntime for AlwaysToolCallRuntime {
+        fn complete(&self, _request: ModelRequest) -> Result<ModelResponse, AgentRuntimeError> {
+            Ok(ModelResponse {
+                assistant_text: String::new(),
+                tool_calls: vec![ModelToolCall {
+                    id: "call_1".to_string(),
+                    name: "query_audit_log".to_string(),
+                    arguments: serde_json::json!({}),
+                }],
+            })
+        }
+    }
+
+    #[test]
+    fn send_message_with_tools_stops_at_the_turn_budget_and_says_so() {
+        let runtime = AlwaysToolCallRuntime;
+        let dispatch = |_name: &str, _args: &serde_json::Value| serde_json::json!({"ok": true});
+
+        let outcome = send_message_with_tools(
+            &runtime,
+            &test_settings(),
+            &[],
+            "how many flags are open?",
+            &[],
+            &dispatch,
+            3,
+        )
+        .expect("the loop returns Ok even when the turn budget is exhausted");
+
+        assert!(outcome.budget_exhausted);
+        assert!(
+            outcome.final_text.contains("Tool budget exhausted"),
+            "budget exhaustion must be a visible transcript entry, not a silent truncation: {}",
+            outcome.final_text
+        );
+        let tool_call_events = outcome
+            .events
+            .iter()
+            .filter(|event| matches!(event, ChatEvent::ToolCall { .. }))
+            .count();
+        assert_eq!(
+            tool_call_events, 3,
+            "loop must stop after exactly `max_turns` tool round-trips, not fewer or more"
+        );
+    }
+
+    #[test]
+    fn send_message_with_tools_terminates_immediately_when_the_budget_is_zero() {
+        let runtime = AlwaysToolCallRuntime;
+        let dispatch = |_name: &str, _args: &serde_json::Value| serde_json::json!({"ok": true});
+
+        let outcome =
+            send_message_with_tools(&runtime, &test_settings(), &[], "hello", &[], &dispatch, 0)
+                .expect("zero turns is a valid, non-panicking budget");
+
+        assert!(outcome.budget_exhausted);
+        assert!(outcome
+            .events
+            .iter()
+            .all(|event| !matches!(event, ChatEvent::ToolCall { .. })));
+    }
+
+    /// A fake backend that asks for a (disallowed) tool once, then checks
+    /// that the dispatcher's rejection came back as *this* turn's trailing
+    /// tool-result content with the matching call id, before replying in text.
+    struct ToolCallThenTextRuntime {
+        call_count: std::sync::atomic::AtomicUsize,
+    }
+
+    impl AgentRuntime for ToolCallThenTextRuntime {
+        fn complete(&self, request: ModelRequest) -> Result<ModelResponse, AgentRuntimeError> {
+            let call = self
+                .call_count
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if call == 0 {
+                Ok(ModelResponse {
+                    assistant_text: String::new(),
+                    tool_calls: vec![ModelToolCall {
+                        id: "call_1".to_string(),
+                        name: "reconcile_postings".to_string(),
+                        arguments: serde_json::json!({}),
+                    }],
+                })
+            } else {
+                let trailing = request
+                    .trailing_turn
+                    .expect("a continuation call must set trailing_turn");
+                assert_eq!(trailing.tool_call_id.as_deref(), Some("call_1"));
+                assert!(
+                    trailing.content.contains("reconcile_postings")
+                        && trailing.content.contains("not in the chat allowlist"),
+                    "dispatcher's rejection text must reach the model verbatim: {}",
+                    trailing.content
+                );
+                Ok(ModelResponse::text(
+                    "understood, that tool is not available",
+                ))
+            }
+        }
+    }
+
+    #[test]
+    fn send_message_with_tools_feeds_a_rejected_tool_call_back_as_its_result() {
+        let runtime = ToolCallThenTextRuntime {
+            call_count: std::sync::atomic::AtomicUsize::new(0),
+        };
+        let dispatch = |name: &str, _args: &serde_json::Value| {
+            serde_json::json!({
+                "ok": false,
+                "error": format!("tool '{name}' is not in the chat allowlist")
+            })
+        };
+
+        let outcome = send_message_with_tools(
+            &runtime,
+            &test_settings(),
+            &[],
+            "please call a disallowed tool",
+            &[],
+            &dispatch,
+            DEFAULT_MAX_TOOL_TURNS,
+        )
+        .expect("loop completes once the model stops requesting tools");
+
+        assert!(!outcome.budget_exhausted);
+        assert_eq!(outcome.final_text, "understood, that tool is not available");
+        assert!(outcome.events.iter().any(
+            |event| matches!(event, ChatEvent::ToolResult { name, .. } if name == "reconcile_postings")
+        ));
     }
 }

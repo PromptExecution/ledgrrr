@@ -28,7 +28,9 @@ anyhow = { workspace = true }
 chrono = { workspace = true }
 reqwest = { workspace = true }
 rig-core = "0.35.0"
+b00t-iface = { path = "../b00t-iface" }
 ledger-core = { workspace = true }
+ledgerr-mcp = { path = "../ledgerr-mcp" }
 ledgrrr-settings = { path = "../ledgrrr-settings" }
 arc-kit-au = { path = "../arc-kit-au" }
 holon-viz = { path = "../holon-viz" }

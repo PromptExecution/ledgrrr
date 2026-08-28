@@ -2,11 +2,15 @@ use std::sync::Arc;
 
 use tauri::Emitter;
 
+use ledgerr_host::agent_runtime::RigAgentRuntime;
 use ledgerr_host::chat::{
     assistant_decision_log, build_rig_prompt_preview, render_rig_exchange_log, render_transcript,
-    rhai_rule_prompt_seed, rhai_rule_prompt_seed_log, send_chat_message, user_request_log,
-    ChatRole, ChatTurn, DEFAULT_RHAI_RULE_MODEL, RHAI_RULE_SYSTEM_PROMPT,
+    rhai_rule_prompt_seed, rhai_rule_prompt_seed_log, send_message_with_tools,
+    tool_event_chat_turns, user_request_log, ChatRole, ChatTurn, DEFAULT_MAX_TOOL_TURNS,
+    DEFAULT_RHAI_RULE_MODEL, RHAI_RULE_SYSTEM_PROMPT,
 };
+use ledgerr_host::chat_tools::{self, GET_EVIDENCE_DASHBOARD};
+use ledgerr_host::evidence::{EvidenceState, TodayQueue};
 use ledgerr_host::internal_openai::{
     cloud_chat_settings, docs_playbook_status, foundry_local_chat_settings, foundry_local_status,
     internal_phi_backend_status, internal_phi_chat_settings,
@@ -14,6 +18,7 @@ use ledgerr_host::internal_openai::{
     FOUNDRY_LOCAL_MODEL, INTERNAL_OPENAI_CHAT_URL,
 };
 use ledgerr_host::settings::ChatSettings;
+use ledgerr_host::settings_client::SettingsClient;
 
 use super::state::AppState;
 use holon_viz::{Holon, HolonKind, TypeRelationshipGraph};
@@ -328,6 +333,8 @@ pub async fn send_message(
     // Clone Arc handles for the blocking task
     let history_arc = Arc::clone(&state.history);
     let review_log_arc = Arc::clone(&state.review_log);
+    let evidence_arc = Arc::clone(&state.evidence);
+    let store_arc = Arc::clone(&state.store);
     let chat_settings = settings.chat.clone();
     // history_snapshot already excludes the current turn for the context window;
     // the current turn was appended above, so pass all but last.
@@ -338,14 +345,31 @@ pub async fn send_message(
     let backend_status_clone = backend_status.clone();
 
     tauri::async_runtime::spawn_blocking(move || {
-        let result = send_chat_message(&chat_settings, &context, &user_content);
+        let runtime = RigAgentRuntime::new(chat_settings.clone());
+        let tool_specs = chat_tools::tool_specs();
+        let dispatch = move |name: &str, arguments: &serde_json::Value| -> serde_json::Value {
+            if name == GET_EVIDENCE_DASHBOARD {
+                dispatch_get_evidence_dashboard(&evidence_arc, &store_arc)
+            } else {
+                chat_tools::dispatch_mcp_tool(name, arguments)
+            }
+        };
+        let result = send_message_with_tools(
+            &runtime,
+            &chat_settings,
+            &context,
+            &user_content,
+            &tool_specs,
+            &dispatch,
+            DEFAULT_MAX_TOOL_TURNS,
+        );
 
         match result {
-            Ok(response) => {
+            Ok(outcome) => {
                 let review_text = {
                     match review_log_arc.lock() {
                         Ok(mut rl) => {
-                            rl.push(assistant_decision_log(&previous_rhai, &response));
+                            rl.push(assistant_decision_log(&previous_rhai, &outcome.final_text));
                             rl.render()
                         }
                         Err(_) => "review log poisoned".to_string(),
@@ -355,21 +379,30 @@ pub async fn send_message(
                 let rig_log = render_rig_exchange_log(
                     &request_preview_clone,
                     &backend_status_clone,
-                    Some(&response),
+                    Some(&outcome.final_text),
                     None,
                 );
 
                 let transcript = {
                     match history_arc.lock() {
                         Ok(mut h) => {
+                            h.extend(tool_event_chat_turns(&outcome.events));
                             h.push(ChatTurn {
                                 role: ChatRole::Assistant,
-                                content: response,
+                                content: outcome.final_text,
                             });
                             render_transcript(&h)
                         }
                         Err(_) => "history poisoned".to_string(),
                     }
+                };
+
+                let status_text = if outcome.budget_exhausted {
+                    format!(
+                        "Chat tool budget exhausted after {DEFAULT_MAX_TOOL_TURNS} round-trip(s) — see the transcript for the last tool result."
+                    )
+                } else {
+                    "Remote chat response received.".to_string()
                 };
 
                 let _ = window.emit(
@@ -379,7 +412,7 @@ pub async fn send_message(
                         review_log_text: Some(review_text),
                         rig_log_text: rig_log,
                         draft_message_text: String::new(),
-                        status_text: "Remote chat response received.".to_string(),
+                        status_text,
                         busy: false,
                     },
                 );
@@ -552,14 +585,42 @@ pub struct EvidenceDashboardPayload {
 pub fn get_evidence_dashboard(
     state: tauri::State<'_, AppState>,
 ) -> Result<EvidenceDashboardPayload, String> {
-    let settings = state.store.load().map_err(|e| e.to_string())?;
-    let mut evidence = state
-        .evidence
+    let today_queue = evidence_dashboard_today_queue(&state.evidence, &state.store)?;
+    Ok(EvidenceDashboardPayload { today_queue })
+}
+
+/// Shared logic behind both the `get_evidence_dashboard` Tauri command and
+/// the chat tool loop's `get_evidence_dashboard` tool call — see
+/// `dispatch_get_evidence_dashboard` below.
+fn evidence_dashboard_today_queue(
+    evidence: &Arc<std::sync::Mutex<EvidenceState>>,
+    store: &Arc<SettingsClient>,
+) -> Result<TodayQueue, String> {
+    let settings = store.load().map_err(|e| e.to_string())?;
+    let mut evidence = evidence
         .lock()
         .map_err(|_| "evidence lock poisoned".to_string())?;
     evidence.refresh_gaps();
-    let today_queue = ledgerr_host::evidence::TodayQueue::from_state(&evidence, &settings);
-    Ok(EvidenceDashboardPayload { today_queue })
+    Ok(TodayQueue::from_state(&evidence, &settings))
+}
+
+/// `get_evidence_dashboard` is Tauri-state-bound (it lives on
+/// `AppState.evidence`/`AppState.store`), so it is dispatched here rather
+/// than through `chat_tools::dispatch_mcp_tool` — see that module's doc
+/// comment. Never panics: errors are folded into the `{"ok": false, ...}`
+/// envelope so the tool loop always has *something* to feed back to the
+/// model as the tool result.
+fn dispatch_get_evidence_dashboard(
+    evidence: &Arc<std::sync::Mutex<EvidenceState>>,
+    store: &Arc<SettingsClient>,
+) -> serde_json::Value {
+    match evidence_dashboard_today_queue(evidence, store) {
+        Ok(today_queue) => match serde_json::to_value(&today_queue) {
+            Ok(value) => serde_json::json!({ "today_queue": value }),
+            Err(error) => serde_json::json!({ "ok": false, "error": error.to_string() }),
+        },
+        Err(error) => serde_json::json!({ "ok": false, "error": error }),
+    }
 }
 
 #[derive(serde::Serialize, Clone, specta::Type)]

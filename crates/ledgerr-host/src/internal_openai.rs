@@ -62,7 +62,6 @@ impl ModelProviderExt for ModelProviderLabel {
     }
 }
 
-
 /// Combined provider info for the host UI.
 ///
 /// Returned by `provider_status()` to populate the model-mode selector.
@@ -707,12 +706,14 @@ impl InternalChatBackend for Phi4MistralBackend {
                 "assistant" => history.push(ModelTurn {
                     role: ModelRole::Assistant,
                     content: message.content_text(),
+                    ..Default::default()
                 }),
                 "user" => {
                     if let Some(previous_user) = user_message.replace(message.content_text()) {
                         history.push(ModelTurn {
                             role: ModelRole::User,
                             content: previous_user,
+                            ..Default::default()
                         });
                     }
                 }
