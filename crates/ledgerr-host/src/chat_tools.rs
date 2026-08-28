@@ -239,13 +239,24 @@ pub fn dispatch_mcp_tool(name: &str, arguments: &Value) -> Value {
         });
     }
 
-    let service = global_service();
+    // These two never touch TurboLedgerService — resolve them before paying
+    // for (or failing on) service resolution below.
     match name {
-        GET_EVIDENCE_DASHBOARD => json!({
-            "ok": false,
-            "error": "get_evidence_dashboard must be dispatched by the Tauri command layer (needs AppState), not chat_tools::dispatch_mcp_tool"
-        }),
-        "get_pipeline_status" => dispatch_pipeline_status(),
+        GET_EVIDENCE_DASHBOARD => {
+            return json!({
+                "ok": false,
+                "error": "get_evidence_dashboard must be dispatched by the Tauri command layer (needs AppState), not chat_tools::dispatch_mcp_tool"
+            });
+        }
+        "get_pipeline_status" => return dispatch_pipeline_status(),
+        _ => {}
+    }
+
+    let service = match global_service() {
+        Ok(service) => service,
+        Err(error) => return json!({ "ok": false, "error": error }),
+    };
+    match name {
         "document_inventory" => mcp_adapter::handle_document_inventory(service, arguments),
         "get_raw_context" => mcp_adapter::handle_get_raw_context(service, arguments),
         "query_flags" => mcp_adapter::handle_query_flags(service, arguments),
@@ -263,7 +274,8 @@ pub fn dispatch_mcp_tool(name: &str, arguments: &Value) -> Value {
         }
         // Unreachable: `is_allowlisted` above already rejected anything not
         // in ALLOWLISTED_TOOL_NAMES, and every name in that list is matched
-        // above (see `allowlist_and_specs_never_drift_apart`).
+        // either in the block above or here (see
+        // `allowlist_and_specs_never_drift_apart`).
         other => json!({
             "ok": false,
             "error": format!("tool '{other}' is allowlisted but has no dispatcher wired — this is a bug")
@@ -290,24 +302,64 @@ fn dispatch_schema_lookup(service: &TurboLedgerService, arguments: &Value) -> Va
     )
 }
 
-fn global_service() -> &'static TurboLedgerService {
-    static SERVICE: OnceLock<&'static TurboLedgerService> = OnceLock::new();
-    SERVICE.get_or_init(build_service)
+/// Resolves the `TurboLedgerService` backing every allowlisted tool except
+/// `get_evidence_dashboard`/`get_pipeline_status`, or a clear error.
+///
+/// Deliberately does NOT default to a hardcoded manifest/workbook path the
+/// way `ledgerr-mcp-server.rs`'s standalone `build_service()` does — that
+/// default is fine for a process whose whole job is one manifest, but the
+/// Tauri desktop app doesn't (yet) track a "currently open workbook" in
+/// `AppSettings`, and silently defaulting here would let `classify_transaction`
+/// / `batch_classify` / `bulk_resolve_flags` write into a phantom
+/// `./tax-ledger.xlsx` relative to wherever the app process happened to
+/// start, instead of the operator's actual workbook — a silent-divergence
+/// risk in a financial path. Until the app has a real workbook-path setting
+/// to source this from, every chat tool call requires `LEDGERR_MCP_MANIFEST`
+/// to be set explicitly and fails closed (an error envelope, never a panic)
+/// when it isn't.
+fn global_service() -> Result<&'static TurboLedgerService, String> {
+    static SERVICE: OnceLock<Result<&'static TurboLedgerService, String>> = OnceLock::new();
+    SERVICE.get_or_init(build_service).clone()
 }
 
-fn build_service() -> &'static TurboLedgerService {
-    let manifest = std::env::var("LEDGERR_MCP_MANIFEST").unwrap_or_else(|_| {
-        "[session]\nworkbook_path=\"tax-ledger.xlsx\"\nactive_year=2023\n\n[accounts]\nWF-BH-CHK = { institution = \"Wells Fargo\", type = \"checking\", currency = \"USD\" }\n".to_string()
-    });
-    let service = Box::new(
-        TurboLedgerService::from_manifest_str(&manifest).expect("default manifest must parse"),
-    );
-    Box::leak(service)
+fn build_service() -> Result<&'static TurboLedgerService, String> {
+    let manifest = std::env::var("LEDGERR_MCP_MANIFEST").map_err(|_| {
+        "chat tools need LEDGERR_MCP_MANIFEST set to the active workbook's manifest \
+         TOML (the desktop app does not yet track a 'currently open workbook' setting \
+         — see l3dg3rr#208 follow-up); no ledgerr-mcp-backed tool can run without it"
+            .to_string()
+    })?;
+    let service = TurboLedgerService::from_manifest_str(&manifest)
+        .map_err(|error| format!("LEDGERR_MCP_MANIFEST failed to parse: {error}"))?;
+    Ok(Box::leak(Box::new(service)))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Builds a `TurboLedgerService` directly from an in-line manifest, for
+    /// tests that need the real `ledgerr-mcp` handlers but must not go
+    /// through the env-var-gated `global_service()` singleton: this
+    /// workspace denies `unsafe_code` outright, and `std::env::set_var` is
+    /// an unsafe fn, so tests cannot set `LEDGERR_MCP_MANIFEST` at all. This
+    /// also means `LEDGERR_MCP_MANIFEST` is reliably unset for every test in
+    /// this binary — see `service_backed_tools_fail_closed_without_manifest_configured`.
+    fn test_service() -> TurboLedgerService {
+        let workbook_path = std::env::temp_dir().join(format!(
+            "chat-tools-test-workbook-{}-{}.xlsx",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or_default()
+        ));
+        let manifest = format!(
+            "[session]\nworkbook_path=\"{}\"\nactive_year=2023\n\n[accounts]\nWF-BH-CHK = {{ institution = \"Wells Fargo\", type = \"checking\", currency = \"USD\" }}\n",
+            workbook_path.display()
+        );
+        TurboLedgerService::from_manifest_str(&manifest).expect("test manifest must parse")
+    }
 
     #[test]
     fn allowlist_and_specs_never_drift_apart() {
@@ -350,35 +402,76 @@ mod tests {
     }
 
     #[test]
-    fn query_audit_log_dispatches_through_the_real_handler() {
-        // Exercises the plain end-to-end path against the default in-process
-        // TurboLedgerService (no live app/workbook required).
-        let result = dispatch_mcp_tool("query_audit_log", &json!({}));
+    fn query_audit_log_handler_succeeds_against_a_directly_built_service() {
+        // Exercises the real ledgerr-mcp handler end-to-end. Deliberately
+        // bypasses `dispatch_mcp_tool`/`global_service()` — see
+        // `test_service` for why.
+        let service = test_service();
+        let result = mcp_adapter::handle_query_audit_log(&service, &json!({}));
         assert_eq!(result["isError"], json!(false));
     }
 
     #[test]
     fn schema_lookup_ignores_a_model_supplied_action_and_stays_read_only() {
-        // Even if a model tries to sneak `action: "register_kind"` in, the
-        // dispatcher must force `list_kinds` — never let chat register or
-        // remove ontology kinds.
+        // Even if a model tries to sneak `action: "register_kind"` in,
+        // `dispatch_schema_lookup` must force `list_kinds` — never let chat
+        // register or remove ontology kinds. Calls `dispatch_schema_lookup`
+        // directly (bypassing `global_service()`) — see `test_service`.
+        let service = test_service();
         let scratch = std::env::temp_dir().join(format!(
             "chat-tools-schema-lookup-test-{}.json",
             std::process::id()
         ));
         let path_str = scratch.to_string_lossy().to_string();
-        let result = dispatch_mcp_tool(
-            "schema_lookup",
+        let result = dispatch_schema_lookup(
+            &service,
             &json!({
                 "schema_path": path_str,
                 "action": "register_kind",
                 "name": "should_not_be_created"
             }),
         );
-        // list_kinds on a fresh/absent path either succeeds with an empty
-        // list or reports a load error — either way, nothing was registered.
+        // `SchemaStore::load` treats a non-existent path as an empty store
+        // (see `schema.rs`), so `list_kinds` here succeeds with zero kinds —
+        // the important assertion is that nothing was registered despite the
+        // model-supplied `action: "register_kind"`.
         let _ = std::fs::remove_file(&scratch);
-        assert!(result.get("isError").is_some() || result.get("ok").is_some());
+        assert_eq!(result["isError"], json!(false));
+    }
+
+    #[test]
+    fn service_backed_tools_fail_closed_without_ledgerr_mcp_manifest_configured() {
+        // The default state on Tauri process startup today: the desktop app
+        // has no "currently open workbook" setting yet to source a manifest
+        // from (see `build_service`'s doc comment), so `LEDGERR_MCP_MANIFEST`
+        // is unset. Every ledgerr-mcp-backed tool must fail with a clear,
+        // actionable error here — never panic, and never silently fall back
+        // to a phantom workbook. (We never call `std::env::set_var` anywhere
+        // in this crate — `unsafe_code` is denied workspace-wide — so this
+        // env var is reliably unset for the whole test binary.)
+        for name in ["query_audit_log", "document_inventory", "classify_transaction"] {
+            let result = dispatch_mcp_tool(name, &json!({}));
+            assert_eq!(result["ok"], json!(false), "tool: {name}");
+            let error = result["error"].as_str().unwrap_or_default();
+            assert!(
+                error.contains("LEDGERR_MCP_MANIFEST"),
+                "tool: {name}, error: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn get_pipeline_status_and_get_evidence_dashboard_do_not_require_a_manifest() {
+        // These two don't touch TurboLedgerService at all, so they must not
+        // be affected by LEDGERR_MCP_MANIFEST being unset.
+        let pipeline = dispatch_mcp_tool("get_pipeline_status", &json!({}));
+        assert!(pipeline.get("isError").is_some());
+        let evidence = dispatch_mcp_tool(GET_EVIDENCE_DASHBOARD, &json!({}));
+        assert_eq!(evidence["ok"], json!(false));
+        assert!(evidence["error"]
+            .as_str()
+            .unwrap()
+            .contains("Tauri command layer"));
     }
 
     #[test]
