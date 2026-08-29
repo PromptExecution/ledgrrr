@@ -89,10 +89,15 @@ pub fn run(
                 },
             };
 
-            let should_quit =
-                handle_command(command, &store, &state, &tray.control_tx, &show_window)?;
-            if should_quit {
-                break;
+            // A single command failing (e.g. a settings load/save error) must
+            // not tear down the whole tray runtime — log and keep the loop
+            // running. Only an actual `Quit` command (`Ok(true)`) ends it.
+            match handle_command(command, &store, &state, &tray.control_tx, &show_window) {
+                Ok(true) => break,
+                Ok(false) => {}
+                Err(e) => {
+                    eprintln!("[tray] command failed: {e}");
+                }
             }
         }
     }
@@ -280,9 +285,20 @@ fn send_best_effort_toast(settings: &AppSettings, event: NotificationEvent) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::settings_backend::JsonFileBackend;
+    use std::path::PathBuf;
 
     fn noop_show_window() -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
+    }
+
+    /// Build a `SettingsStore` over an explicit `JsonFileBackend` rather than
+    /// `SettingsStore::new`, which on Windows would prefer the real registry
+    /// backend for any path — these tests only need filesystem isolation via
+    /// `tempfile::tempdir()`, not registry behavior, so going through the
+    /// real registry would leak a permanent HKCU key per test run.
+    fn store_over(path: PathBuf) -> SettingsStore {
+        SettingsStore::with_backend(path.clone(), Box::new(JsonFileBackend::new(path)))
     }
 
     /// Drives `handle_command` for a single toggle variant and asserts three
@@ -300,7 +316,7 @@ mod tests {
     ) {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
-        let store = SettingsStore::new(path.clone());
+        let store = store_over(path.clone());
         let initial = store.load().unwrap();
         let state = Arc::new(Mutex::new(TrayState::from_settings(&initial)));
         let (control_tx, control_rx) = mpsc::channel();
@@ -316,7 +332,7 @@ mod tests {
         .unwrap();
         assert!(!should_quit);
 
-        let fresh_store = SettingsStore::new(path);
+        let fresh_store = store_over(path);
         let persisted = fresh_store.load().unwrap();
         assert_eq!(
             read_setting(&persisted),
@@ -401,7 +417,7 @@ mod tests {
     fn cycle_backend_persists_and_updates_control() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
-        let store = SettingsStore::new(path.clone());
+        let store = store_over(path.clone());
         let initial = store.load().unwrap();
         let state = Arc::new(Mutex::new(TrayState::from_settings(&initial)));
         let (control_tx, control_rx) = mpsc::channel();
@@ -417,7 +433,7 @@ mod tests {
         .unwrap();
         assert!(!should_quit);
 
-        let fresh_store = SettingsStore::new(path);
+        let fresh_store = store_over(path);
         let persisted = fresh_store.load().unwrap();
         assert_eq!(persisted.toast_backend_preference, expected);
 
@@ -437,7 +453,7 @@ mod tests {
     #[test]
     fn show_window_invokes_the_injected_closure_and_marks_state_visible() {
         let dir = tempfile::tempdir().unwrap();
-        let store = SettingsStore::new(dir.path().join("settings.json"));
+        let store = store_over(dir.path().join("settings.json"));
         let initial = store.load().unwrap();
         let mut state = TrayState::from_settings(&initial);
         state.window_visible = false;
@@ -467,7 +483,7 @@ mod tests {
     fn quit_requests_shutdown_without_persisting_changes() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
-        let store = SettingsStore::new(path.clone());
+        let store = store_over(path.clone());
         // Noop backend so Quit's best-effort toast doesn't shell out to
         // PowerShell during a test run.
         let mut initial = store.load().unwrap();
@@ -487,8 +503,75 @@ mod tests {
         .unwrap();
         assert!(should_quit);
 
-        let fresh = SettingsStore::new(path).load().unwrap();
+        let fresh = store_over(path).load().unwrap();
         assert_eq!(fresh, initial, "Quit must not mutate settings");
+    }
+
+    /// Regression test for the "any tray command error kills the whole app"
+    /// bug: a `handle_command` call against a broken store must return
+    /// `Err` (not panic, not silently succeed) so the `run()` loop's
+    /// `match ... Err(e) => { eprintln!(...); }` arm has something real to
+    /// catch — and a *subsequent* command against a healthy store must
+    /// still work correctly afterwards, proving the failure doesn't corrupt
+    /// shared state (`state: Arc<Mutex<TrayState>>`) for later commands.
+    ///
+    /// Failure is injected by pointing a `JsonFileBackend` at a directory
+    /// instead of a file: `std::fs::read_to_string` on a directory reliably
+    /// errors (not `NotFound`, so `read_map` propagates it), which makes
+    /// every `store.load()`/`store.save()` through it fail deterministically
+    /// without relying on filesystem permissions (which behave differently
+    /// across CI/dev machines).
+    ///
+    /// The `run()` loop's own continue-on-error control flow (the `match`
+    /// added around `handle_command` in `run()`) is not independently
+    /// unit-testable: `run()` requires a live native tray window/message
+    /// pump (`NativeTrayPlatform::spawn`), so there is no way to drive it
+    /// from a `#[test]` without a real OS tray. That part of the fix is
+    /// verified by code inspection (the `match` has no `?`/early-return path
+    /// left for `Err`) and by the full crate build succeeding, not by a unit
+    /// test — see the final fix report for the reasoning.
+    #[test]
+    fn handle_command_returns_err_on_broken_store_without_panicking_and_state_recovers() {
+        let dir = tempfile::tempdir().unwrap();
+        // Point the backend directly at the temp *directory*, not a file
+        // inside it — every read/write through it will fail.
+        let broken_path = dir.path().to_path_buf();
+        let broken_store = store_over(broken_path);
+
+        let state = Arc::new(Mutex::new(TrayState::default()));
+        let (control_tx, _control_rx) = mpsc::channel();
+
+        let result = handle_command(
+            TrayCommand::ToggleToast(true),
+            &broken_store,
+            &state,
+            &control_tx,
+            &noop_show_window,
+        );
+        assert!(
+            result.is_err(),
+            "expected a command against an unreadable/unwritable store to fail"
+        );
+
+        // The same `state` handle, reused against a healthy store, must
+        // still behave correctly for a subsequent command — the earlier
+        // failure must not have poisoned the mutex or left it in a bad
+        // state.
+        let healthy_dir = tempfile::tempdir().unwrap();
+        let healthy_store = store_over(healthy_dir.path().join("settings.json"));
+        let should_quit = handle_command(
+            TrayCommand::ToggleToast(true),
+            &healthy_store,
+            &state,
+            &control_tx,
+            &noop_show_window,
+        )
+        .expect("a command against a healthy store must succeed after a prior failure");
+        assert!(!should_quit);
+        assert!(
+            healthy_store.load().unwrap().toast_enabled,
+            "the successful command after the failure must still persist correctly"
+        );
     }
 
     #[test]

@@ -29,20 +29,35 @@ pub fn setup_tray(app: &tauri::App) {
                 // restore a minimized window. `unminimize()` (SW_RESTORE)
                 // is safe to call unconditionally even when the window is
                 // not minimized.
-                window
-                    .unminimize()
-                    .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })?;
-                window
-                    .show()
-                    .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })?;
-                window
-                    .set_focus()
-                    .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })?;
+                //
+                // A failure here (window destroyed mid-flight, WebView2
+                // hiccup, etc.) must not tear down the whole tray runtime —
+                // log and move on rather than propagating via `?`, mirroring
+                // the old stub's `let _ = window.show();`. See runtime.rs's
+                // `run()` loop, which now treats a failing command as
+                // non-fatal too.
+                if let Err(e) = window.unminimize() {
+                    eprintln!("[tray] failed to unminimize window: {e}");
+                }
+                if let Err(e) = window.show() {
+                    eprintln!("[tray] failed to show window: {e}");
+                }
+                if let Err(e) = window.set_focus() {
+                    eprintln!("[tray] failed to focus window: {e}");
+                }
             }
             Ok(())
         });
         if let Err(e) = result {
+            // `run()` no longer returns `Err` for individual tray command
+            // failures (those are now logged and swallowed inside the loop),
+            // so reaching this arm means something more fundamental broke
+            // (e.g. tray/window creation itself). Exit non-zero so that
+            // looks like the failure it is, instead of `app_handle.exit(0)`
+            // making a real crash look like a clean user-initiated quit to
+            // anything watching the process.
             eprintln!("[tray] tray runtime exited with error: {e}");
+            std::process::exit(1);
         }
         app_handle.exit(0);
     });
