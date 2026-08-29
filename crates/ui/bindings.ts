@@ -7,6 +7,17 @@ export const commands = {
 	getInitialState: () => typedError<InitialState, string>(__TAURI_INVOKE("get_initial_state")),
 	saveSettings: (endpoint: string, model: string, apiKey: string, systemPrompt: string) => typedError<string, string>(__TAURI_INVOKE("save_settings", { endpoint, model, apiKey, systemPrompt })),
 	sendMessage: (draft: string, endpoint: string, model: string, apiKey: string, systemPrompt: string) => typedError<string, string>(__TAURI_INVOKE("send_message", { draft, endpoint, model, apiKey, systemPrompt })),
+	/**
+	 *  Records the operator's approve/reject decision for one pending mutation
+	 *  tool call (see issue #208's follow-up). Once every pending id from the
+	 *  same round has a resolution, resumes the suspended tool-calling loop —
+	 *  dispatching approved calls via the same `chat_tools::dispatch_mcp_tool`
+	 *  path as any other tool call, and synthesizing a declined-tool-result for
+	 *  rejected ones — and emits the same `chat-update` event `send_message`
+	 *  does. Until every pending id is resolved, only records the decision and
+	 *  returns a short status string; nothing is dispatched early.
+	 */
+	confirmPendingToolCall: (callId: string, approved: boolean) => typedError<string, string>(__TAURI_INVOKE("confirm_pending_tool_call", { callId, approved })),
 	loadRhaiRulePrompt: (currentModel: string, currentSystemPrompt: string) => typedError<RhaiPromptPayload, string>(__TAURI_INVOKE("load_rhai_rule_prompt", { currentModel, currentSystemPrompt })),
 	useInternalPhi: (systemPrompt: string) => typedError<ChatSettingsPayload, string>(__TAURI_INVOKE("use_internal_phi", { systemPrompt })),
 	useFoundryLocal: (systemPrompt: string) => typedError<ChatSettingsPayload, string>(__TAURI_INVOKE("use_foundry_local", { systemPrompt })),
@@ -20,16 +31,34 @@ export const commands = {
 	/**
 	 *  Return the Cytoscape.js-compatible graph for the holonic pipeline.
 	 * 
-	 *  The frontend Viz panel calls this once on activation. `tauri-specta` generates
-	 *  typed TypeScript bindings from the `CytoscapeGraph` return type.
+	 *  The frontend Viz panel calls this once on activation. The graph crosses the
+	 *  webview boundary as JSON so the model-first visualization types do not gain
+	 *  a Rust-first `specta` dependency.
 	 */
-	getHolonVizGraph: () => typedError<CytoscapeGraph_Serialize, string>(__TAURI_INVOKE("get_holon_viz_graph")),
+	getHolonVizGraph: () => typedError<string, string>(__TAURI_INVOKE("get_holon_viz_graph")),
 	/**
 	 *  Return the Rust type relationship graph for the Viz panel.
 	 * 
 	 *  Delegates to [`TypeRelationshipGraph::seed()`] in `holon-viz`.
 	 */
-	getTypeGraph: () => typedError<CytoscapeGraph_Serialize, string>(__TAURI_INVOKE("get_type_graph")),
+	getTypeGraph: () => typedError<string, string>(__TAURI_INVOKE("get_type_graph")),
+	/**
+	 *  Return the controller status as JSON so the webview and Claude MCPB read
+	 *  one shared desktop/runtime contract without duplicating probes in JS.
+	 */
+	getDesktopStatus: () => typedError<string, string>(__TAURI_INVOKE("get_desktop_status")),
+	startDesktopRuntime: () => typedError<string, string>(__TAURI_INVOKE("start_desktop_runtime")),
+	stopDesktopRuntime: () => typedError<string, string>(__TAURI_INVOKE("stop_desktop_runtime")),
+	/**
+	 *  Opens only the per-user runtime log directory; no controller action can
+	 *  browse or alter arbitrary host paths.
+	 */
+	openDesktopLogs: () => typedError<string, string>(__TAURI_INVOKE("open_desktop_logs")),
+	/**
+	 *  UI repair remains plan-only. The user must approve the matching controller
+	 *  operation in Claude, preserving the MCPB/UAC boundary.
+	 */
+	getDesktopRepairPlan: () => typedError<string, string>(__TAURI_INVOKE("get_desktop_repair_plan")),
 };
 
 /* Types */
@@ -39,88 +68,6 @@ export type ChatSettingsPayload = {
 	api_key_text: string,
 	system_prompt_text: string,
 	status_text: string,
-};
-
-/**  A single Cytoscape.js edge element. */
-export type CytoscapeEdge = {
-	data: CytoscapeEdgeData,
-};
-
-/**  Data payload for a Cytoscape.js edge element. */
-export type CytoscapeEdgeData = {
-	id: string,
-	source: string,
-	target: string,
-	label: string,
-};
-
-/**
- *  Serializable Cytoscape.js graph — nodes and edges with `data` fields.
- * 
- *  Construct via [`HolonGraph::from_holons`].
- */
-export type CytoscapeGraph = CytoscapeGraph_Serialize | CytoscapeGraph_Deserialize;
-
-/**
- *  Serializable Cytoscape.js graph — nodes and edges with `data` fields.
- * 
- *  Construct via [`HolonGraph::from_holons`].
- */
-export type CytoscapeGraph_Deserialize = {
-	nodes: CytoscapeNode_Deserialize[],
-	edges: CytoscapeEdge[],
-};
-
-/**
- *  Serializable Cytoscape.js graph — nodes and edges with `data` fields.
- * 
- *  Construct via [`HolonGraph::from_holons`].
- */
-export type CytoscapeGraph_Serialize = {
-	nodes: CytoscapeNode_Serialize[],
-	edges: CytoscapeEdge[],
-};
-
-/**  A single Cytoscape.js node element. */
-export type CytoscapeNode = CytoscapeNode_Serialize | CytoscapeNode_Deserialize;
-
-/**  Data payload for a Cytoscape.js node element. */
-export type CytoscapeNodeData = CytoscapeNodeData_Serialize | CytoscapeNodeData_Deserialize;
-
-/**  Data payload for a Cytoscape.js node element. */
-export type CytoscapeNodeData_Deserialize = {
-	id: string,
-	label: string,
-	kind: string,
-	/**  Optional parent for compound graphs (Cytoscape compound nodes). */
-	parent: string | null,
-	/**  `ZLayer` variant from `HasVisualization::viz_spec()`, if available. */
-	z_layer: string | null,
-	/**  `SemanticType` variant from `HasVisualization::viz_spec()`, if available. */
-	semantic_type: string | null,
-};
-
-/**  Data payload for a Cytoscape.js node element. */
-export type CytoscapeNodeData_Serialize = {
-	id: string,
-	label: string,
-	kind: string,
-	/**  Optional parent for compound graphs (Cytoscape compound nodes). */
-	parent?: string | null,
-	/**  `ZLayer` variant from `HasVisualization::viz_spec()`, if available. */
-	z_layer?: string | null,
-	/**  `SemanticType` variant from `HasVisualization::viz_spec()`, if available. */
-	semantic_type?: string | null,
-};
-
-/**  A single Cytoscape.js node element. */
-export type CytoscapeNode_Deserialize = {
-	data: CytoscapeNodeData_Deserialize,
-};
-
-/**  A single Cytoscape.js node element. */
-export type CytoscapeNode_Serialize = {
-	data: CytoscapeNodeData_Serialize,
 };
 
 export type EvidenceDashboardPayload = {
