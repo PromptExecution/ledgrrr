@@ -62,15 +62,18 @@ fn main() {
     // opens for a normal end-user launch.
     let cli_timeout_secs: Option<u64> = {
         let args: Vec<String> = std::env::args().collect();
-        args.iter().position(|a| a == "--timeout").and_then(|i| {
-            args.get(i + 1).and_then(|v| v.parse::<u64>().ok())
-        })
+        args.iter()
+            .position(|a| a == "--timeout")
+            .and_then(|i| args.get(i + 1).and_then(|v| v.parse::<u64>().ok()))
     };
     let remote_pilot_state = std::sync::Arc::new(remote_pilot::RemotePilotState::default());
     if let Some(secs) = cli_timeout_secs {
         remote_pilot_state.arm_timeout(std::time::Duration::from_secs(secs));
         if let Err(e) = remote_pilot::spawn(remote_pilot_state.clone()) {
-            eprintln!("[remote-pilot] failed to start on {}: {e}", remote_pilot::REMOTE_PILOT_ADDR);
+            eprintln!(
+                "[remote-pilot] failed to start on {}: {e}",
+                remote_pilot::REMOTE_PILOT_ADDR
+            );
         } else {
             eprintln!(
                 "[remote-pilot] listening on {} — timeout {secs}s",
@@ -90,6 +93,8 @@ fn main() {
     let review_log: Arc<Mutex<ReviewLog>> = Arc::new(Mutex::new(ReviewLog::default()));
     let internal_endpoint: Arc<Mutex<Option<InternalOpenAiHandle>>> = Arc::new(Mutex::new(None));
     let evidence: Arc<Mutex<EvidenceState>> = Arc::new(Mutex::new(EvidenceState::new()));
+    let pending_tool_loop: Arc<Mutex<Option<state::PendingToolLoopSession>>> =
+        Arc::new(Mutex::new(None));
 
     let app_state = AppState {
         store,
@@ -97,6 +102,7 @@ fn main() {
         review_log,
         internal_endpoint,
         evidence,
+        pending_tool_loop,
     };
 
     // Enable CDP remote debugging port — the launcher should set WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
@@ -119,6 +125,7 @@ fn main() {
         commands::get_initial_state,
         commands::save_settings,
         commands::send_message,
+        commands::confirm_pending_tool_call,
         commands::load_rhai_rule_prompt,
         commands::use_internal_phi,
         commands::use_foundry_local,
@@ -181,7 +188,9 @@ fn main() {
                 let pilot_state = setup_remote_pilot_state.clone();
                 let base_title = title.clone();
                 std::thread::spawn(move || loop {
-                    let Some(remaining) = pilot_state.remaining() else { break };
+                    let Some(remaining) = pilot_state.remaining() else {
+                        break;
+                    };
                     let secs = remaining.as_secs();
                     if let Some(window) = app_handle.get_webview_window("main") {
                         let _ = window.set_title(&format!("{base_title} — closing in {secs}s"));
@@ -190,9 +199,15 @@ fn main() {
                         let state = app_handle.state::<AppState>();
                         let history_debug = format!("{:?}", state.history.lock().unwrap());
                         let review_log_debug = format!("{:?}", state.review_log.lock().unwrap());
-                        let dump_path =
-                            remote_pilot::dump_session_log(&pilot_state, &history_debug, &review_log_debug);
-                        eprintln!("[remote-pilot] timeout reached — session log dumped to {}", dump_path.display());
+                        let dump_path = remote_pilot::dump_session_log(
+                            &pilot_state,
+                            &history_debug,
+                            &review_log_debug,
+                        );
+                        eprintln!(
+                            "[remote-pilot] timeout reached — session log dumped to {}",
+                            dump_path.display()
+                        );
                         // Tauri (and its internal tokio runtime) don't tolerate `exit()`
                         // called from an arbitrary OS thread -- observed panic: "Cannot
                         // drop a runtime in a context where blocking is not allowed."

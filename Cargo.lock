@@ -4728,6 +4728,7 @@ version = "1.10.0"
 dependencies = [
  "anyhow",
  "arc-kit-au",
+ "b00t-iface",
  "base64 0.22.1",
  "candle-core",
  "candle-nn",
@@ -4738,6 +4739,7 @@ dependencies = [
  "holon-viz",
  "ledger-core",
  "ledgerr-desktop-agent",
+ "ledgerr-mcp",
  "ledgrrr-settings",
  "mistralrs",
  "reqwest 0.12.28",
