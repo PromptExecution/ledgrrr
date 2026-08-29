@@ -9,7 +9,7 @@
 > `serde_json`'s exact pin (already `=1.0.150`, which happens to satisfy
 > scxml's own `^1.0.150` floor as-is), is untouched — same source, same
 > behavior. Referenced via `[patch.crates-io]` in the root `Cargo.toml`.
-> Upstream PR: (filed against microsoft/agent-governance-toolkit, pending).
+> Upstream PR: https://github.com/microsoft/agent-governance-toolkit/pull/3852 (pending).
 > Drop this vendor copy once upstream loosens the pins or ships a release
 > that does.
 

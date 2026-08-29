@@ -1,7 +1,8 @@
 > ## ledgrrr vendor patch (temporary)
 > Vendored copy of `agentmesh-mcp` 4.0.0 with the same `serde`/`thiserror`
 > pin-loosening as `vendor/agentmesh-b00t` — see that crate's README for
-> the full rationale (`_b00t_#1177` P7, temporary pending an upstream PR).
+> the full rationale (`_b00t_#1177` P7, temporary).
+> Upstream PR: https://github.com/microsoft/agent-governance-toolkit/pull/3852 (pending).
 
 # AgentMesh MCP Rust crate
 
