@@ -7,76 +7,37 @@
 //! - **Linux / macOS**: Uses Tauri's built-in `TrayIconBuilder` + `MenuBuilder` API,
 //!   which handles platform differences internally.
 
-use std::time::Duration;
-use tauri::{Emitter, Manager};
+#[cfg(not(windows))]
+use tauri::Emitter;
+use tauri::Manager;
 
 /// Setup the system tray icon for the application.
 ///
 /// Call this during `tauri::Builder::default().setup()`.
 #[cfg(windows)]
 pub fn setup_tray(app: &tauri::App) {
-    use ledgerr_host::tray::native::{
-        make_icon_data, NativeTrayPlatform, TrayEvent, CMD_EXIT, CMD_SHOW_WINDOW,
-    };
-    use ledgerr_host::tray::TrayMenuLabels;
+    use ledgerr_host::settings::{default_settings_path, SettingsStore};
 
     let app_handle = app.handle().clone();
-    let (rgba, width, height) = make_icon_data();
 
-    // Build labels for the native tray menu.
-    // Most notification-specific items are left empty since this is a minimal
-    // tray surface — Show Window and Exit are the active commands.
-    let labels = TrayMenuLabels {
-        version: format!("Version: {}", env!("CARGO_PKG_VERSION")),
-        show_window: "Show Window",
-        exit: "Exit",
-        // Default/placeholder labels for notification-related items
-        backend: String::new(),
-        cycle_backend: "",
-        last_test: String::new(),
-        toast_enabled: "",
-        start_minimized_to_tray: "",
-        window_visible_on_start: "",
-        notify_approval_required: "",
-        notify_transaction_submitted: "",
-        notify_run_failed: "",
-        notify_run_completed: "",
-        test_toast: "",
-        status: String::new(),
-    };
-
-    // Spawn the native tray on a background thread.
-    // The tray has its own Win32 message pump and forwards events via mpsc channel.
     std::thread::spawn(move || {
-        match NativeTrayPlatform::spawn(
-            &format!("l3dg3rr {}", env!("CARGO_PKG_VERSION")),
-            rgba,
-            width,
-            height,
-            &labels,
-        ) {
-            Ok(tray) => loop {
-                if let Ok(event) = tray.event_rx.recv_timeout(Duration::from_millis(250)) {
-                    match event {
-                        TrayEvent::MenuCommand(cmd) => match cmd {
-                            CMD_SHOW_WINDOW => {
-                                if let Some(window) = app_handle.get_webview_window("main") {
-                                    let _ = window.show();
-                                    let _ = window.set_focus();
-                                }
-                            }
-                            CMD_EXIT => {
-                                app_handle.exit(0);
-                            }
-                            _ => {}
-                        },
-                    }
-                }
-            },
-            Err(e) => {
-                eprintln!("[tray] Failed to create native tray: {e}");
+        let show_app_handle = app_handle.clone();
+        let store = SettingsStore::new(default_settings_path());
+        let result = ledgerr_host::tray::runtime::run(store, move || {
+            if let Some(window) = show_app_handle.get_webview_window("main") {
+                window
+                    .show()
+                    .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })?;
+                window
+                    .set_focus()
+                    .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })?;
             }
+            Ok(())
+        });
+        if let Err(e) = result {
+            eprintln!("[tray] tray runtime exited with error: {e}");
         }
+        app_handle.exit(0);
     });
 }
 
