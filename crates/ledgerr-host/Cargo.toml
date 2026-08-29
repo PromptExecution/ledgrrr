@@ -6,14 +6,6 @@ license.workspace = true
 default-run = "host-tauri"
 
 [[bin]]
-name = "host-window"
-path = "src/bin/host-window.rs"
-
-[[bin]]
-name = "host-tray"
-path = "src/bin/host-tray.rs"
-
-[[bin]]
 name = "host-tauri"
 path = "src/bin/tauri/main.rs"
 

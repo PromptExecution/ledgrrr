@@ -1,3 +1,9 @@
+// DEPRECATED, REFERENCE ONLY — not part of the build (no [[bin]] entry,
+// and this directory is outside Cargo's src/bin/*.rs auto-discovery).
+// Superseded by host-tauri.exe, whose Windows tray now uses the same
+// tray::runtime::run() this binary used. Kept for reference only; may
+// bit-rot as the rest of the crate changes.
+//
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 #[cfg(windows)]
