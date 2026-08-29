@@ -8931,11 +8931,11 @@ dependencies = [
 [[package]]
 name = "sysml-derive"
 version = "0.1.0"
+source = "git+https://github.com/PromptExecution/sysml-derive.git?rev=3340ece#3340ece2277b83b5acb2590fe28c16ff8ea1f54a"
 dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
- "ufo-types",
 ]
 
 [[package]]
