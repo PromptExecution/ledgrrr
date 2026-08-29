@@ -55,7 +55,7 @@ pub fn setup_tray(app: &tauri::App) {
             height,
             &labels,
         ) {
-            Ok(mut tray) => loop {
+            Ok(tray) => loop {
                 if let Ok(event) = tray.event_rx.recv_timeout(Duration::from_millis(250)) {
                     match event {
                         TrayEvent::MenuCommand(cmd) => match cmd {
