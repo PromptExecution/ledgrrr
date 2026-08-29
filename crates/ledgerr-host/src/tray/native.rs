@@ -59,9 +59,6 @@ pub const CHECK_ITEM_IDS: &[u32] = &[
     CMD_NOTIFY_COMPLETED,
 ];
 
-/// Items whose text is updated dynamically at runtime (always greyed info rows).
-pub(crate) const DYNAMIC_TEXT_IDS: &[u32] = &[CMD_VERSION, CMD_BACKEND, CMD_LAST_TEST, CMD_STATUS];
-
 // ── Channel Types ─────────────────────────────────────────────────────────────
 
 /// Events sent from the tray message-pump thread to the main event loop.
@@ -234,7 +231,7 @@ unsafe extern "system" fn tray_wnd_proc(
                         let mut pt = POINT::default();
                         let _ = GetCursorPos(&mut pt);
                         let _ = SetForegroundWindow(hwnd);
-                        TrackPopupMenu(
+                        let _ = TrackPopupMenu(
                             user_data.hmenu,
                             TPM_RIGHTBUTTON | TPM_BOTTOMALIGN,
                             pt.x,
@@ -274,13 +271,27 @@ unsafe extern "system" fn tray_wnd_proc(
 
 // ── Menu Construction ─────────────────────────────────────────────────────────
 
+/// Position of the "Notify me for" popup item within the top-level menu —
+/// used with [`GetSubMenu`] to reach its 4 checkable items, since Win32 menu
+/// item calls only operate on the `HMENU` given directly, never recursing
+/// into submenus.
+const NOTIFY_SUBMENU_POS: i32 = 7;
+
+/// Fetch the "Notify me for" submenu's handle from the top-level menu.
+unsafe fn notify_submenu(hmenu: HMENU) -> HMENU {
+    GetSubMenu(hmenu, NOTIFY_SUBMENU_POS)
+}
+
 /// Build the popup menu with all tray items.
 ///
-/// Menu layout mirrors the original `tray-icon` implementation:
-/// 1. Info items (greyed): version, backend, last_test, status
-/// 2. Action items: toast_enabled, cycle_backend, start_minimized, etc.
-/// 3. Check items: notification toggles
-/// 4. Show window, Exit
+/// Layout: info rows (version, backend, last_test), toggle actions
+/// (toast, cycle backend, start minimized, window visible), a "Notify me
+/// for" submenu grouping the four notification-event toggles, then test
+/// toast, status, show window, and exit. The notification toggles used to
+/// sit flat among everything else — 14 top-level items mixing read-only
+/// status, one-shot actions, and settings with no grouping. Nesting the four
+/// related notification toggles cuts that to 11 top-level items and keeps
+/// the "which events do I get notified for" decision together.
 unsafe fn build_tray_menu(
     labels: &crate::tray::TrayMenuLabels,
 ) -> Result<HMENU, Box<dyn std::error::Error + Send + Sync>> {
@@ -327,27 +338,6 @@ unsafe fn build_tray_menu(
         Ok(())
     }
 
-    fn push_check(
-        hmenu: HMENU,
-        id: u32,
-        text: &str,
-        checked: bool,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let wide: Vec<u16> = OsStr::new(text)
-            .encode_wide()
-            .chain(core::iter::once(0))
-            .collect();
-        let flags = if checked {
-            MF_STRING | MF_CHECKED
-        } else {
-            MF_STRING | MF_UNCHECKED
-        };
-        unsafe {
-            AppendMenuW(hmenu, flags, id as usize, PCWSTR::from_raw(wide.as_ptr()))?;
-        }
-        Ok(())
-    }
-
     // ── build ────────────────────────────────────────────────────────────
     push_info(hmenu, CMD_VERSION, &labels.version)?;
     push_info(hmenu, CMD_BACKEND, &labels.backend)?;
@@ -356,14 +346,32 @@ unsafe fn build_tray_menu(
     push_info(hmenu, CMD_LAST_TEST, &labels.last_test)?;
     push_action(hmenu, CMD_START_MINIMIZED, labels.start_minimized_to_tray)?;
     push_action(hmenu, CMD_WINDOW_VISIBLE, labels.window_visible_on_start)?;
-    push_action(hmenu, CMD_NOTIFY_APPROVAL, labels.notify_approval_required)?;
+
+    let notify_menu = CreatePopupMenu()?;
+    push_action(notify_menu, CMD_NOTIFY_APPROVAL, labels.notify_approval_required)?;
     push_action(
-        hmenu,
+        notify_menu,
         CMD_NOTIFY_SUBMITTED,
         labels.notify_transaction_submitted,
     )?;
-    push_action(hmenu, CMD_NOTIFY_FAILED, labels.notify_run_failed)?;
-    push_action(hmenu, CMD_NOTIFY_COMPLETED, labels.notify_run_completed)?;
+    push_action(notify_menu, CMD_NOTIFY_FAILED, labels.notify_run_failed)?;
+    push_action(notify_menu, CMD_NOTIFY_COMPLETED, labels.notify_run_completed)?;
+    let notify_label: Vec<u16> = OsStr::new("Notify me for")
+        .encode_wide()
+        .chain(core::iter::once(0))
+        .collect();
+    AppendMenuW(
+        hmenu,
+        MF_POPUP,
+        notify_menu.0 as usize,
+        PCWSTR::from_raw(notify_label.as_ptr()),
+    )?;
+    debug_assert_eq!(
+        GetMenuItemCount(Some(hmenu)) - 1,
+        NOTIFY_SUBMENU_POS,
+        "NOTIFY_SUBMENU_POS must track the popup item's actual position"
+    );
+
     push_action(hmenu, CMD_TEST_TOAST, labels.test_toast)?;
     push_info(hmenu, CMD_STATUS, &labels.status)?;
     push_action(hmenu, CMD_SHOW_WINDOW, labels.show_window)?;
@@ -583,11 +591,11 @@ unsafe fn run_tray_pump(
 
     // ── Message pump + control loop ──────────────────────────────────────
     let mut msg = MSG::default();
-    let mut nid_current = nid;
-    let mut hicon_current = hicon;
+    let nid_current = nid;
+    let hicon_current = hicon;
 
     // Helper: tear down OS resources.
-    let mut cleanup = |nid: &NOTIFYICONDATAW,
+    let cleanup = |nid: &NOTIFYICONDATAW,
                        hicon: HICON,
                        hwnd: HWND,
                        hmenu: HMENU,
@@ -638,10 +646,11 @@ unsafe fn run_tray_pump(
                 set_menu_check(hmenu, CMD_TOAST_ENABLED, toast_enabled);
                 set_menu_check(hmenu, CMD_START_MINIMIZED, start_minimized);
                 set_menu_check(hmenu, CMD_WINDOW_VISIBLE, window_visible);
-                set_menu_check(hmenu, CMD_NOTIFY_APPROVAL, notify_approval);
-                set_menu_check(hmenu, CMD_NOTIFY_SUBMITTED, notify_submitted);
-                set_menu_check(hmenu, CMD_NOTIFY_FAILED, notify_failed);
-                set_menu_check(hmenu, CMD_NOTIFY_COMPLETED, notify_completed);
+                let notify_menu = notify_submenu(hmenu);
+                set_menu_check(notify_menu, CMD_NOTIFY_APPROVAL, notify_approval);
+                set_menu_check(notify_menu, CMD_NOTIFY_SUBMITTED, notify_submitted);
+                set_menu_check(notify_menu, CMD_NOTIFY_FAILED, notify_failed);
+                set_menu_check(notify_menu, CMD_NOTIFY_COMPLETED, notify_completed);
             }
             Ok(TrayControl::Quit) => {
                 cleanup(&nid_current, hicon_current, hwnd, hmenu, user_data_ptr);
