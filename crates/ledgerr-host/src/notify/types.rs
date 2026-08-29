@@ -6,7 +6,12 @@ use thiserror::Error;
 #[serde(rename_all = "snake_case")]
 pub enum NotificationBackend {
     Auto,
-    PowerShell,
+    /// Native Windows toast via `windows::UI::Notifications` (or the
+    /// stderr fallback on non-Windows). `#[serde(alias)]` keeps reading
+    /// settings persisted before this was renamed from `PowerShell` —
+    /// this backend no longer shells out to `powershell.exe` at all.
+    #[serde(alias = "powershell")]
+    Native,
     Noop,
 }
 
@@ -62,10 +67,6 @@ impl Default for NotificationSettings {
 pub enum NotifyError {
     #[error("notifications are disabled")]
     Disabled,
-    #[error("powershell.exe is not available")]
-    PowerShellUnavailable,
-    #[error("BurntToast module is unavailable")]
-    BurntToastUnavailable,
     #[error("notification command failed: {0}")]
     CommandFailed(String),
     #[error("i/o error: {0}")]

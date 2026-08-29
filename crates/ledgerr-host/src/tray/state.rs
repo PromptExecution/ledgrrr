@@ -17,7 +17,7 @@ impl Default for TrayState {
     fn default() -> Self {
         Self {
             toast_enabled: true,
-            notification_backend: NotificationBackend::PowerShell,
+            notification_backend: NotificationBackend::Native,
             notification_status: NotificationStatus::Unknown,
             last_test_result: None,
             start_minimized_to_tray: false,

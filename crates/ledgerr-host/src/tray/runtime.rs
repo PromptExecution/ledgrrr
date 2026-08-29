@@ -5,8 +5,8 @@ use std::time::Duration;
 use chrono::Utc;
 
 use crate::notify::{
-    NotificationBackend, NotificationEvent, NotificationSettings, NotificationStatus,
-    NotificationTestResult, Notifier, NotifyError, PowerShellBurntToastNotifier,
+    NativeToastNotifier, NotificationBackend, NotificationEvent, NotificationSettings,
+    NotificationStatus, NotificationTestResult, Notifier, NotifyError,
 };
 use crate::settings::{AppSettings, SettingsStore};
 
@@ -243,8 +243,8 @@ fn sync_state(
 
 fn next_backend(current: NotificationBackend) -> NotificationBackend {
     match current {
-        NotificationBackend::Auto => NotificationBackend::PowerShell,
-        NotificationBackend::PowerShell => NotificationBackend::Noop,
+        NotificationBackend::Auto => NotificationBackend::Native,
+        NotificationBackend::Native => NotificationBackend::Noop,
         NotificationBackend::Noop => NotificationBackend::Auto,
     }
 }
@@ -256,13 +256,13 @@ fn run_notification_test(settings: &AppSettings) -> Result<NotificationTestResul
             timestamp: Some(Utc::now()),
             message: Some("noop backend selected".to_string()),
         }),
-        NotificationBackend::Auto | NotificationBackend::PowerShell => {
+        NotificationBackend::Auto | NotificationBackend::Native => {
             let notify_settings = NotificationSettings {
                 enabled: settings.toast_enabled,
                 backend: settings.toast_backend_preference,
                 last_test_result: settings.last_test_result.clone(),
             };
-            let notifier = PowerShellBurntToastNotifier::new(notify_settings);
+            let notifier = NativeToastNotifier::new(notify_settings);
             notifier.test("l3dg3rr", "tray test toast")
         }
     }
@@ -278,7 +278,7 @@ fn send_best_effort_toast(settings: &AppSettings, event: NotificationEvent) {
         backend: settings.toast_backend_preference,
         last_test_result: settings.last_test_result.clone(),
     };
-    let notifier = PowerShellBurntToastNotifier::new(notify_settings);
+    let notifier = NativeToastNotifier::new(notify_settings);
     let _ = notifier.notify(&event);
 }
 
@@ -442,7 +442,7 @@ mod tests {
             TrayControl::UpdateLabels { backend, .. } => {
                 assert!(backend.contains(match expected {
                     NotificationBackend::Auto => "Auto",
-                    NotificationBackend::PowerShell => "PowerShell",
+                    NotificationBackend::Native => "Native",
                     NotificationBackend::Noop => "Noop",
                 }));
             }
@@ -484,8 +484,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
         let store = store_over(path.clone());
-        // Noop backend so Quit's best-effort toast doesn't shell out to
-        // PowerShell during a test run.
+        // Noop backend so Quit's best-effort toast doesn't fire a real
+        // native toast popup during a test run.
         let mut initial = store.load().unwrap();
         initial.toast_backend_preference = NotificationBackend::Noop;
         store.save(&initial).unwrap();
@@ -578,10 +578,10 @@ mod tests {
     fn backend_cycle_covers_all_known_variants() {
         assert_eq!(
             next_backend(NotificationBackend::Auto),
-            NotificationBackend::PowerShell
+            NotificationBackend::Native
         );
         assert_eq!(
-            next_backend(NotificationBackend::PowerShell),
+            next_backend(NotificationBackend::Native),
             NotificationBackend::Noop
         );
         assert_eq!(
@@ -603,10 +603,10 @@ mod tests {
     }
 
     #[test]
-    fn powershell_backend_test_respects_disabled_setting() {
+    fn native_backend_test_respects_disabled_setting() {
         let settings = AppSettings {
             toast_enabled: false,
-            toast_backend_preference: NotificationBackend::PowerShell,
+            toast_backend_preference: NotificationBackend::Native,
             ..AppSettings::default()
         };
 
