@@ -18,7 +18,10 @@ use super::native::{
 };
 use super::{tray_menu_labels, TrayCommand, TrayState};
 
-pub fn run(store: SettingsStore) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(
+    store: SettingsStore,
+    show_window: impl Fn() -> Result<(), Box<dyn std::error::Error>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let settings = store.load()?;
     let state = Arc::new(Mutex::new(TrayState::from_settings(&settings)));
     let labels = tray_menu_labels(&state.lock().expect("tray state poisoned"));
@@ -46,67 +49,48 @@ pub fn run(store: SettingsStore) -> Result<(), Box<dyn std::error::Error>> {
             let command = match event {
                 TrayEvent::MenuCommand(id) => match id {
                     CMD_TOAST_ENABLED => {
-                        let enabled = !state
-                            .lock()
-                            .expect("tray state poisoned")
-                            .toast_enabled;
-                        TrayCommand::ToggleToast(enabled)
+                        negate(&state, |s| s.toast_enabled, TrayCommand::ToggleToast)
                     }
                     CMD_CYCLE_BACKEND => TrayCommand::CycleBackend,
                     CMD_TEST_TOAST => TrayCommand::TestToast,
-                    CMD_START_MINIMIZED => {
-                        let enabled = !state
-                            .lock()
-                            .expect("tray state poisoned")
-                            .start_minimized_to_tray;
-                        TrayCommand::ToggleStartMinimizedToTray(enabled)
-                    }
-                    CMD_WINDOW_VISIBLE => {
-                        let enabled = !state
-                            .lock()
-                            .expect("tray state poisoned")
-                            .window_visible_on_start;
-                        TrayCommand::ToggleWindowVisibleOnStart(enabled)
-                    }
-                    CMD_NOTIFY_APPROVAL => {
-                        let enabled = !state
-                            .lock()
-                            .expect("tray state poisoned")
-                            .show_notifications_for
-                            .approval_required;
-                        TrayCommand::ToggleApprovalRequired(enabled)
-                    }
-                    CMD_NOTIFY_SUBMITTED => {
-                        let enabled = !state
-                            .lock()
-                            .expect("tray state poisoned")
-                            .show_notifications_for
-                            .transaction_submitted;
-                        TrayCommand::ToggleTransactionSubmitted(enabled)
-                    }
-                    CMD_NOTIFY_FAILED => {
-                        let enabled = !state
-                            .lock()
-                            .expect("tray state poisoned")
-                            .show_notifications_for
-                            .run_failed;
-                        TrayCommand::ToggleRunFailed(enabled)
-                    }
-                    CMD_NOTIFY_COMPLETED => {
-                        let enabled = !state
-                            .lock()
-                            .expect("tray state poisoned")
-                            .show_notifications_for
-                            .run_completed;
-                        TrayCommand::ToggleRunCompleted(enabled)
-                    }
+                    CMD_START_MINIMIZED => negate(
+                        &state,
+                        |s| s.start_minimized_to_tray,
+                        TrayCommand::ToggleStartMinimizedToTray,
+                    ),
+                    CMD_WINDOW_VISIBLE => negate(
+                        &state,
+                        |s| s.window_visible_on_start,
+                        TrayCommand::ToggleWindowVisibleOnStart,
+                    ),
+                    CMD_NOTIFY_APPROVAL => negate(
+                        &state,
+                        |s| s.show_notifications_for.approval_required,
+                        TrayCommand::ToggleApprovalRequired,
+                    ),
+                    CMD_NOTIFY_SUBMITTED => negate(
+                        &state,
+                        |s| s.show_notifications_for.transaction_submitted,
+                        TrayCommand::ToggleTransactionSubmitted,
+                    ),
+                    CMD_NOTIFY_FAILED => negate(
+                        &state,
+                        |s| s.show_notifications_for.run_failed,
+                        TrayCommand::ToggleRunFailed,
+                    ),
+                    CMD_NOTIFY_COMPLETED => negate(
+                        &state,
+                        |s| s.show_notifications_for.run_completed,
+                        TrayCommand::ToggleRunCompleted,
+                    ),
                     CMD_SHOW_WINDOW => TrayCommand::ShowWindow,
                     CMD_EXIT => TrayCommand::Quit,
                     _ => continue,
                 },
             };
 
-            let should_quit = handle_command(command, &store, &state, &tray.control_tx)?;
+            let should_quit =
+                handle_command(command, &store, &state, &tray.control_tx, &show_window)?;
             if should_quit {
                 break;
             }
@@ -117,20 +101,46 @@ pub fn run(store: SettingsStore) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Read one `TrayState` field and wrap its negation as the `TrayCommand`
+/// that would set it to that new value — the shared shape behind every
+/// checkbox-style tray menu item ("read current, flip it, emit the command
+/// that persists the flip").
+fn negate(
+    state: &Arc<Mutex<TrayState>>,
+    read: impl FnOnce(&TrayState) -> bool,
+    wrap: impl FnOnce(bool) -> TrayCommand,
+) -> TrayCommand {
+    let current = read(&state.lock().expect("tray state poisoned"));
+    wrap(!current)
+}
+
+/// Persist a single-field settings mutation and push the resulting labels to
+/// the tray — the shared shape behind every toggle command in
+/// [`handle_command`]: load, mutate one field, save, sync.
+fn apply_toggle(
+    store: &SettingsStore,
+    state: &Arc<Mutex<TrayState>>,
+    control_tx: &mpsc::Sender<TrayControl>,
+    set: impl FnOnce(&mut AppSettings),
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let mut settings = store.load()?;
+    set(&mut settings);
+    store.save(&settings)?;
+
+    sync_state(state, &settings, control_tx);
+    Ok(false)
+}
+
 fn handle_command(
     command: TrayCommand,
     store: &SettingsStore,
     state: &Arc<Mutex<TrayState>>,
     control_tx: &mpsc::Sender<TrayControl>,
+    show_window: &dyn Fn() -> Result<(), Box<dyn std::error::Error>>,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     match command {
         TrayCommand::ToggleToast(enabled) => {
-            let mut settings = store.load()?;
-            settings.toast_enabled = enabled;
-            store.save(&settings)?;
-
-            sync_state(state, &settings, control_tx);
-            Ok(false)
+            apply_toggle(store, state, control_tx, |s| s.toast_enabled = enabled)
         }
         TrayCommand::CycleBackend => {
             let mut settings = store.load()?;
@@ -156,59 +166,37 @@ fn handle_command(
             sync_state(state, &settings, control_tx);
             Ok(false)
         }
-        TrayCommand::ToggleStartMinimizedToTray(enabled) => {
-            let mut settings = store.load()?;
-            settings.start_minimized_to_tray = enabled;
-            store.save(&settings)?;
-
-            sync_state(state, &settings, control_tx);
-            Ok(false)
-        }
-        TrayCommand::ToggleWindowVisibleOnStart(enabled) => {
-            let mut settings = store.load()?;
-            settings.window_visible_on_start = enabled;
-            store.save(&settings)?;
-
-            sync_state(state, &settings, control_tx);
-            Ok(false)
-        }
-        TrayCommand::ToggleApprovalRequired(enabled) => {
-            let mut settings = store.load()?;
-            settings.show_notifications_for.approval_required = enabled;
-            store.save(&settings)?;
-
-            sync_state(state, &settings, control_tx);
-            Ok(false)
-        }
+        TrayCommand::ToggleStartMinimizedToTray(enabled) => apply_toggle(
+            store,
+            state,
+            control_tx,
+            |s| s.start_minimized_to_tray = enabled,
+        ),
+        TrayCommand::ToggleWindowVisibleOnStart(enabled) => apply_toggle(
+            store,
+            state,
+            control_tx,
+            |s| s.window_visible_on_start = enabled,
+        ),
+        TrayCommand::ToggleApprovalRequired(enabled) => apply_toggle(store, state, control_tx, |s| {
+            s.show_notifications_for.approval_required = enabled
+        }),
         TrayCommand::ToggleTransactionSubmitted(enabled) => {
-            let mut settings = store.load()?;
-            settings.show_notifications_for.transaction_submitted = enabled;
-            store.save(&settings)?;
-
-            sync_state(state, &settings, control_tx);
-            Ok(false)
+            apply_toggle(store, state, control_tx, |s| {
+                s.show_notifications_for.transaction_submitted = enabled
+            })
         }
-        TrayCommand::ToggleRunFailed(enabled) => {
-            let mut settings = store.load()?;
-            settings.show_notifications_for.run_failed = enabled;
-            store.save(&settings)?;
-
-            sync_state(state, &settings, control_tx);
-            Ok(false)
-        }
-        TrayCommand::ToggleRunCompleted(enabled) => {
-            let mut settings = store.load()?;
-            settings.show_notifications_for.run_completed = enabled;
-            store.save(&settings)?;
-
-            sync_state(state, &settings, control_tx);
-            Ok(false)
-        }
+        TrayCommand::ToggleRunFailed(enabled) => apply_toggle(store, state, control_tx, |s| {
+            s.show_notifications_for.run_failed = enabled
+        }),
+        TrayCommand::ToggleRunCompleted(enabled) => apply_toggle(store, state, control_tx, |s| {
+            s.show_notifications_for.run_completed = enabled
+        }),
         TrayCommand::ShowWindow => {
             if let Ok(mut state) = state.lock() {
                 state.window_visible = true;
             }
-            show_window_process()?;
+            show_window()?;
             Ok(false)
         }
         TrayCommand::Quit => {
@@ -289,16 +277,219 @@ fn send_best_effort_toast(settings: &AppSettings, event: NotificationEvent) {
     let _ = notifier.notify(&event);
 }
 
-fn show_window_process() -> Result<(), Box<dyn std::error::Error>> {
-    let current_exe = std::env::current_exe()?;
-    let host_window = current_exe.with_file_name("host-window.exe");
-    std::process::Command::new(host_window).spawn()?;
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn noop_show_window() -> Result<(), Box<dyn std::error::Error>> {
+        Ok(())
+    }
+
+    /// Drives `handle_command` for a single toggle variant and asserts three
+    /// things every toggle handler must get right: (1) it doesn't request
+    /// quit, (2) the new value is durably persisted (visible from a *fresh*
+    /// `SettingsStore` over the same path, not just the in-memory one), and
+    /// (3) the tray gets a matching `TrayControl::UpdateLabels` so the menu
+    /// checkmark actually updates. Parameterized so each of the seven
+    /// near-identical `handle_command` toggle arms gets equal coverage
+    /// without seven near-identical test bodies.
+    fn assert_toggle_roundtrips(
+        make_command: impl Fn(bool) -> TrayCommand,
+        read_setting: impl Fn(&AppSettings) -> bool,
+        read_control_flag: impl Fn(&TrayControl) -> bool,
+    ) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let store = SettingsStore::new(path.clone());
+        let initial = store.load().unwrap();
+        let state = Arc::new(Mutex::new(TrayState::from_settings(&initial)));
+        let (control_tx, control_rx) = mpsc::channel();
+
+        let target = !read_setting(&initial);
+        let should_quit = handle_command(
+            make_command(target),
+            &store,
+            &state,
+            &control_tx,
+            &noop_show_window,
+        )
+        .unwrap();
+        assert!(!should_quit);
+
+        let fresh_store = SettingsStore::new(path);
+        let persisted = fresh_store.load().unwrap();
+        assert_eq!(
+            read_setting(&persisted),
+            target,
+            "toggle did not persist to a fresh store instance"
+        );
+
+        let control = control_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("handle_command should send a TrayControl::UpdateLabels");
+        assert_eq!(
+            read_control_flag(&control),
+            target,
+            "TrayControl::UpdateLabels did not reflect the new value"
+        );
+    }
+
+    #[test]
+    fn toggle_toast_persists_and_updates_control() {
+        assert_toggle_roundtrips(
+            TrayCommand::ToggleToast,
+            |s| s.toast_enabled,
+            |c| matches!(c, TrayControl::UpdateLabels { toast_enabled, .. } if *toast_enabled),
+        );
+    }
+
+    #[test]
+    fn toggle_start_minimized_persists_and_updates_control() {
+        assert_toggle_roundtrips(
+            TrayCommand::ToggleStartMinimizedToTray,
+            |s| s.start_minimized_to_tray,
+            |c| matches!(c, TrayControl::UpdateLabels { start_minimized, .. } if *start_minimized),
+        );
+    }
+
+    #[test]
+    fn toggle_window_visible_on_start_persists_and_updates_control() {
+        assert_toggle_roundtrips(
+            TrayCommand::ToggleWindowVisibleOnStart,
+            |s| s.window_visible_on_start,
+            |c| matches!(c, TrayControl::UpdateLabels { window_visible, .. } if *window_visible),
+        );
+    }
+
+    #[test]
+    fn toggle_notify_approval_persists_and_updates_control() {
+        assert_toggle_roundtrips(
+            TrayCommand::ToggleApprovalRequired,
+            |s| s.show_notifications_for.approval_required,
+            |c| matches!(c, TrayControl::UpdateLabels { notify_approval, .. } if *notify_approval),
+        );
+    }
+
+    #[test]
+    fn toggle_notify_submitted_persists_and_updates_control() {
+        assert_toggle_roundtrips(
+            TrayCommand::ToggleTransactionSubmitted,
+            |s| s.show_notifications_for.transaction_submitted,
+            |c| matches!(c, TrayControl::UpdateLabels { notify_submitted, .. } if *notify_submitted),
+        );
+    }
+
+    #[test]
+    fn toggle_notify_failed_persists_and_updates_control() {
+        assert_toggle_roundtrips(
+            TrayCommand::ToggleRunFailed,
+            |s| s.show_notifications_for.run_failed,
+            |c| matches!(c, TrayControl::UpdateLabels { notify_failed, .. } if *notify_failed),
+        );
+    }
+
+    #[test]
+    fn toggle_notify_completed_persists_and_updates_control() {
+        assert_toggle_roundtrips(
+            TrayCommand::ToggleRunCompleted,
+            |s| s.show_notifications_for.run_completed,
+            |c| matches!(c, TrayControl::UpdateLabels { notify_completed, .. } if *notify_completed),
+        );
+    }
+
+    #[test]
+    fn cycle_backend_persists_and_updates_control() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let store = SettingsStore::new(path.clone());
+        let initial = store.load().unwrap();
+        let state = Arc::new(Mutex::new(TrayState::from_settings(&initial)));
+        let (control_tx, control_rx) = mpsc::channel();
+
+        let expected = next_backend(initial.toast_backend_preference);
+        let should_quit = handle_command(
+            TrayCommand::CycleBackend,
+            &store,
+            &state,
+            &control_tx,
+            &noop_show_window,
+        )
+        .unwrap();
+        assert!(!should_quit);
+
+        let fresh_store = SettingsStore::new(path);
+        let persisted = fresh_store.load().unwrap();
+        assert_eq!(persisted.toast_backend_preference, expected);
+
+        let control = control_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        match control {
+            TrayControl::UpdateLabels { backend, .. } => {
+                assert!(backend.contains(match expected {
+                    NotificationBackend::Auto => "Auto",
+                    NotificationBackend::PowerShell => "PowerShell",
+                    NotificationBackend::Noop => "Noop",
+                }));
+            }
+            _ => panic!("expected UpdateLabels"),
+        }
+    }
+
+    #[test]
+    fn show_window_invokes_the_injected_closure_and_marks_state_visible() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SettingsStore::new(dir.path().join("settings.json"));
+        let initial = store.load().unwrap();
+        let mut state = TrayState::from_settings(&initial);
+        state.window_visible = false;
+        let state = Arc::new(Mutex::new(state));
+        let (control_tx, _control_rx) = mpsc::channel();
+
+        let call_count = Arc::new(Mutex::new(0));
+        let call_count_clone = Arc::clone(&call_count);
+        let show_window = move || -> Result<(), Box<dyn std::error::Error>> {
+            *call_count_clone.lock().unwrap() += 1;
+            Ok(())
+        };
+
+        let _ = handle_command(
+            TrayCommand::ShowWindow,
+            &store,
+            &state,
+            &control_tx,
+            &show_window,
+        );
+
+        assert_eq!(*call_count.lock().unwrap(), 1);
+        assert!(state.lock().unwrap().window_visible);
+    }
+
+    #[test]
+    fn quit_requests_shutdown_without_persisting_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let store = SettingsStore::new(path.clone());
+        // Noop backend so Quit's best-effort toast doesn't shell out to
+        // PowerShell during a test run.
+        let mut initial = store.load().unwrap();
+        initial.toast_backend_preference = NotificationBackend::Noop;
+        store.save(&initial).unwrap();
+
+        let state = Arc::new(Mutex::new(TrayState::from_settings(&initial)));
+        let (control_tx, _control_rx) = mpsc::channel();
+
+        let should_quit = handle_command(
+            TrayCommand::Quit,
+            &store,
+            &state,
+            &control_tx,
+            &noop_show_window,
+        )
+        .unwrap();
+        assert!(should_quit);
+
+        let fresh = SettingsStore::new(path).load().unwrap();
+        assert_eq!(fresh, initial, "Quit must not mutate settings");
+    }
 
     #[test]
     fn backend_cycle_covers_all_known_variants() {
