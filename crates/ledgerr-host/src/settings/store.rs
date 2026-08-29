@@ -55,6 +55,24 @@ impl SettingsStore {
         }
     }
 
+    /// Create a settings store backed by an explicitly injected backend,
+    /// bypassing [`create_backend`]'s platform auto-selection.
+    ///
+    /// Intended for tests: on Windows, `create_backend`/[`SettingsStore::new`]
+    /// prefers the registry backend for *any* path, which means tests using
+    /// `SettingsStore::new` over a `tempfile::tempdir()` path would otherwise
+    /// touch the real `HKCU` registry purely for test isolation. Pass an
+    /// explicit `Box<dyn SettingsBackend>` (typically
+    /// [`crate::settings_backend::JsonFileBackend`]) to keep a test entirely
+    /// on the filesystem. Production code should keep using
+    /// [`SettingsStore::new`] for the real, platform-appropriate backend.
+    pub fn with_backend(path: PathBuf, backend: Box<dyn SettingsBackend>) -> Self {
+        Self {
+            path,
+            backend: Mutex::new(backend),
+        }
+    }
+
     /// Return the JSON file path (for display / backward compatibility).
     pub fn path(&self) -> &Path {
         &self.path
@@ -122,12 +140,21 @@ impl SettingsStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::settings_backend::JsonFileBackend;
+
+    // Tests here are exercising `SettingsStore`'s own load/save/migrate logic,
+    // not platform backend *selection* — so they use `with_backend` +
+    // `JsonFileBackend` directly to stay off the real Windows registry (see
+    // `with_backend`'s doc comment).
+    fn store_over(path: PathBuf) -> SettingsStore {
+        SettingsStore::with_backend(path.clone(), Box::new(JsonFileBackend::new(path)))
+    }
 
     #[test]
     fn load_returns_defaults_when_backend_is_empty() {
         // A new store with a non-existent path → backend returns None → defaults.
         let dir = tempfile::tempdir().unwrap();
-        let store = SettingsStore::new(dir.path().join("no-such-file.json"));
+        let store = store_over(dir.path().join("no-such-file.json"));
         let settings = store.load().unwrap();
         assert!(settings.toast_enabled);
     }
@@ -136,7 +163,7 @@ mod tests {
     fn save_and_load_roundtrip() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
-        let store = SettingsStore::new(path.clone());
+        let store = store_over(path);
 
         let original = AppSettings {
             toast_enabled: false,

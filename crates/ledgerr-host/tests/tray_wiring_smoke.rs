@@ -68,8 +68,15 @@ fn tray_enable_setting_roundtrips_through_json() {
 
 #[test]
 fn tray_enable_roundtrips_through_store() {
+    use ledgerr_host::settings::SettingsStore;
+    use ledgerr_host::settings_backend::JsonFileBackend;
+
     let dir = tempfile::tempdir().unwrap();
-    let store = ledgerr_host::settings::SettingsStore::new(dir.path().join("test.json"));
+    let path = dir.path().join("test.json");
+    // `SettingsStore::new` would prefer the real Windows registry backend on
+    // Windows for any path — this test only needs filesystem isolation, so
+    // inject `JsonFileBackend` explicitly to avoid leaking an HKCU key.
+    let store = SettingsStore::with_backend(path.clone(), Box::new(JsonFileBackend::new(path)));
 
     let mut settings = store.load().unwrap();
     assert!(settings.enable_tray);

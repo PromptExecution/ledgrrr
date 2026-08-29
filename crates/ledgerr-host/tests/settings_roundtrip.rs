@@ -1,10 +1,21 @@
 use ledgerr_host::notify::{NotificationBackend, NotificationStatus, NotificationTestResult};
 use ledgerr_host::settings::{AppSettings, ChatSettings, SettingsStore};
+use ledgerr_host::settings_backend::JsonFileBackend;
+use std::path::PathBuf;
+
+/// Build a `SettingsStore` over an explicit `JsonFileBackend` rather than
+/// `SettingsStore::new`, which on Windows prefers the real registry backend
+/// for any path — these tests only need filesystem isolation via
+/// `tempfile::tempdir()`, not registry behavior, so going through the real
+/// registry would leak a permanent HKCU key per test run.
+fn store_over(path: PathBuf) -> SettingsStore {
+    SettingsStore::with_backend(path.clone(), Box::new(JsonFileBackend::new(path)))
+}
 
 #[test]
 fn load_defaults_when_file_missing() {
     let dir = tempfile::tempdir().unwrap();
-    let store = SettingsStore::new(dir.path().join("settings.json"));
+    let store = store_over(dir.path().join("settings.json"));
     let settings = store.load().unwrap();
     assert!(settings.toast_enabled);
     assert_eq!(
@@ -22,7 +33,7 @@ fn load_defaults_when_file_missing() {
 #[test]
 fn save_then_reload_roundtrips_settings() {
     let dir = tempfile::tempdir().unwrap();
-    let store = SettingsStore::new(dir.path().join("settings.json"));
+    let store = store_over(dir.path().join("settings.json"));
     let settings = AppSettings {
         toast_enabled: false,
         window_visible_on_start: false,
@@ -50,7 +61,7 @@ fn malformed_json_falls_back_cleanly() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("settings.json");
     std::fs::write(&path, "{bad json").unwrap();
-    let store = SettingsStore::new(path);
+    let store = store_over(path);
     let settings = store.load().unwrap();
     assert_eq!(settings, AppSettings::default());
 }
@@ -59,12 +70,12 @@ fn malformed_json_falls_back_cleanly() {
 fn toggle_toast_enabled_persists_across_fresh_store_instance() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("settings.json");
-    let store = SettingsStore::new(path.clone());
+    let store = store_over(path.clone());
     let mut settings = store.load().unwrap();
     settings.toast_enabled = false;
     store.save(&settings).unwrap();
 
-    let fresh_store = SettingsStore::new(path);
+    let fresh_store = store_over(path);
     let reloaded = fresh_store.load().unwrap();
     assert!(!reloaded.toast_enabled);
 }
@@ -99,7 +110,7 @@ fn legacy_v1_settings_without_chat_block_uses_default_chat() {
     )
     .unwrap();
 
-    let store = SettingsStore::new(path);
+    let store = store_over(path);
     let settings = store.load().unwrap();
     assert_eq!(settings.chat, ChatSettings::default());
 }
