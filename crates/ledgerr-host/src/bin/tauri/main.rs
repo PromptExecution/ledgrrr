@@ -125,6 +125,25 @@ fn main() {
             );
             let build = env!("TAURI_BUILD_NUMBER");
             let title = format!("ledgrrr v{}+b{}", env!("CARGO_PKG_VERSION"), build);
+
+            // Load settings once, up front, so both the window's initial
+            // visibility and tray setup below see the same snapshot.
+            let settings = app.state::<AppState>().store.load();
+            // `window_visible_on_start` decides ordinary startup visibility;
+            // `start_minimized_to_tray` overrides it to force the window
+            // hidden even when `window_visible_on_start` is true (it does
+            // NOT force it visible when `window_visible_on_start` is false).
+            // `TrayState::from_settings` (tray/state.rs) does not itself
+            // encode this interaction -- it only threads
+            // `window_visible_on_start` through -- so it's implemented here
+            // directly. On a settings load failure, fall back to the
+            // previous hardcoded `visible(true)` behavior rather than
+            // hiding the window unexpectedly.
+            let initial_visible = match &settings {
+                Ok(s) => s.window_visible_on_start && !s.start_minimized_to_tray,
+                Err(_) => true,
+            };
+
             let w = tauri::WebviewWindowBuilder::new(
                 app,
                 "main",
@@ -136,12 +155,12 @@ fn main() {
             .center()
             .resizable(true)
             .decorations(true)
-            .visible(true)
+            .visible(initial_visible)
             .build()
             .expect("failed to build main window");
             let _: std::result::Result<(), _> = w.set_title(&title);
-            if let Ok(settings) = app.state::<AppState>().store.load() {
-                if settings.enable_tray {
+            if let Ok(s) = &settings {
+                if s.enable_tray {
                     tray::setup_tray(app);
                 }
             }
