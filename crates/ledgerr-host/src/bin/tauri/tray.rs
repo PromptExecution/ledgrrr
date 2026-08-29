@@ -25,6 +25,13 @@ pub fn setup_tray(app: &tauri::App) {
         let store = SettingsStore::new(default_settings_path());
         let result = ledgerr_host::tray::runtime::run(store, move || {
             if let Some(window) = show_app_handle.get_webview_window("main") {
+                // `show()` alone maps to Win32 SW_SHOW, which does not
+                // restore a minimized window. `unminimize()` (SW_RESTORE)
+                // is safe to call unconditionally even when the window is
+                // not minimized.
+                window
+                    .unminimize()
+                    .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })?;
                 window
                     .show()
                     .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })?;
