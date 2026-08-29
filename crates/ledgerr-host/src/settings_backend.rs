@@ -57,7 +57,7 @@ pub trait SettingsBackend: Send {
 pub fn create_backend(path: &std::path::Path) -> Box<dyn SettingsBackend> {
     #[cfg(windows)]
     {
-        match WindowsRegistryBackend::new() {
+        match WindowsRegistryBackend::new(path) {
             Ok(backend) => return Box::new(backend),
             Err(e) => {
                 eprintln!(

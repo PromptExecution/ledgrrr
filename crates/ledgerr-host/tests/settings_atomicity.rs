@@ -1,11 +1,21 @@
-use ledgerr_host::settings::{AppSettings, SettingsStore};
+//! Exercises `JsonFileBackend`'s own atomic-write contract directly.
+//!
+//! `SettingsStore::new(path)` is *not* used here: on Windows it prefers the
+//! registry backend over the JSON file backend for any `path` whose registry
+//! access succeeds (see `settings_backend::create_backend`), so these tests
+//! would silently never touch a file at all on Windows if written against
+//! `SettingsStore`. Atomicity and parent-directory creation are properties
+//! of `JsonFileBackend`'s `write_map`, so test that backend directly —
+//! deterministic on every platform.
+
+use ledgerr_host::settings_backend::{JsonFileBackend, SettingsBackend};
 
 #[test]
 fn creates_parent_directory_on_first_save() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("nested").join("settings.json");
-    let store = SettingsStore::new(path.clone());
-    store.save(&AppSettings::default()).unwrap();
+    let mut backend = JsonFileBackend::new(path.clone());
+    backend.set("app_settings", "{}").unwrap();
     assert!(path.exists());
 }
 
@@ -13,27 +23,15 @@ fn creates_parent_directory_on_first_save() {
 fn atomic_save_replaces_old_file_without_partial_contents() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("settings.json");
-    let store = SettingsStore::new(path.clone());
-    store.save(&AppSettings::default()).unwrap();
+    let mut backend = JsonFileBackend::new(path.clone());
+    backend.set("app_settings", "first").unwrap();
+    backend.set("app_settings", "second").unwrap();
 
-    let updated = AppSettings {
-        toast_enabled: false,
-        start_minimized_to_tray: true,
-        ..AppSettings::default()
-    };
-    store.save(&updated).unwrap();
-
-    let raw = std::fs::read_to_string(path).unwrap();
-
-    // With the new backend format, settings are serialized as a JSON string
-    // under the `"app_settings"` key. Parse the outer JSON to extract the
-    // inner AppSettings content and verify the values were persisted.
+    // The temp-file + rename swap must leave exactly the final value on
+    // disk — no truncated write, no leftover `.json.tmp`, no merge of both
+    // writes.
+    let raw = std::fs::read_to_string(&path).unwrap();
     let outer: serde_json::Value = serde_json::from_str(&raw).unwrap();
-    let inner_str = outer["app_settings"]
-        .as_str()
-        .expect("app_settings should be a JSON string");
-    let inner: serde_json::Value = serde_json::from_str(inner_str).unwrap();
-
-    assert_eq!(inner["toast_enabled"], false);
-    assert_eq!(inner["start_minimized_to_tray"], true);
+    assert_eq!(outer["app_settings"], "second");
+    assert!(!path.with_extension("json.tmp").exists());
 }
