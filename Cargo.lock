@@ -5076,6 +5076,7 @@ version = "1.10.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
+ "ledgrrr-settings",
  "reqwest 0.12.28",
  "rust_decimal",
  "serde",
