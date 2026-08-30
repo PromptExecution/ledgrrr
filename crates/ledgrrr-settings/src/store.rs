@@ -55,6 +55,23 @@ impl SettingsStore {
         }
     }
 
+    /// Create a settings store backed by an explicitly supplied backend,
+    /// bypassing the platform auto-selection in [`create_backend`].
+    ///
+    /// On Windows, `create_backend`'s registry backend ignores its `path`
+    /// argument entirely — it always targets the one fixed production
+    /// registry key. That's correct for `new()`'s real callers (which all
+    /// pass the same production path), but it means any test that wants
+    /// genuine isolation (a fresh, empty store per test) must not go
+    /// through registry auto-selection at all. Use this with an explicit
+    /// `JsonFileBackend` over a tempdir path instead.
+    pub fn with_backend(path: PathBuf, backend: Box<dyn SettingsBackend>) -> Self {
+        Self {
+            path,
+            backend: Mutex::new(backend),
+        }
+    }
+
     /// Return the JSON file path (for display / backward compatibility).
     pub fn path(&self) -> &Path {
         &self.path
@@ -123,11 +140,21 @@ impl SettingsStore {
 mod tests {
     use super::*;
 
+    /// Build an isolated store backed directly by `JsonFileBackend`,
+    /// bypassing Windows registry auto-selection entirely (see
+    /// `with_backend`'s doc comment for why `new()` isn't safe here).
+    fn isolated_store(path: PathBuf) -> SettingsStore {
+        SettingsStore::with_backend(
+            path.clone(),
+            Box::new(crate::backend::JsonFileBackend::new(path)),
+        )
+    }
+
     #[test]
     fn load_returns_defaults_when_backend_is_empty() {
         // A new store with a non-existent path → backend returns None → defaults.
         let dir = tempfile::tempdir().unwrap();
-        let store = SettingsStore::new(dir.path().join("no-such-file.json"));
+        let store = isolated_store(dir.path().join("no-such-file.json"));
         let settings = store.load().unwrap();
         assert!(settings.toast_enabled);
     }
@@ -136,7 +163,7 @@ mod tests {
     fn save_and_load_roundtrip() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
-        let store = SettingsStore::new(path.clone());
+        let store = isolated_store(path.clone());
 
         let original = AppSettings {
             toast_enabled: false,
