@@ -20,6 +20,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY xtask ./xtask
 COPY kani-proofs ./kani-proofs
+COPY vendor ./vendor
 RUN cargo chef prepare --recipe-path recipe.json
 
 # ── build ─────────────────────────────────────────────────────────────────────
@@ -31,6 +32,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY xtask ./xtask
 COPY kani-proofs ./kani-proofs
+COPY vendor ./vendor
 COPY docs ./docs
 COPY rules ./rules
 COPY scripts ./scripts
