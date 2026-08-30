@@ -47,7 +47,7 @@ pub fn tray_menu_labels(state: &TrayState) -> TrayMenuLabels {
 fn backend_label(backend: NotificationBackend) -> &'static str {
     match backend {
         NotificationBackend::Auto => "Auto",
-        NotificationBackend::PowerShell => "PowerShell",
+        NotificationBackend::Native => "Native",
         NotificationBackend::Noop => "Noop",
     }
 }
@@ -98,7 +98,7 @@ mod tests {
     fn status_label_is_deterministic() {
         let state = TrayState {
             toast_enabled: true,
-            notification_backend: NotificationBackend::PowerShell,
+            notification_backend: NotificationBackend::Native,
             notification_status: NotificationStatus::Ready,
             last_test_result: None,
             start_minimized_to_tray: false,
@@ -111,7 +111,7 @@ mod tests {
             labels.version,
             format!("Version: {}", env!("CARGO_PKG_VERSION"))
         );
-        assert_eq!(labels.backend, "Backend: PowerShell");
+        assert_eq!(labels.backend, "Backend: Native");
         assert_eq!(labels.last_test, "Last Test: Never");
         assert_eq!(labels.status, "Status: Ready");
         assert_eq!(labels.toast_enabled, "Toast Enabled");
@@ -125,7 +125,7 @@ mod tests {
                 status: NotificationStatus::Failed,
                 timestamp: None,
                 message: Some(
-                    "powershell notification command failed because BurntToast was missing"
+                    "native toast notification failed because the AUMID was not registered"
                         .to_string(),
                 ),
             }),
@@ -134,7 +134,7 @@ mod tests {
         let labels = tray_menu_labels(&state);
         assert_eq!(
             labels.last_test,
-            "Last Test: Failed (powershell notification command failed …)"
+            "Last Test: Failed (native toast notification failed becaus…)"
         );
     }
 }
