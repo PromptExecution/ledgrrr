@@ -69,7 +69,16 @@ fn tray_enable_setting_roundtrips_through_json() {
 #[test]
 fn tray_enable_roundtrips_through_store() {
     let dir = tempfile::tempdir().unwrap();
-    let store = ledgerr_host::settings::SettingsStore::new(dir.path().join("test.json"));
+    let path = dir.path().join("test.json");
+    // SettingsStore::new's registry backend (on Windows) ignores `path` and
+    // always targets the one fixed production key — using it here would
+    // write this test's `enable_tray = false` into a real running
+    // host-tauri.exe's live settings. Use an explicit JsonFileBackend for
+    // genuine isolation.
+    let store = ledgerr_host::settings::SettingsStore::with_backend(
+        path.clone(),
+        Box::new(ledgrrr_settings::backend::JsonFileBackend::new(path)),
+    );
 
     let mut settings = store.load().unwrap();
     assert!(settings.enable_tray);
