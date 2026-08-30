@@ -7,6 +7,7 @@
 //! PRD-11 §7/§10.
 
 pub mod contract;
+pub mod foundry_install_plan;
 pub mod install_plan;
 pub mod office_artifact;
 pub mod playbook;
