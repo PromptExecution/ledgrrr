@@ -4,6 +4,7 @@
 
 @import './taskbar.css';
 @import './iso.css';
+@import './foundry-local.css';
 
 *, *::before, *::after {
   box-sizing: border-box;
