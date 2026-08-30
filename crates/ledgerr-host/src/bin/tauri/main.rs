@@ -96,6 +96,7 @@ fn main() {
     let pending_tool_loop: Arc<Mutex<Option<state::PendingToolLoopSession>>> =
         Arc::new(Mutex::new(None));
 
+    let startup_settings_client = Arc::clone(&store);
     let app_state = AppState {
         store,
         history,
@@ -160,6 +161,18 @@ fn main() {
                 std::env::temp_dir().join("host-tauri-setup-ok.txt"),
                 format!("setup hook ran at {}\n", std::process::id()),
             );
+            // ledgrrr-service (the settings server) may not be running yet
+            // at first launch — default to visible rather than fail setup
+            // or leave the app with no window and no way to reach it.
+            let initial_visible = match startup_settings_client.load() {
+                Ok(s) => s.window_visible_on_start && !s.start_minimized_to_tray,
+                Err(e) => {
+                    eprintln!(
+                        "[startup] could not load settings ({e}); defaulting window to visible"
+                    );
+                    true
+                }
+            };
             let build = env!("TAURI_BUILD_NUMBER");
             let title = format!("ledgrrr v{}+b{}", env!("CARGO_PKG_VERSION"), build);
             let w = tauri::WebviewWindowBuilder::new(
@@ -173,14 +186,21 @@ fn main() {
             .center()
             .resizable(true)
             .decorations(true)
-            .visible(true)
+            .visible(initial_visible)
             .build()
             .expect("failed to build main window");
             let _: std::result::Result<(), _> = w.set_title(&title);
-            if let Ok(settings) = app.state::<AppState>().store.load() {
-                if settings.enable_tray {
-                    tray::setup_tray(app);
-                }
+            // A failed load here must not silently skip the tray entirely —
+            // ledgrrr-service being unreachable shouldn't disable the app's
+            // main affordance for controlling it. Default to enabled.
+            let enable_tray = app
+                .state::<AppState>()
+                .store
+                .load()
+                .map(|s| s.enable_tray)
+                .unwrap_or(true);
+            if enable_tray {
+                tray::setup_tray(app);
             }
 
             if setup_remote_pilot_state.remaining().is_some() {
