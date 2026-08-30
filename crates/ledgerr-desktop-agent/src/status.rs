@@ -45,6 +45,19 @@ pub struct ModelRuntimeStatus {
     pub profile: Option<String>,
 }
 
+/// Windows Foundry Local presence/liveness — deliberately minimal. This
+/// crate cannot depend on `ledgerr-host` (the dependency direction in this
+/// workspace runs the other way), so this does NOT resolve the actual REST
+/// chat endpoint the way `ledgerr_host::internal_openai::
+/// discover_foundry_local_endpoint` does — it only answers "is Foundry
+/// Local present and alive" for status reporting. Actually connecting to
+/// it for chat stays ledgerr-host's job, unchanged.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct FoundryLocalStatus {
+    pub cli_found: bool,
+    pub service_running: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PackageStatus {
     pub installed: bool,
@@ -71,6 +84,7 @@ pub struct LedgrrrStatus {
     pub service: ServiceStatus,
     pub tray: TrayStatus,
     pub model_runtime: ModelRuntimeStatus,
+    pub foundry_local: FoundryLocalStatus,
     pub desktop_package: PackageStatus,
     pub claude_controller: ClaudeControllerStatus,
     pub office_addin: OfficeSurfaceStatus,
@@ -265,6 +279,30 @@ fn detect_model_runtime() -> ModelRuntimeStatus {
     }
 }
 
+fn detect_foundry_local() -> FoundryLocalStatus {
+    let locator = if cfg!(windows) { "where.exe" } else { "which" };
+    let cli_found = Command::new(locator)
+        .arg("foundry")
+        .output()
+        .map(|out| out.status.success())
+        .unwrap_or(false);
+    if !cli_found {
+        return FoundryLocalStatus {
+            cli_found: false,
+            service_running: false,
+        };
+    }
+    let service_running = Command::new("foundry")
+        .args(["service", "status"])
+        .output()
+        .map(|out| out.status.success())
+        .unwrap_or(false);
+    FoundryLocalStatus {
+        cli_found,
+        service_running,
+    }
+}
+
 pub fn collect() -> LedgrrrStatus {
     LedgrrrStatus {
         controller_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -272,6 +310,7 @@ pub fn collect() -> LedgrrrStatus {
         service: detect_service(),
         tray: detect_tray(),
         model_runtime: detect_model_runtime(),
+        foundry_local: detect_foundry_local(),
         desktop_package: detect_package(),
         claude_controller: ClaudeControllerStatus {
             state: "installed_with_mcpb_or_direct_stdio".to_string(),
@@ -296,5 +335,17 @@ mod tests {
             TRAY_CANDIDATES.contains(&"host-tauri"),
             "TRAY_CANDIDATES must list the real host-tauri bin target, not a nonexistent ledgerr-tauri binary: {TRAY_CANDIDATES:?}"
         );
+    }
+
+    #[test]
+    fn foundry_local_status_roundtrips_through_json() {
+        let status = FoundryLocalStatus {
+            cli_found: true,
+            service_running: false,
+        };
+        let json = serde_json::to_string(&status).unwrap();
+        let back: FoundryLocalStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.cli_found, true);
+        assert_eq!(back.service_running, false);
     }
 }
