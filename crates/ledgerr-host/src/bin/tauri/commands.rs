@@ -76,6 +76,20 @@ pub fn get_desktop_repair_plan() -> Result<String, String> {
     ))
 }
 
+#[tauri::command]
+#[specta::specta]
+pub fn get_foundry_local_install_plan() -> Result<String, String> {
+    desktop_json(&ledgerr_desktop_agent::foundry_install_plan::install_plan())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn foundry_local_install_action(approved: bool) -> Result<String, String> {
+    desktop_json(&ledgerr_desktop_agent::foundry_install_plan::invoke(
+        ledgerr_desktop_agent::foundry_install_plan::FoundryInstallActionArgs { approved },
+    ))
+}
+
 // ── Test harness config ───────────────────────────────────────────────────────
 
 #[derive(serde::Serialize, Clone, specta::Type)]
