@@ -66,14 +66,12 @@ pub fn build_ledgrrr_mcp_gateway(
     let clock: Arc<dyn agentmesh_mcp::Clock> = Arc::new(SystemClock);
 
     // Shared audit sink — used by both the response scanner and the gateway.
-    let audit_sink_redactor = CredentialRedactor::new()
-        .map_err(|e| AgtError::Redactor(format!("http_gateway audit redactor: {e}")))?;
+    let audit_sink_redactor = CredentialRedactor::new();
     let audit_sink: Arc<dyn agentmesh_mcp::McpAuditSink> =
         Arc::new(InMemoryAuditSink::new(audit_sink_redactor));
 
     // Response scanner — checks outbound MCP payloads for injection / leakage.
-    let scanner_redactor = CredentialRedactor::new()
-        .map_err(|e| AgtError::Redactor(format!("http_gateway scanner redactor: {e}")))?;
+    let scanner_redactor = CredentialRedactor::new();
     let response_scanner = McpResponseScanner::new(
         scanner_redactor,
         Arc::clone(&audit_sink),

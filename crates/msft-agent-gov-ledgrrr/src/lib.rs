@@ -216,8 +216,7 @@ impl LedgrrAgtGateway {
         enforcer.assign(agent_id, Ring::Standard);
         let mut shadow = HashMap::new();
         shadow.insert(agent_id.to_string(), Ring::Standard);
-        let redactor = CredentialRedactor::new()
-            .map_err(|e| AgtError::Redactor(e.to_string()))?;
+        let redactor = CredentialRedactor::new();
 
         // Register the gateway's own agent as Active in the lifecycle FSM.
         // LifecycleManager::new starts at Provisioning; activate() moves it to Active.
@@ -230,13 +229,9 @@ impl LedgrrAgtGateway {
         // Build the MCP security scanner and pre-register all PUBLISHED_TOOL_NAMES
         // as trusted fingerprints.  Any subsequent scan of a tool whose description
         // or schema differs from this baseline triggers a rug-pull detection.
-        let scanner_redactor = CredentialRedactor::new()
-            .map_err(|e| AgtError::Redactor(e.to_string()))?;
+        let scanner_redactor = CredentialRedactor::new();
         let audit_sink: Arc<dyn agentmesh::mcp::McpAuditSink> =
-            Arc::new(InMemoryAuditSink::new(
-                CredentialRedactor::new()
-                    .map_err(|e| AgtError::Redactor(e.to_string()))?,
-            ));
+            Arc::new(InMemoryAuditSink::new(CredentialRedactor::new()));
         let scanner = McpSecurityScanner::new(
             scanner_redactor,
             audit_sink,

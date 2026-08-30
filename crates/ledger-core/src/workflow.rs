@@ -160,6 +160,66 @@ impl WorkflowToml {
         result
     }
 
+    /// Compile to a W3C SCXML statechart (_b00t_#1177 P7), alongside the
+    /// existing to_mermaid/to_rhai/to_rust_enum codegen targets.
+    ///
+    /// A guarded transition with an `else` branch becomes two SCXML
+    /// transitions on the same event, in document order: the guarded one
+    /// first, then a bare fallback to `else_to` — SCXML transition
+    /// selection takes the first transition whose guard matches (or has
+    /// no guard), so this preserves the TOML DSL's if/else semantics.
+    /// A state is exported as `Final` only when it's both `terminal` and
+    /// has zero outgoing transitions (SCXML's `Final` forbids outgoing
+    /// transitions outright, stricter than this DSL's own `terminal`
+    /// flag) — otherwise it's `Atomic`.
+    #[cfg(feature = "statechart")]
+    pub fn to_scxml(&self) -> scxml::model::Statechart {
+        use scxml::model::{State, Transition};
+
+        let initial = self
+            .state
+            .iter()
+            .find(|s| s.initial == Some(true))
+            .map(|s| s.id.as_str())
+            .unwrap_or_default();
+
+        let states: Vec<State> = self
+            .state
+            .iter()
+            .map(|s| {
+                let outgoing: Vec<&TransitionDecl> =
+                    self.transitions.iter().filter(|t| t.from == s.id).collect();
+
+                let mut state = if s.terminal == Some(true) && outgoing.is_empty() {
+                    State::final_state(s.id.clone())
+                } else {
+                    State::atomic(s.id.clone())
+                };
+
+                state.transitions = outgoing
+                    .into_iter()
+                    .flat_map(|t| {
+                        let mut transitions = vec![match &t.guard {
+                            None => Transition::new(t.event.clone(), t.to.clone()),
+                            Some(g) => {
+                                Transition::new(t.event.clone(), t.to.clone()).with_guard(g.clone())
+                            }
+                        }];
+                        if let Some(else_to) = &t.else_to {
+                            transitions
+                                .push(Transition::new(t.event.clone(), else_to.clone()));
+                        }
+                        transitions
+                    })
+                    .collect();
+
+                state
+            })
+            .collect();
+
+        scxml::model::Statechart::new(initial, states).with_name(self.name.clone())
+    }
+
     /// Compile to Rust enum.
     pub fn to_rust_enum(&self) -> String {
         let variants: String = self
@@ -305,5 +365,63 @@ mod tests {
         let wf = examples::ledger_ingest();
         let rust = wf.to_rust_enum();
         assert!(rust.contains("enum PipelineState"));
+    }
+
+    #[cfg(feature = "statechart")]
+    #[test]
+    fn test_to_scxml_round_trips_and_covers_every_real_transition() {
+        use scxml::model::StateKind;
+
+        let wf = examples::ledger_ingest();
+        let chart = wf.to_scxml();
+        scxml::validate(&chart).expect("ledger_ingest's exported statechart should be valid SCXML");
+
+        let xml = scxml::export::xml::to_xml(&chart);
+        let round_tripped = scxml::parse_xml(&xml).expect("round-tripped XML should re-parse");
+        assert_eq!(chart, round_tripped);
+
+        assert_eq!(round_tripped.initial.as_str(), "Ingested");
+
+        // Committed and NeedsReview are both `terminal` with zero outgoing
+        // transitions, so they export as real SCXML Final states.
+        for terminal in ["Committed", "NeedsReview"] {
+            let state = round_tripped
+                .find_state(terminal)
+                .unwrap_or_else(|| panic!("{terminal} should exist"));
+            assert_eq!(state.kind, StateKind::Final, "{terminal} should be Final");
+        }
+
+        // Validating's guarded FAIL transition (with an `else` branch to the
+        // same target) becomes two SCXML transitions on the same event.
+        let validating = round_tripped.find_state("Validating").unwrap();
+        let fail_transitions: Vec<_> = validating
+            .transitions
+            .iter()
+            .filter(|t| t.event.as_deref() == Some("FAIL"))
+            .collect();
+        assert_eq!(fail_transitions.len(), 2, "guard + else should both be present");
+        assert!(fail_transitions[0].guard.is_some(), "guarded arm comes first");
+        assert!(fail_transitions[1].guard.is_none(), "bare fallback comes second");
+        for t in &fail_transitions {
+            assert_eq!(t.targets, vec!["NeedsReview".to_string()]);
+        }
+
+        // Every other real transition round-trips too.
+        for (from, event, to) in [
+            ("Ingested", "SHAPE_DETECTED", "Validating"),
+            ("Validating", "PASS", "Classifying"),
+            ("Classifying", "HIGH_CONF", "Reconciling"),
+            ("Classifying", "LOW_CONF", "NeedsReview"),
+            ("Reconciling", "XERO_OK", "Committed"),
+        ] {
+            let state = round_tripped.find_state(from).unwrap();
+            assert!(
+                state
+                    .transitions
+                    .iter()
+                    .any(|t| t.event.as_deref() == Some(event) && t.targets == vec![to.to_string()]),
+                "missing transition {from} --{event}--> {to}"
+            );
+        }
     }
 }
