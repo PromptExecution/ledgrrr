@@ -9,7 +9,7 @@ fn load_defaults_when_file_missing() {
     assert!(settings.toast_enabled);
     assert_eq!(
         settings.toast_backend_preference,
-        NotificationBackend::PowerShell
+        NotificationBackend::Native
     );
     assert_eq!(
         settings.chat.endpoint_url,
