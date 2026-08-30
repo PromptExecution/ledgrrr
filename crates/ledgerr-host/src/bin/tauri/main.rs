@@ -143,6 +143,8 @@ fn main() {
         commands::stop_desktop_runtime,
         commands::open_desktop_logs,
         commands::get_desktop_repair_plan,
+        commands::get_foundry_local_install_plan,
+        commands::foundry_local_install_action,
     ]);
 
     #[cfg(debug_assertions)]
