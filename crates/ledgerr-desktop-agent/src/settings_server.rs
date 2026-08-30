@@ -129,9 +129,18 @@ pub fn accept_once(listener: &TcpListener, store: &SettingsStore) {
 mod tests {
     use super::*;
 
+    /// `SettingsStore::new`'s registry backend (on Windows) ignores its
+    /// `path` argument and always targets the one fixed production key —
+    /// correct for real callers, but it would make every test here share
+    /// one mutable global registry key. Use an explicit `JsonFileBackend`
+    /// over a tempdir instead, for genuine per-test isolation.
     fn store_with_defaults() -> SettingsStore {
         let dir = tempfile::tempdir().unwrap();
-        SettingsStore::new(dir.path().join("settings.json"))
+        let path = dir.path().join("settings.json");
+        SettingsStore::with_backend(
+            path.clone(),
+            Box::new(ledgrrr_settings::backend::JsonFileBackend::new(path)),
+        )
     }
 
     #[test]
