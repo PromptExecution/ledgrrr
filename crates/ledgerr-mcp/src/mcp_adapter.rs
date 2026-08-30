@@ -109,6 +109,47 @@ pub fn tool_descriptors() -> Vec<Value> {
     tools
 }
 
+/// Filter a full `tool_descriptors()`-style list down to what's visible for
+/// `ring`, per issue #222's progressive tool-discovery design
+/// (`docs/progressive-tool-scoping-design.md`).
+///
+/// `ring = None` means "no `LEDGERR_MCP_RING` configured" — returns `tools`
+/// unchanged, preserving the server's original behavior exactly (every
+/// caller sees every tool). This is the default; ring filtering is opt-in.
+///
+/// `Ring::Admin` also returns `tools` unchanged — Admin sees everything,
+/// matching `RingEnforcer::check_access`'s implicit-allow-everything rule
+/// for that ring.
+///
+/// For `Standard` / `Restricted` / `Sandboxed`, a tool is visible if its
+/// name is in `msft_agent_gov_ledgrrr::rings::CORE_TOOL_FAMILIES` (always
+/// visible, any ring) or in `ring_visible_tool_families(ring)`. External
+/// provider tools (from `external_tool_descriptors()`) are not part of
+/// either set today, so they are hidden whenever ring filtering is active —
+/// see the design doc's open-questions section for follow-up.
+///
+/// This function only affects what `tools/list` reports; it does not gate
+/// `tools/call` dispatch, which is unchanged by this increment.
+pub fn filter_tools_for_ring(tools: Vec<Value>, ring: Option<msft_agent_gov_ledgrrr::Ring>) -> Vec<Value> {
+    use msft_agent_gov_ledgrrr::{rings, Ring};
+
+    let Some(ring) = ring else {
+        return tools;
+    };
+    if ring == Ring::Admin {
+        return tools;
+    }
+
+    let visible = rings::ring_visible_tool_families(ring);
+    tools
+        .into_iter()
+        .filter(|t| {
+            let name = t["name"].as_str().unwrap_or("");
+            rings::CORE_TOOL_FAMILIES.contains(&name) || visible.contains(name)
+        })
+        .collect()
+}
+
 pub fn handle_focus_tool(arguments: &Value) -> Value {
     use crate::contract::parse_focus;
     use crate::focus_tool::{self, FocusToolInput, FocusToolRecord};
