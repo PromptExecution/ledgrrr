@@ -1,6 +1,6 @@
 //! Plan-before-mutation winget install-assist for Windows Foundry Local.
-//! Mirrors `install_plan.rs`'s exact safety contract for this repo's own
-//! MSIX package (approve-then-invoke, never runs anything unapproved).
+//! Mirrors `install_plan.rs`'s exact safety contract for installing Windows
+//! Foundry Local via winget (approve-then-invoke, never runs anything unapproved).
 
 use std::process::Command;
 
