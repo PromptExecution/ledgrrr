@@ -128,6 +128,25 @@ fn serve<R: BufRead, W: Write>(reader: R, mut writer: W) {
     }
 }
 
+/// Process-wide ring for `tools/list` visibility filtering, from the
+/// `LEDGERR_MCP_RING` env var (`admin` | `standard` | `restricted` |
+/// `sandboxed`, case-insensitive). Unset or unrecognized values return
+/// `None`, which `filter_tools_for_ring` treats as "no filtering" — the
+/// server's long-standing default of showing every tool to every caller.
+///
+/// This is a stand-in for real per-caller identity (see
+/// `docs/progressive-tool-scoping-design.md`): neither the stdio nor the
+/// additive HTTP transport (#223) currently carries a calling-agent
+/// identity, so this option applies one ring to the whole server process
+/// rather than gating per request. It exists to prove the
+/// `RingEnforcer`-derived `tools/list` filtering path end-to-end ahead of
+/// that larger, separately-tracked identity-plumbing work.
+fn configured_ring() -> Option<msft_agent_gov_ledgrrr::Ring> {
+    std::env::var("LEDGERR_MCP_RING")
+        .ok()
+        .and_then(|s| msft_agent_gov_ledgrrr::rings::ring_from_env_str(&s))
+}
+
 fn handle_request(request: Value) -> Option<Value> {
     let id = request.get("id").cloned().unwrap_or(Value::Null);
     let method = request.get("method").and_then(Value::as_str).unwrap_or("");
@@ -150,6 +169,7 @@ fn handle_request(request: Value) -> Option<Value> {
         "notifications/initialized" => None,
         "tools/list" => {
             let tools = mcp_adapter::tool_descriptors();
+            let tools = mcp_adapter::filter_tools_for_ring(tools, configured_ring());
             Some(json!({
                 "jsonrpc": "2.0",
                 "id": id,
