@@ -52,7 +52,11 @@ tiny_http = { version = "0.12", optional = true }
 winreg = "0.52"
 
 [features]
-default = ["core", "events", "reconciliation", "hsm", "ontology", "classification", "audit", "tax", "xero", "llm", "legacy"]
+# l3dg3rr#212: "llm" dropped from defaults — ledgerr-llm's default base URL
+# now points at b00t-server (not real OpenAI) and needs a provisioned
+# b00t-server API key; opt in explicitly with --features llm. "full" still
+# includes it.
+default = ["core", "events", "reconciliation", "hsm", "ontology", "classification", "audit", "tax", "xero", "legacy"]
 b00t = []
 core = []
 events = ["core"]

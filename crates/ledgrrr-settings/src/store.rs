@@ -55,6 +55,23 @@ impl SettingsStore {
         }
     }
 
+    /// Create a settings store that always uses the JSON-file backend,
+    /// bypassing platform backend selection entirely.
+    ///
+    /// On Windows, [`SettingsStore::new`] always prefers the registry backend
+    /// (`create_backend` ignores its `path` argument whenever the registry
+    /// key can be opened) — so two stores built from different `path`s are
+    /// *not* actually isolated from each other there; both end up reading and
+    /// writing the same real `HKCU\Software\b00t\settings` key. Any test that
+    /// needs a hermetic, path-isolated store (e.g. a `tempfile::tempdir()`
+    /// fixture) must use this constructor instead of `new`.
+    pub fn new_json_file(path: PathBuf) -> Self {
+        Self {
+            backend: Mutex::new(Box::new(crate::backend::JsonFileBackend::new(path.clone()))),
+            path,
+        }
+    }
+
     /// Return the JSON file path (for display / backward compatibility).
     pub fn path(&self) -> &Path {
         &self.path
@@ -126,8 +143,12 @@ mod tests {
     #[test]
     fn load_returns_defaults_when_backend_is_empty() {
         // A new store with a non-existent path → backend returns None → defaults.
+        // Uses new_json_file (not new): on Windows, `new` prefers the real
+        // registry backend regardless of this tempdir path, which makes the
+        // "empty backend" premise false whenever this dev/CI account already
+        // has an app_settings registry value from other real usage.
         let dir = tempfile::tempdir().unwrap();
-        let store = SettingsStore::new(dir.path().join("no-such-file.json"));
+        let store = SettingsStore::new_json_file(dir.path().join("no-such-file.json"));
         let settings = store.load().unwrap();
         assert!(settings.toast_enabled);
     }
@@ -136,7 +157,7 @@ mod tests {
     fn save_and_load_roundtrip() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
-        let store = SettingsStore::new(path.clone());
+        let store = SettingsStore::new_json_file(path.clone());
 
         let original = AppSettings {
             toast_enabled: false,
@@ -146,5 +167,25 @@ mod tests {
 
         let loaded = store.load().unwrap();
         assert_eq!(loaded, original);
+    }
+
+    #[test]
+    fn new_json_file_stores_are_isolated_by_path() {
+        // Two new_json_file stores at different paths must never see each
+        // other's data — this is the isolation guarantee `new` cannot
+        // provide on Windows (see new_json_file's doc comment).
+        let dir = tempfile::tempdir().unwrap();
+        let store_a = SettingsStore::new_json_file(dir.path().join("a.json"));
+        let store_b = SettingsStore::new_json_file(dir.path().join("b.json"));
+
+        let mut settings_a = store_a.load().unwrap();
+        settings_a.toast_enabled = false;
+        store_a.save(&settings_a).unwrap();
+
+        let settings_b = store_b.load().unwrap();
+        assert!(
+            settings_b.toast_enabled,
+            "store_b must still see defaults, unaffected by store_a's write"
+        );
     }
 }

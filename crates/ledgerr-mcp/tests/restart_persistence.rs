@@ -6,10 +6,15 @@ use ledgerr_mcp::{
 };
 
 fn manifest_for(workbook_path: &std::path::Path) -> String {
-    format!(
-        "[session]\nworkbook_path=\"{}\"\nactive_year=2023\n",
-        workbook_path.display()
-    )
+    // Escape backslashes/quotes for TOML — Windows temp paths are full of
+    // `\` separators, which are not valid TOML string escapes on their own
+    // (e.g. `\U`, `\A`, ...) and would otherwise fail to parse.
+    let escaped = workbook_path
+        .display()
+        .to_string()
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"");
+    format!("[session]\nworkbook_path=\"{escaped}\"\nactive_year=2023\n")
 }
 
 fn sample_row(source_ref: &std::path::Path) -> TransactionInput {

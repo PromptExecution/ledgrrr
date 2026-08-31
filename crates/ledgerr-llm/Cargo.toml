@@ -13,6 +13,10 @@ rust_decimal = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }
 
+# b00t-server API key provisioning (l3dg3rr#212): reads/persists the minted
+# key in the same settings store the desktop app uses.
+ledgrrr-settings = { path = "../ledgrrr-settings" }
+
 # Base64 for image encoding before sending to vision endpoint
 base64 = "0.22"
 
