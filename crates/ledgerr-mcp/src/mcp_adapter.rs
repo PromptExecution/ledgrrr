@@ -667,6 +667,20 @@ pub fn unknown_tool_result(tool_name: &str) -> Value {
     })
 }
 
+/// MCP tool-result envelope for a call denied by AGT governance (issue
+/// #225 — `LedgrrAgtGateway::check_tool_call` wired into `tools/call`
+/// dispatch). Mirrors `unknown_tool_result`'s shape.
+pub fn governance_denied_result(tool_name: &str, reason: &str) -> Value {
+    json!({
+        "content": [text_content(json!({
+                "isError": true,
+                "error_type": "GovernanceDenied",
+                "message": format!("tool call denied for {tool_name}: {reason}")
+            }))],
+        "isError": true
+    })
+}
+
 fn handle_plugin_info(arguments: &Value) -> Value {
     let payload = crate::plugin_info::handle(arguments);
     json!({
