@@ -9,6 +9,7 @@
 pub mod contract;
 pub mod foundry_install_plan;
 pub mod install_plan;
+pub mod lifecycle;
 pub mod office_artifact;
 pub mod playbook;
 pub mod render;

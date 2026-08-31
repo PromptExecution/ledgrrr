@@ -201,7 +201,7 @@ pub fn open_tray() -> ServiceControlResult {
             ok: false,
             pid: None,
             message:
-                "no tray binary (host-tray, ledgerr-tauri) found next to controller or on PATH"
+                "no tray binary (host-tauri) found next to controller or on PATH"
                     .to_string(),
         },
     }

@@ -36,10 +36,6 @@ impl Default for NotificationSettings {
 pub enum NotifyError {
     #[error("notifications are disabled")]
     Disabled,
-    #[error("powershell.exe is not available")]
-    PowerShellUnavailable,
-    #[error("BurntToast module is unavailable")]
-    BurntToastUnavailable,
     #[error("notification command failed: {0}")]
     CommandFailed(String),
     #[error("i/o error: {0}")]

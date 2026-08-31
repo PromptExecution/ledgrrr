@@ -211,8 +211,6 @@ const TRAY_CANDIDATES: &[&str] = &[
     "ledgrrr-tray.exe",
     "host-tauri.exe",
     "host-tauri",
-    "host-tray.exe",
-    "host-tray",
 ];
 
 /// Finds a tray binary next to this controller's own executable, then on

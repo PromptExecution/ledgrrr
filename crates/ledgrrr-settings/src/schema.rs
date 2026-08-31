@@ -110,7 +110,7 @@ impl Default for AppSettings {
             schema_version: SettingsSchemaVersion::V2,
             model_provider: default_model_provider(),
             toast_enabled: true,
-            toast_backend_preference: NotificationBackend::PowerShell,
+            toast_backend_preference: NotificationBackend::Native,
             start_minimized_to_tray: false,
             window_visible_on_start: true,
             show_notifications_for: ShowNotificationsFor::default(),

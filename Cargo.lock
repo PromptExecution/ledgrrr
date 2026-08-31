@@ -5020,6 +5020,7 @@ dependencies = [
  "getrandom 0.3.4",
  "ledgrrr-settings",
  "schemars 0.8.22",
+ "scxml",
  "serde",
  "serde_json",
  "sysinfo 0.33.1",

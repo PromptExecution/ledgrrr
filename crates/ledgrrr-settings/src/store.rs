@@ -55,6 +55,25 @@ impl SettingsStore {
         }
     }
 
+    /// Create a settings store backed by an explicitly supplied backend,
+    /// bypassing the platform auto-selection in [`create_backend`].
+    ///
+    /// On Windows, `create_backend`'s registry backend ignores its `path`
+    /// argument entirely — it always targets the one fixed production
+    /// registry key. That's correct for `new()`'s real callers (which all
+    /// pass the same production path), but it means any test that wants
+    /// genuine isolation (a fresh, empty store per test) must not go
+    /// through registry auto-selection at all. Use this with an explicit
+    /// `JsonFileBackend` over a tempdir path instead — or use
+    /// [`SettingsStore::new_json_file`], a convenience wrapper around this
+    /// for exactly that JSON-file case.
+    pub fn with_backend(path: PathBuf, backend: Box<dyn SettingsBackend>) -> Self {
+        Self {
+            path,
+            backend: Mutex::new(backend),
+        }
+    }
+
     /// Create a settings store that always uses the JSON-file backend,
     /// bypassing platform backend selection entirely.
     ///
@@ -64,12 +83,13 @@ impl SettingsStore {
     /// *not* actually isolated from each other there; both end up reading and
     /// writing the same real `HKCU\Software\b00t\settings` key. Any test that
     /// needs a hermetic, path-isolated store (e.g. a `tempfile::tempdir()`
-    /// fixture) must use this constructor instead of `new`.
+    /// fixture) must use this constructor instead of `new`. A thin wrapper
+    /// around [`SettingsStore::with_backend`] for the common JSON-file case.
     pub fn new_json_file(path: PathBuf) -> Self {
-        Self {
-            backend: Mutex::new(Box::new(crate::backend::JsonFileBackend::new(path.clone()))),
-            path,
-        }
+        Self::with_backend(
+            path.clone(),
+            Box::new(crate::backend::JsonFileBackend::new(path)),
+        )
     }
 
     /// Return the JSON file path (for display / backward compatibility).

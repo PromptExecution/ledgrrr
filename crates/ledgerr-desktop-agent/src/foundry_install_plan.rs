@@ -132,4 +132,28 @@ mod tests {
         let args = FoundryInstallActionArgs::default();
         assert!(!args.approved);
     }
+
+    // Compiled ONLY for non-Windows targets — deliberately, not an
+    // oversight. On a Windows build, `install_plan()`'s `executable_now`
+    // is always `true` (driven by `cfg!(windows)`), so `invoke(approved:
+    // true)` would reach the real `Command::new("powershell.exe")…
+    // spawn()` call and genuinely attempt a winget install as a side
+    // effect of running the test suite. Gating this test out on Windows
+    // is what makes it safe to have at all; it exercises the `!plan.
+    // executable_now` branch on any non-Windows CI target instead; the
+    // pre-existing `invoke_without_approval_never_launches` test above
+    // already covers the approval gate safely on every target, Windows
+    // included, since it never sets `approved: true`.
+    #[cfg(not(windows))]
+    #[test]
+    fn invoke_reports_blocked_on_non_windows_even_when_approved() {
+        let result = invoke(FoundryInstallActionArgs { approved: true });
+        assert!(!result.ok);
+        assert!(!result.launched);
+        assert_eq!(
+            result.message,
+            "Windows Foundry Local can only be installed via winget on Windows."
+        );
+        assert!(!result.plan.executable_now);
+    }
 }
