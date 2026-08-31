@@ -683,8 +683,16 @@ impl TurboLedgerService {
             XeroService::new(config, token_path)
         };
 
+        // l3dg3rr#212: LlmConfig::provision() resolves a real b00t-server API
+        // key (OPENAI_API_KEY → LEDGERR_B00T_SERVER_KEY → stored key →
+        // lazily minted via `b00t server key create`) rather than sending
+        // requests with an empty bearer token. `.ok()` keeps the existing
+        // graceful-degradation behavior: any provisioning or client-build
+        // failure just leaves `llm` as `None`, and `extract_with_llm` then
+        // fails with a clear "LLM backend is not configured" error instead
+        // of panicking or silently sending unauthenticated requests.
         #[cfg(feature = "llm")]
-        let llm = LlmClient::new(LlmConfig::from_env()).ok();
+        let llm = LlmConfig::provision().and_then(LlmClient::new).ok();
 
         let initial_evidence_path = {
             let service_path = std::path::Path::new(&manifest.session.workbook_path);

@@ -87,6 +87,13 @@ pub struct AppSettings {
     pub enable_tray: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_test_result: Option<NotificationTestResult>,
+    /// b00t-server API key (`b00t-sk-...`) for `ledgerr-llm`'s document/receipt
+    /// extraction client. Minted lazily by `ledgerr-llm` via `b00t server key
+    /// create` on first use and persisted here so it survives process restarts
+    /// (l3dg3rr#212). `None` until a key has been minted or the operator sets
+    /// one manually.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub b00t_server_api_key: Option<String>,
 }
 
 fn default_enable_tray() -> bool {
@@ -110,6 +117,7 @@ impl Default for AppSettings {
             chat: ChatSettings::default(),
             enable_tray: true,
             last_test_result: None,
+            b00t_server_api_key: None,
         }
     }
 }

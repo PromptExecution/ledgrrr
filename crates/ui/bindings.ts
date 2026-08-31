@@ -59,6 +59,8 @@ export const commands = {
 	 *  operation in Claude, preserving the MCPB/UAC boundary.
 	 */
 	getDesktopRepairPlan: () => typedError<string, string>(__TAURI_INVOKE("get_desktop_repair_plan")),
+	getFoundryLocalInstallPlan: () => typedError<string, string>(__TAURI_INVOKE("get_foundry_local_install_plan")),
+	foundryLocalInstallAction: (approved: boolean) => typedError<string, string>(__TAURI_INVOKE("foundry_local_install_action", { approved })),
 };
 
 /* Types */

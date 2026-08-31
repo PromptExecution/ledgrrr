@@ -28,13 +28,13 @@ use agentmesh::{
         CredentialRedactor, InMemoryAuditSink, McpMetricsCollector, McpSecurityScanner,
         McpToolDefinition, SystemClock,
     },
-    AgentMeshClient, ClientOptions, PolicyDecision, Ring, RingEnforcer, TrustConfig,
+    AgentMeshClient, ClientOptions, PolicyDecision, RingEnforcer, TrustConfig,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use thiserror::Error;
 
-pub use agentmesh::{ClientError, GovernanceResult, LifecycleManager, LifecycleState, TrustScore, TrustTier};
+pub use agentmesh::{ClientError, GovernanceResult, LifecycleManager, LifecycleState, Ring, TrustScore, TrustTier};
 
 #[derive(Debug, Error)]
 pub enum AgtError {

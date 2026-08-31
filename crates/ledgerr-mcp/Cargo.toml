@@ -42,12 +42,21 @@ sysinfo = { version = "0.33", default-features = false, features = ["system"] }
 reqwest = { version = "0.12", features = ["blocking", "json", "rustls-tls"], default-features = false, optional = true }
 semver = { version = "1", optional = true }
 
+# http-transport feature dep — minimal synchronous HTTP server, matches the
+# existing sync dispatch model (no tokio runtime pulled into the request
+# path). See src/bin/ledgerr-mcp-server.rs's serve_http().
+tiny_http = { version = "0.12", optional = true }
+
 # winreg — Windows-only, safe registry wrapper; gated at the cfg level in code
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
 
 [features]
-default = ["core", "events", "reconciliation", "hsm", "ontology", "classification", "audit", "tax", "xero", "llm", "legacy"]
+# l3dg3rr#212: "llm" dropped from defaults — ledgerr-llm's default base URL
+# now points at b00t-server (not real OpenAI) and needs a provisioned
+# b00t-server API key; opt in explicitly with --features llm. "full" still
+# includes it.
+default = ["core", "events", "reconciliation", "hsm", "ontology", "classification", "audit", "tax", "xero", "legacy"]
 b00t = []
 core = []
 events = ["core"]
@@ -61,6 +70,12 @@ xero = ["core", "dep:ledgerr-xero"]
 llm = ["core", "dep:ledgerr-llm"]
 full = ["core", "events", "reconciliation", "hsm", "ontology", "classification", "audit", "tax", "xero", "llm"]
 self-update = ["dep:reqwest", "dep:semver"]
+
+# HTTP/network transport for ledgerr-mcp-server, additive to the default
+# stdio transport (never replaces it — see infrastructure#139/#141 for the
+# Azure Container Apps scale-to-zero deployment this exists for). Off by
+# default: opt in with --features http-transport.
+http-transport = ["dep:tiny_http"]
 
 # Legacy: gates the old mcp_adapter.rs dispatch and the pre-actor server
 # match-statement path.  The new actor/gate channel system is the default;
