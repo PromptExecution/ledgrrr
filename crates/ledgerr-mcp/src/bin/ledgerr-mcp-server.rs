@@ -19,7 +19,80 @@ fn main() {
     #[cfg(feature = "b00t")]
     initialize_providers();
 
+    #[cfg(feature = "http-transport")]
+    if std::env::var("LEDGERR_MCP_TRANSPORT").as_deref() == Ok("http") {
+        serve_http();
+        return;
+    }
+
     serve(io::stdin().lock(), io::stdout());
+}
+
+/// HTTP transport: same `handle_request` dispatcher as stdio, reached over
+/// a minimal synchronous HTTP server instead of stdin/stdout. Built for
+/// Azure Container Apps' HTTP-triggered scale-to-zero (see
+/// PromptExecution/infrastructure#139/#141) — ACA needs an HTTP endpoint to
+/// wake the app on, which stdio transport can't provide.
+///
+/// Deliberately does NOT adopt the `rmcp` SDK (tracked as the original ask
+/// in this issue) — `handle_request` is already a pure, transport-agnostic
+/// JSON-RPC dispatcher, so bridging it over HTTP needed zero changes to the
+/// ~50 existing tool handlers or the well-tested stdio path. Migrating the
+/// whole dispatcher onto `rmcp::ServerHandler` would be a much larger,
+/// riskier rewrite (every tool handler + mcp_adapter's schema/routing) for
+/// no functional gain over this — worth reconsidering only if a concrete
+/// need for something `rmcp` provides (e.g. its SSE/StreamableHttp session
+/// resumption) actually shows up.
+///
+/// Only two routes: `GET /health` (liveness probe, matches the
+/// `standing-mcp-server` Terraform module's expectation) and `POST /`
+/// (JSON-RPC request body in, JSON-RPC response body out). Single-threaded,
+/// one request at a time — matches this binary's existing fully-synchronous
+/// dispatch model (see the tokio-on-a-scratch-runtime comment on the
+/// `tokio` dependency above). Revisit if concurrent request handling is
+/// ever actually needed.
+#[cfg(feature = "http-transport")]
+fn serve_http() {
+    let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
+    let addr = format!("0.0.0.0:{port}");
+    let server = tiny_http::Server::http(&addr)
+        .unwrap_or_else(|e| panic!("failed to bind {addr}: {e}"));
+    tracing::info!(%addr, "ledgerr-mcp HTTP transport listening");
+
+    for mut request in server.incoming_requests() {
+        let response = match (request.method(), request.url()) {
+            (tiny_http::Method::Get, "/health") => {
+                tiny_http::Response::from_string("ok").with_status_code(200)
+            }
+            (tiny_http::Method::Post, "/") => {
+                let mut body = String::new();
+                if request.as_reader().read_to_string(&mut body).is_err() {
+                    let _ = request.respond(
+                        tiny_http::Response::from_string("failed to read body")
+                            .with_status_code(400),
+                    );
+                    continue;
+                }
+                match serde_json::from_str::<Value>(&body) {
+                    Ok(parsed) => match handle_request(parsed) {
+                        Some(resp) => match serde_json::to_string(&resp) {
+                            Ok(s) => tiny_http::Response::from_string(s).with_status_code(200),
+                            Err(e) => tiny_http::Response::from_string(format!(
+                                "response serialization error: {e}"
+                            ))
+                            .with_status_code(500),
+                        },
+                        // Notifications (e.g. notifications/initialized) have no response body.
+                        None => tiny_http::Response::from_string("").with_status_code(204),
+                    },
+                    Err(e) => tiny_http::Response::from_string(format!("invalid JSON: {e}"))
+                        .with_status_code(400),
+                }
+            }
+            _ => tiny_http::Response::from_string("not found").with_status_code(404),
+        };
+        let _ = request.respond(response);
+    }
 }
 
 #[cfg(feature = "b00t")]
