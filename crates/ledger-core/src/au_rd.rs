@@ -14,9 +14,9 @@ use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use ufo_types::{
-    satisfies::{Constraint, Disposition, NodeId, SatisfiesResult, Satisfies},
-    stereotype::UfoStereotype,
     iso::{Currency, Lei},
+    satisfies::{Constraint, Disposition, NodeId, Satisfies, SatisfiesResult},
+    stereotype::UfoStereotype,
 };
 
 // ─── Constraint markers ────────────────────────────────────────────────────
@@ -73,9 +73,9 @@ pub struct AuRdActivity {
 
 impl AuRdActivity {
     fn evidence_node(&self) -> NodeId {
-        let hash = blake3::hash(
-            format!("{}:{}", self.lei, self.activity_id).as_bytes()
-        ).to_hex().to_string();
+        let hash = blake3::hash(format!("{}:{}", self.lei, self.activity_id).as_bytes())
+            .to_hex()
+            .to_string();
         NodeId::new(format!("rnd:{hash}"))
     }
 }
@@ -189,9 +189,9 @@ pub struct AuRdExpenditure {
 
 impl AuRdExpenditure {
     fn evidence_node(&self) -> NodeId {
-        let hash = blake3::hash(
-            format!("{}:{}", self.lei, self.tx_id).as_bytes()
-        ).to_hex().to_string();
+        let hash = blake3::hash(format!("{}:{}", self.lei, self.tx_id).as_bytes())
+            .to_hex()
+            .to_string();
         NodeId::new(format!("tx:{hash}"))
     }
 }
@@ -214,7 +214,11 @@ impl Satisfies<AuRdEligibility> for AuRdExpenditure {
             };
         }
 
-        let confidence = if self.category.is_directly_eligible() { 0.95 } else { 0.60 };
+        let confidence = if self.category.is_directly_eligible() {
+            0.95
+        } else {
+            0.60
+        };
 
         SatisfiesResult {
             disposition: Disposition::Satisfied,
@@ -272,7 +276,7 @@ impl Satisfies<AuRdCompliance> for AuRdOffset {
         }
         if self.estimated_offset != self.total_eligible * self.offset_rate {
             return SatisfiesResult::violated(
-                "estimated_offset inconsistent with total_eligible * offset_rate"
+                "estimated_offset inconsistent with total_eligible * offset_rate",
             );
         }
         SatisfiesResult::satisfied(0.98, vec![])
@@ -311,7 +315,11 @@ mod tests {
     fn core_activity_satisfies_eligibility() {
         let activity = core_activity();
         let result = activity.satisfies(&AuRdEligibility);
-        assert!(result.disposition.is_satisfied(), "Expected satisfied: {:?}", result.disposition);
+        assert!(
+            result.disposition.is_satisfied(),
+            "Expected satisfied: {:?}",
+            result.disposition
+        );
         assert!(result.confidence >= 0.9);
     }
 
@@ -353,7 +361,10 @@ mod tests {
     #[test]
     fn offset_refundable_43_5() {
         let offset = AuRdOffset::new(dec!(200_000), true);
-        assert_eq!(offset.offset_rate, Decimal::from_str_exact("0.435").unwrap());
+        assert_eq!(
+            offset.offset_rate,
+            Decimal::from_str_exact("0.435").unwrap()
+        );
         let expected = dec!(200_000) * Decimal::from_str_exact("0.435").unwrap();
         assert_eq!(offset.estimated_offset, expected);
         assert!(offset.satisfies(&AuRdCompliance).disposition.is_satisfied());

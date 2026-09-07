@@ -194,8 +194,7 @@ impl XeroService {
             });
         }
 
-        let inserted = ontology::upsert_entities(store, entities)?
-            .inserted_count;
+        let inserted = ontology::upsert_entities(store, entities)?.inserted_count;
 
         ontology::persist_store(store, ontology_path)?;
 

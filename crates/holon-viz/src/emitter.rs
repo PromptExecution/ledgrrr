@@ -99,7 +99,13 @@ impl Owl2Emitter {
 fn sanitize_sysml_id(s: &str) -> String {
     let sanitized: String = s
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     // Identifiers must not start with a digit.
     if sanitized.starts_with(|c: char| c.is_ascii_digit()) {
@@ -114,7 +120,13 @@ fn sanitize_sysml_id(s: &str) -> String {
 /// Sanitize a string to a valid Turtle local name (no spaces or special chars).
 fn sanitize_turtle_local(s: &str) -> String {
     s.chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 

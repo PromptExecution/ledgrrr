@@ -102,8 +102,7 @@ pub fn assert_account_coverage(
     let mut discontinuities = Vec::new();
     let mut intra_period_failures = Vec::new();
 
-    let expected_months: BTreeSet<(i32, u32)> =
-        (1..=12).map(|m| (request.tax_year, m)).collect();
+    let expected_months: BTreeSet<(i32, u32)> = (1..=12).map(|m| (request.tax_year, m)).collect();
 
     for account_id in &request.account_ids {
         let present: BTreeSet<(i32, u32)> = by_period
@@ -112,15 +111,9 @@ pub fn assert_account_coverage(
             .map(|(_, y, m)| (*y, *m))
             .collect();
 
-        let missing: Vec<(i32, u32)> = expected_months
-            .difference(&present)
-            .copied()
-            .collect();
+        let missing: Vec<(i32, u32)> = expected_months.difference(&present).copied().collect();
         for (year, month) in &missing {
-            gaps.push((
-                account_id.clone(),
-                format!("{:04}-{:02}", year, month),
-            ));
+            gaps.push((account_id.clone(), format!("{:04}-{:02}", year, month)));
         }
 
         let mut months_for_account: Vec<&AccountMonthAccum> = by_period
@@ -218,9 +211,7 @@ pub fn coverage_request_from_json(args: &serde_json::Value) -> Result<CoverageRe
         .get("tax_year")
         .and_then(|v| v.as_i64())
         .map(|y| y as i32)
-        .ok_or_else(|| {
-            ToolError::InvalidInput("coverage requires tax_year integer".to_string())
-        })?;
+        .ok_or_else(|| ToolError::InvalidInput("coverage requires tax_year integer".to_string()))?;
     Ok(CoverageRequest {
         account_ids,
         tax_year,

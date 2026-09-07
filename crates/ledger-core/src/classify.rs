@@ -34,7 +34,18 @@ pub struct ClassificationOutcome {
     pub reason: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, Display, Serialize, Deserialize, strum::VariantArray)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    EnumString,
+    Display,
+    Serialize,
+    Deserialize,
+    strum::VariantArray,
+)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum TaxCategory {
@@ -50,7 +61,18 @@ pub enum TaxCategory {
     Other,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, Display, Serialize, Deserialize, strum::VariantArray)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    EnumString,
+    Display,
+    Serialize,
+    Deserialize,
+    strum::VariantArray,
+)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum Flag {
@@ -257,7 +279,10 @@ mod tests {
             0.7,
         );
         assert!(engine.resolve_flag("tx-xyz"));
-        assert!(!engine.resolve_flag("tx-xyz"), "second resolve should return false");
+        assert!(
+            !engine.resolve_flag("tx-xyz"),
+            "second resolve should return false"
+        );
     }
 }
 

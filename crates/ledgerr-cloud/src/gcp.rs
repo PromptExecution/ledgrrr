@@ -43,7 +43,9 @@ impl BudgetProvider for GcpProvider {
         let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            if stderr.contains("Reauth") || stderr.contains("auth login") || stderr.contains("expired")
+            if stderr.contains("Reauth")
+                || stderr.contains("auth login")
+                || stderr.contains("expired")
             {
                 return Err(ProviderError::AuthRequired(stderr.into_owned()));
             }

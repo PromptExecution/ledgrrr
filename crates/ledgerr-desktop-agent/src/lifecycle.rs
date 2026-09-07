@@ -102,7 +102,10 @@ mod tests {
             cli_found: true,
             service_running: false,
         };
-        assert_eq!(current_state(&status), FoundryLocalLifecycle::InstalledStopped);
+        assert_eq!(
+            current_state(&status),
+            FoundryLocalLifecycle::InstalledStopped
+        );
     }
 
     #[test]
@@ -111,14 +114,26 @@ mod tests {
             cli_found: true,
             service_running: true,
         };
-        assert_eq!(current_state(&status), FoundryLocalLifecycle::InstalledRunning);
+        assert_eq!(
+            current_state(&status),
+            FoundryLocalLifecycle::InstalledRunning
+        );
     }
 
     #[test]
     fn state_ids_are_distinct_and_stable() {
-        assert_eq!(state_id(FoundryLocalLifecycle::NotInstalled), "not_installed");
-        assert_eq!(state_id(FoundryLocalLifecycle::InstalledStopped), "installed_stopped");
-        assert_eq!(state_id(FoundryLocalLifecycle::InstalledRunning), "installed_running");
+        assert_eq!(
+            state_id(FoundryLocalLifecycle::NotInstalled),
+            "not_installed"
+        );
+        assert_eq!(
+            state_id(FoundryLocalLifecycle::InstalledStopped),
+            "installed_stopped"
+        );
+        assert_eq!(
+            state_id(FoundryLocalLifecycle::InstalledRunning),
+            "installed_running"
+        );
     }
 
     use scxml::export::xml::to_xml;
@@ -169,7 +184,10 @@ mod tests {
             .iter()
             .find(|t| t.event.as_deref() == Some("ServiceStarted"))
             .expect("InstalledStopped must accept ServiceStarted");
-        assert_eq!(start.targets, vec![state_id(FoundryLocalLifecycle::InstalledRunning)]);
+        assert_eq!(
+            start.targets,
+            vec![state_id(FoundryLocalLifecycle::InstalledRunning)]
+        );
 
         let running = chart
             .find_state(state_id(FoundryLocalLifecycle::InstalledRunning))
@@ -179,7 +197,10 @@ mod tests {
             .iter()
             .find(|t| t.event.as_deref() == Some("ServiceStopped"))
             .expect("InstalledRunning must accept ServiceStopped");
-        assert_eq!(stop.targets, vec![state_id(FoundryLocalLifecycle::InstalledStopped)]);
+        assert_eq!(
+            stop.targets,
+            vec![state_id(FoundryLocalLifecycle::InstalledStopped)]
+        );
     }
 
     #[test]

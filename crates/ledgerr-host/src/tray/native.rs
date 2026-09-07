@@ -337,14 +337,22 @@ unsafe fn build_tray_menu(
     push_action(hmenu, CMD_WINDOW_VISIBLE, labels.window_visible_on_start)?;
 
     let notify_menu = CreatePopupMenu()?;
-    push_action(notify_menu, CMD_NOTIFY_APPROVAL, labels.notify_approval_required)?;
+    push_action(
+        notify_menu,
+        CMD_NOTIFY_APPROVAL,
+        labels.notify_approval_required,
+    )?;
     push_action(
         notify_menu,
         CMD_NOTIFY_SUBMITTED,
         labels.notify_transaction_submitted,
     )?;
     push_action(notify_menu, CMD_NOTIFY_FAILED, labels.notify_run_failed)?;
-    push_action(notify_menu, CMD_NOTIFY_COMPLETED, labels.notify_run_completed)?;
+    push_action(
+        notify_menu,
+        CMD_NOTIFY_COMPLETED,
+        labels.notify_run_completed,
+    )?;
     let notify_label: Vec<u16> = OsStr::new("Notify me for")
         .encode_wide()
         .chain(core::iter::once(0))
@@ -585,10 +593,10 @@ unsafe fn run_tray_pump(
 
     // Helper: tear down OS resources.
     let cleanup = |nid: &NOTIFYICONDATAW,
-                       hicon: HICON,
-                       hwnd: HWND,
-                       hmenu: HMENU,
-                       ptr: *mut WindowUserData| {
+                   hicon: HICON,
+                   hwnd: HWND,
+                   hmenu: HMENU,
+                   ptr: *mut WindowUserData| {
         let _ = Shell_NotifyIconW(NIM_DELETE, nid as *const NOTIFYICONDATAW);
         let _ = DestroyIcon(hicon);
         let _ = DestroyWindow(hwnd);

@@ -55,12 +55,24 @@ pub struct IngestRowError {
 /// Discriminated union of operation kinds, used in [`crate::calendar::ScheduledEvent`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum OperationKind {
-    IngestStatement { source_glob: String },
-    ClassifyTransactions { rule_dir: String },
-    ReconcileAccount { account_id: String },
-    ExportWorkbook { output_path: String },
-    GenerateAuditTrail { year: i32 },
-    CheckTaxDeadline { deadline_id: String },
+    IngestStatement {
+        source_glob: String,
+    },
+    ClassifyTransactions {
+        rule_dir: String,
+    },
+    ReconcileAccount {
+        account_id: String,
+    },
+    ExportWorkbook {
+        output_path: String,
+    },
+    GenerateAuditTrail {
+        year: i32,
+    },
+    CheckTaxDeadline {
+        deadline_id: String,
+    },
     /// Record a decision as an immutable, content-hashed evidence entry.
     /// Systems-modeling registry vertical — see
     /// `docs/systems-modeling-registry-rescope.md` (epic part 2).
@@ -76,7 +88,10 @@ pub enum OperationKind {
         currency: String,
     },
     /// Import a requirement record from an external source (e.g. ReqIF).
-    ImportRequirement { source: String, title: String },
+    ImportRequirement {
+        source: String,
+        title: String,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -127,10 +142,7 @@ impl OperationContext {
     }
 
     #[cfg(feature = "cedar-policy")]
-    pub fn with_gateway(
-        mut self,
-        gateway: Arc<msft_agent_gov_ledgrrr::LedgrrAgtGateway>,
-    ) -> Self {
+    pub fn with_gateway(mut self, gateway: Arc<msft_agent_gov_ledgrrr::LedgrrAgtGateway>) -> Self {
         self.gateway = Some(gateway);
         self
     }
@@ -370,15 +382,7 @@ impl LedgerOperation for IngestStatementOp {
 
             let meta = MetaCtx::default();
             let gate = CommitGate::Approved { confidence: 1.0 };
-            let audit_row = AuditRow::new(
-                filename,
-                filename,
-                1.0,
-                &[],
-                &meta,
-                true,
-                &gate,
-            );
+            let audit_row = AuditRow::new(filename, filename, 1.0, &[], &meta, true, &gate);
             let writer = WorkbookWriter::new(wb_path);
             let _ = writer.append_audit_row(&audit_row);
         }
@@ -612,8 +616,8 @@ impl LedgerOperation for ReconcileAccountOp {
         if rows.len() >= 4 {
             let amounts: Vec<f64> = rows.iter().map(|(_, _, a)| a.abs()).collect();
             let mean = amounts.iter().sum::<f64>() / amounts.len() as f64;
-            let variance = amounts.iter().map(|a| (a - mean).powi(2)).sum::<f64>()
-                / amounts.len() as f64;
+            let variance =
+                amounts.iter().map(|a| (a - mean).powi(2)).sum::<f64>() / amounts.len() as f64;
             let stdev = variance.sqrt();
             let threshold = mean + 3.0 * stdev;
             for (tx_id, _, amount) in &rows {
@@ -857,8 +861,15 @@ impl LedgerOperation for GenerateAuditTrailOp {
         let mut out_wb = Workbook::new();
 
         let tx_headers = [
-            "tx_id", "date", "vendor", "account", "amount",
-            "category", "confidence", "needs_review", "flag",
+            "tx_id",
+            "date",
+            "vendor",
+            "account",
+            "amount",
+            "category",
+            "confidence",
+            "needs_review",
+            "flag",
         ];
         let tx_ws = out_wb
             .add_worksheet()
@@ -878,7 +889,13 @@ impl LedgerOperation for GenerateAuditTrailOp {
         }
 
         let mut_headers = [
-            "timestamp", "tx_id", "agent_id", "ring", "action", "before", "after",
+            "timestamp",
+            "tx_id",
+            "agent_id",
+            "ring",
+            "action",
+            "before",
+            "after",
         ];
         let mut_ws = out_wb
             .add_worksheet()
@@ -965,9 +982,7 @@ impl LedgerOperation for CheckTaxDeadlineOp {
             if days_until >= 0 && days_until <= self.warn_days_before as i64 {
                 issues.push(format!(
                     "Tax deadline '{}' due {} (in {} days)",
-                    self.deadline_id,
-                    due_date,
-                    days_until
+                    self.deadline_id, due_date, days_until
                 ));
             }
         }
@@ -1050,11 +1065,10 @@ impl LedgerOperation for RecordCostOp {
     }
 
     fn execute(&self, _ctx: &OperationContext) -> Result<OperationResult, LedgerOpError> {
-        let hash = blake3::hash(
-            format!("{}|{}|{}", self.subject, self.amount, self.currency).as_bytes(),
-        )
-        .to_hex()
-        .to_string();
+        let hash =
+            blake3::hash(format!("{}|{}|{}", self.subject, self.amount, self.currency).as_bytes())
+                .to_hex()
+                .to_string();
         Ok(OperationResult {
             operation_id: "record-cost".to_string(),
             success: true,
@@ -1182,12 +1196,15 @@ impl LedgerOperation for PdfIngestOp {
         }
 
         // Use tokio runtime for async subprocess with timeout
-        let runtime = tokio::runtime::Runtime::new()
-            .map_err(|e| LedgerOpError::ExternalProcessFailed(format!("runtime creation failed: {e}")))?;
+        let runtime = tokio::runtime::Runtime::new().map_err(|e| {
+            LedgerOpError::ExternalProcessFailed(format!("runtime creation failed: {e}"))
+        })?;
         let input_path = self
             .input_path
             .to_str()
-            .ok_or_else(|| LedgerOpError::InvalidInput("input path must be valid UTF-8".to_string()))?
+            .ok_or_else(|| {
+                LedgerOpError::InvalidInput("input path must be valid UTF-8".to_string())
+            })?
             .to_string();
 
         let output = runtime.block_on(async {
@@ -1209,7 +1226,9 @@ impl LedgerOperation for PdfIngestOp {
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
                     .spawn()
-                    .map_err(|e| LedgerOpError::ExternalProcessFailed(format!("spawn failed: {e}")))?;
+                    .map_err(|e| {
+                        LedgerOpError::ExternalProcessFailed(format!("spawn failed: {e}"))
+                    })?;
 
                 let stdout = child.stdout.take().ok_or_else(|| {
                     LedgerOpError::ExternalProcessFailed("stdout not captured".to_string())
@@ -1223,7 +1242,9 @@ impl LedgerOperation for PdfIngestOp {
                     let mut buf = Vec::new();
                     use tokio::io::AsyncReadExt;
                     let mut reader = tokio::io::BufReader::new(stdout);
-                    reader.read_to_end(&mut buf).await
+                    reader
+                        .read_to_end(&mut buf)
+                        .await
                         .map_err(|e| LedgerOpError::Io(e))?;
                     Ok::<_, LedgerOpError>(buf)
                 })
@@ -1234,7 +1255,9 @@ impl LedgerOperation for PdfIngestOp {
                     let mut buf = Vec::new();
                     use tokio::io::AsyncReadExt;
                     let mut reader = tokio::io::BufReader::new(stderr);
-                    reader.read_to_end(&mut buf).await
+                    reader
+                        .read_to_end(&mut buf)
+                        .await
                         .map_err(|e| LedgerOpError::Io(e))?;
                     Ok::<_, LedgerOpError>(buf)
                 })
@@ -1299,13 +1322,13 @@ impl LedgerOperation for PdfIngestOp {
         }
 
         let mut engine = ClassificationEngine::default();
-        let registry = RuleRegistry::load_from_dir(&self.rule_dir).map_err(|e| {
-            LedgerOpError::InvalidInput(format!("failed to load rules: {e}"))
-        })?;
+        let registry = RuleRegistry::load_from_dir(&self.rule_dir)
+            .map_err(|e| LedgerOpError::InvalidInput(format!("failed to load rules: {e}")))?;
 
         // Get existing tx_ids from workbook for deduplication
         let writer = WorkbookWriter::new(&self.workbook_path);
-        let mut seen_tx_ids = writer.get_existing_tx_ids()
+        let mut seen_tx_ids = writer
+            .get_existing_tx_ids()
             .unwrap_or_else(|_| std::collections::HashSet::new());
 
         let mut processed = 0;
@@ -1340,17 +1363,21 @@ impl LedgerOperation for PdfIngestOp {
                     // (as it already does for the CSV/XLSX ingest path) —
                     // this replaces the old `&candidate.key`, a requirement's
                     // stable key, which had no vendor meaning at all.
-                    writer.append_row(crate::workbook::TransactionRow::new(
-                        &tx_id,
-                        &tx_input.date,
-                        &tx_input.description,
-                        &tx_input.account_id,
-                        &tx_input.amount,
-                        &outcome.category,
-                        outcome.confidence,
-                        outcome.needs_review,
-                        None,
-                    )).map_err(|e| LedgerOpError::Workbook(format!("failed to persist {}: {}", tx_id, e)))?;
+                    writer
+                        .append_row(crate::workbook::TransactionRow::new(
+                            &tx_id,
+                            &tx_input.date,
+                            &tx_input.description,
+                            &tx_input.account_id,
+                            &tx_input.amount,
+                            &outcome.category,
+                            outcome.confidence,
+                            outcome.needs_review,
+                            None,
+                        ))
+                        .map_err(|e| {
+                            LedgerOpError::Workbook(format!("failed to persist {}: {}", tx_id, e))
+                        })?;
                     seen_tx_ids.insert(tx_id);
                 }
                 Err(e) => {
@@ -1714,13 +1741,15 @@ mod tests {
             source_glob: "statements/*.pdf".to_string(),
             vendor_hint: None,
         };
-        let ctx = test_ctx()
-            .with_input_path(PathBuf::from("/tmp/WF--BH--2024-01--statement.pdf"));
+        let ctx = test_ctx().with_input_path(PathBuf::from("/tmp/WF--BH--2024-01--statement.pdf"));
         let result = op.execute(&ctx);
         assert!(result.is_err());
         match result {
             Err(LedgerOpError::InvalidInput(msg)) => {
-                assert!(msg.contains("PdfIngestOp"), "error should mention PdfIngestOp, got: {msg}");
+                assert!(
+                    msg.contains("PdfIngestOp"),
+                    "error should mention PdfIngestOp, got: {msg}"
+                );
             }
             other => panic!("expected InvalidInput, got {other:?}"),
         }
@@ -1747,10 +1776,7 @@ mod tests {
             reqif_opa_mcp_dir: PathBuf::from("/tmp/reqif-opa-mcp"),
             account_id: "test-acct".to_string(),
         };
-        let ctx = OperationContext::new(
-            PathBuf::from("/tmp"),
-            PathBuf::from("/tmp/rules"),
-        );
+        let ctx = OperationContext::new(PathBuf::from("/tmp"), PathBuf::from("/tmp/rules"));
 
         let result = op.execute(&ctx);
         assert!(result.is_err());
@@ -1778,8 +1804,8 @@ mod tests {
     #[ignore = "requires uv + a reqif-opa-mcp checkout on disk"]
     fn pdf_ingest_op_real_subprocess_extraction_and_classification() {
         let reqif_opa_mcp_dir = dirs_next_home().join("promptexecution/reqif-opa-mcp");
-        let input_path = reqif_opa_mcp_dir
-            .join("samples/standards/upstream/owasp-asvs/OWASP_ASVS_5.0.0_en.pdf");
+        let input_path =
+            reqif_opa_mcp_dir.join("samples/standards/upstream/owasp-asvs/OWASP_ASVS_5.0.0_en.pdf");
         assert!(
             input_path.exists(),
             "expected sample PDF at {input_path:?} — is the reqif-opa-mcp checkout present?"
@@ -1793,12 +1819,11 @@ mod tests {
             reqif_opa_mcp_dir,
             account_id: "test-acct".to_string(),
         };
-        let ctx = OperationContext::new(
-            PathBuf::from("/tmp"),
-            PathBuf::from("/tmp/rules"),
-        );
+        let ctx = OperationContext::new(PathBuf::from("/tmp"), PathBuf::from("/tmp/rules"));
 
-        let result = op.execute(&ctx).expect("real subprocess extraction should succeed");
+        let result = op
+            .execute(&ctx)
+            .expect("real subprocess extraction should succeed");
         assert!(result.success);
         // The OWASP ASVS PDF is not a bank statement, so classify_document
         // should find zero TransactionRow-shaped nodes — proving the real
@@ -1808,7 +1833,9 @@ mod tests {
     }
 
     fn dirs_next_home() -> PathBuf {
-        std::env::var("HOME").map(PathBuf::from).expect("HOME must be set")
+        std::env::var("HOME")
+            .map(PathBuf::from)
+            .expect("HOME must be set")
     }
 
     #[test]

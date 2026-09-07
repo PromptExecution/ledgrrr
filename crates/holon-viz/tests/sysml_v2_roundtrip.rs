@@ -53,5 +53,9 @@ fn empty_graph_emits_valid_sysml_v2() {
     let g = CytoscapeGraph::from_holons(&[]);
     let emitted = SysmlV2Emitter::emit(&g);
     let result = validate_sysml_v2(&emitted);
-    assert!(result.disposition.is_satisfied(), "{:?}", result.disposition);
+    assert!(
+        result.disposition.is_satisfied(),
+        "{:?}",
+        result.disposition
+    );
 }

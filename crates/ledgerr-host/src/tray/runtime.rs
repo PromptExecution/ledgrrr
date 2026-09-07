@@ -12,10 +12,9 @@ use crate::settings::AppSettings;
 use crate::settings_client::SettingsClient;
 
 use super::native::{
-    make_icon_data, NativeTrayPlatform, TrayControl, TrayEvent, CMD_CYCLE_BACKEND,
-    CMD_EXIT, CMD_NOTIFY_APPROVAL, CMD_NOTIFY_COMPLETED, CMD_NOTIFY_FAILED,
-    CMD_NOTIFY_SUBMITTED, CMD_SHOW_WINDOW, CMD_START_MINIMIZED, CMD_TEST_TOAST,
-    CMD_TOAST_ENABLED, CMD_WINDOW_VISIBLE,
+    make_icon_data, NativeTrayPlatform, TrayControl, TrayEvent, CMD_CYCLE_BACKEND, CMD_EXIT,
+    CMD_NOTIFY_APPROVAL, CMD_NOTIFY_COMPLETED, CMD_NOTIFY_FAILED, CMD_NOTIFY_SUBMITTED,
+    CMD_SHOW_WINDOW, CMD_START_MINIMIZED, CMD_TEST_TOAST, CMD_TOAST_ENABLED, CMD_WINDOW_VISIBLE,
 };
 use super::{tray_menu_labels, TrayCommand, TrayState};
 
@@ -181,21 +180,21 @@ fn handle_command(
             sync_state(state, &settings, control_tx);
             Ok(false)
         }
-        TrayCommand::ToggleStartMinimizedToTray(enabled) => apply_toggle(
-            store,
-            state,
-            control_tx,
-            |s| s.start_minimized_to_tray = enabled,
-        ),
-        TrayCommand::ToggleWindowVisibleOnStart(enabled) => apply_toggle(
-            store,
-            state,
-            control_tx,
-            |s| s.window_visible_on_start = enabled,
-        ),
-        TrayCommand::ToggleApprovalRequired(enabled) => apply_toggle(store, state, control_tx, |s| {
-            s.show_notifications_for.approval_required = enabled
-        }),
+        TrayCommand::ToggleStartMinimizedToTray(enabled) => {
+            apply_toggle(store, state, control_tx, |s| {
+                s.start_minimized_to_tray = enabled
+            })
+        }
+        TrayCommand::ToggleWindowVisibleOnStart(enabled) => {
+            apply_toggle(store, state, control_tx, |s| {
+                s.window_visible_on_start = enabled
+            })
+        }
+        TrayCommand::ToggleApprovalRequired(enabled) => {
+            apply_toggle(store, state, control_tx, |s| {
+                s.show_notifications_for.approval_required = enabled
+            })
+        }
         TrayCommand::ToggleTransactionSubmitted(enabled) => {
             apply_toggle(store, state, control_tx, |s| {
                 s.show_notifications_for.transaction_submitted = enabled
@@ -307,7 +306,9 @@ mod tests {
     /// A minimal fake `ledgrrr-service` settings endpoint: serves whatever
     /// `AppSettings` is currently in `state`, and updates `state` on POST.
     /// Runs until the listener is dropped (test scope end).
-    fn fake_settings_server(initial: AppSettings) -> (SettingsClient, std::sync::Arc<Mutex<AppSettings>>) {
+    fn fake_settings_server(
+        initial: AppSettings,
+    ) -> (SettingsClient, std::sync::Arc<Mutex<AppSettings>>) {
         use std::io::{Read, Write};
         use std::net::TcpListener;
 
@@ -345,7 +346,9 @@ mod tests {
                                 body
                             )
                         }
-                        Err(_) => "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n".to_string(),
+                        Err(_) => {
+                            "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n".to_string()
+                        }
                     }
                 } else {
                     "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n".to_string()

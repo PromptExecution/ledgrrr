@@ -302,9 +302,11 @@ mod tests {
                 if let Some(trigger) = valid_transition(from, to) {
                     let state = round_tripped.find_state(&from.to_string()).unwrap();
                     assert!(
-                        state.transitions.iter().any(|t| t.event.as_deref()
-                            == Some(trigger)
-                            && t.targets == vec![to.to_string()]),
+                        state
+                            .transitions
+                            .iter()
+                            .any(|t| t.event.as_deref() == Some(trigger)
+                                && t.targets == vec![to.to_string()]),
                         "missing transition {from} --{trigger}--> {to}"
                     );
                 }

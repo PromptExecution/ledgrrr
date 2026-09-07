@@ -24,7 +24,8 @@ use serde_json::json;
 #[test]
 #[ignore = "requires a live reqif-opa-mcp server; see module docs"]
 fn parses_and_converts_nist_ssdf_sample() {
-    let base_url = env::var("REQIF_MCP_URL").expect("set REQIF_MCP_URL to a running reqif-opa-mcp server");
+    let base_url =
+        env::var("REQIF_MCP_URL").expect("set REQIF_MCP_URL to a running reqif-opa-mcp server");
     let reqif_path = env::var("REQIF_SAMPLE_PATH")
         .unwrap_or_else(|_| "samples/standards/derived/nist_ssdf_dogfood.reqif".to_string());
 
@@ -48,14 +49,17 @@ fn parses_and_converts_nist_ssdf_sample() {
         )
         .expect("reqif_parse");
     let handle = parsed["handle"].as_str().expect("handle field").to_string();
-    let requirement_count = parsed["requirement_count"].as_u64().expect("requirement_count");
+    let requirement_count = parsed["requirement_count"]
+        .as_u64()
+        .expect("requirement_count");
     assert!(requirement_count > 0, "expected at least one requirement");
 
     let queried = client
         .call_tool("reqif_query", json!({ "handle": handle }))
         .expect("reqif_query");
     let requirements: Vec<RequirementRecord> =
-        serde_json::from_value(queried["requirements"].clone()).expect("deserialize requirement records");
+        serde_json::from_value(queried["requirements"].clone())
+            .expect("deserialize requirement records");
     assert_eq!(requirements.len() as u64, requirement_count);
 
     let now = Utc::now();

@@ -73,7 +73,10 @@ impl DoclingNode {
     /// Heading path of this node's first anchor, if any — the closest
     /// analogue to a "section" for a PDF-sourced node.
     pub fn heading_path(&self) -> &[String] {
-        self.anchors.first().map(|a| a.heading_path.as_slice()).unwrap_or(&[])
+        self.anchors
+            .first()
+            .map(|a| a.heading_path.as_slice())
+            .unwrap_or(&[])
     }
 }
 

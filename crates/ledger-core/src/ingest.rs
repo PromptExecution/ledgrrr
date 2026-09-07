@@ -131,12 +131,10 @@ impl TryFrom<&TransactionInput> for crate::pipeline::DocumentFields {
 
     fn try_from(row: &TransactionInput) -> Result<Self, Self::Error> {
         let amount_text = row.amount.trim();
-        let amount = amount_text
-            .parse()
-            .map_err(|_| DocumentFieldsParseError {
-                field: "amount".to_string(),
-                value: amount_text.to_string(),
-            })?;
+        let amount = amount_text.parse().map_err(|_| DocumentFieldsParseError {
+            field: "amount".to_string(),
+            value: amount_text.to_string(),
+        })?;
         Ok(Self {
             amount: Some(amount),
             ..Self::default()

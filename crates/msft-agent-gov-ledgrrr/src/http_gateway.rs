@@ -60,9 +60,7 @@ const HTTP_GW_WINDOW: Duration = Duration::from_secs(60);
 ///
 /// Returns `AgtError::Redactor` if any sub-component (redactor, scanner,
 /// rate limiter) fails to initialise.
-pub fn build_ledgrrr_mcp_gateway(
-    _gw: Arc<LedgrrAgtGateway>,
-) -> Result<McpGateway, AgtError> {
+pub fn build_ledgrrr_mcp_gateway(_gw: Arc<LedgrrAgtGateway>) -> Result<McpGateway, AgtError> {
     let clock: Arc<dyn agentmesh_mcp::Clock> = Arc::new(SystemClock);
 
     // Shared audit sink — used by both the response scanner and the gateway.
@@ -112,15 +110,18 @@ mod tests {
 
     fn make_gateway() -> Arc<LedgrrAgtGateway> {
         Arc::new(
-            LedgrrAgtGateway::new("hermes")
-                .expect("LedgrrAgtGateway::new must succeed in test"),
+            LedgrrAgtGateway::new("hermes").expect("LedgrrAgtGateway::new must succeed in test"),
         )
     }
 
     #[test]
     fn build_gateway_succeeds() {
         let result = build_ledgrrr_mcp_gateway(make_gateway());
-        assert!(result.is_ok(), "build_ledgrrr_mcp_gateway returned Err: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "build_ledgrrr_mcp_gateway returned Err: {:?}",
+            result.err()
+        );
     }
 
     #[test]

@@ -13,10 +13,7 @@ use agentmesh::{Ring, RingEnforcer};
 
 /// Tools that always require operator approval (Ring::Admin escalation path).
 /// Maps to `CommitGate::PendingOperator` in ledger-core.
-pub const APPROVAL_REQUIRED_TOOLS: &[&str] = &[
-    "ledgerr_reconciliation",
-    "ledgerr_workflow",
-];
+pub const APPROVAL_REQUIRED_TOOLS: &[&str] = &["ledgerr_reconciliation", "ledgerr_workflow"];
 
 /// Top-level tool families that sit outside the AGT ring model entirely
 /// (not part of `PUBLISHED_TOOL_NAMES` / any ring's action-pattern list
@@ -158,9 +155,9 @@ pub fn ring_from_env_str(s: &str) -> Option<Ring> {
 pub fn ring_for_trust(score: u32) -> Ring {
     match score {
         900..=1000 => Ring::Admin,
-        500..=899  => Ring::Standard,
-        300..=499  => Ring::Restricted,
-        _          => Ring::Sandboxed,
+        500..=899 => Ring::Standard,
+        300..=499 => Ring::Restricted,
+        _ => Ring::Sandboxed,
     }
 }
 
@@ -197,17 +194,27 @@ mod tests {
         );
         assert_eq!(
             restricted,
-            ["ledgerr_documents", "ledgerr_audit", "ledgerr_tax", "ledgerr_evidence", "ledgerr_focus"]
-                .into_iter()
-                .map(String::from)
-                .collect::<BTreeSet<_>>()
+            [
+                "ledgerr_documents",
+                "ledgerr_audit",
+                "ledgerr_tax",
+                "ledgerr_evidence",
+                "ledgerr_focus"
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect::<BTreeSet<_>>()
         );
     }
 
     #[test]
     fn admin_visible_families_cover_all_published_tools() {
         let families = ring_visible_tool_families(Ring::Admin);
-        assert_eq!(families.len(), 10, "expected all 10 PUBLISHED_TOOL_NAMES families: {families:?}");
+        assert_eq!(
+            families.len(),
+            10,
+            "expected all 10 PUBLISHED_TOOL_NAMES families: {families:?}"
+        );
         assert!(families.contains("ledgerr_reconciliation"));
         assert!(families.contains("ledgerr_xero"));
     }

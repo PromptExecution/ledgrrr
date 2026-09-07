@@ -34,7 +34,10 @@ impl AzureProvider {
 
 impl BudgetProvider for AzureProvider {
     async fn check_auth(&self) -> Result<(), ProviderError> {
-        let output = Command::new("az").args(["account", "show"]).output().await?;
+        let output = Command::new("az")
+            .args(["account", "show"])
+            .output()
+            .await?;
         if !output.status.success() {
             return Err(ProviderError::AuthRequired(format!(
                 "az account show failed: {}",
@@ -59,7 +62,9 @@ impl BudgetProvider for AzureProvider {
         let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            if stderr.contains("AADSTS") || stderr.contains("az login") || stderr.contains("expired")
+            if stderr.contains("AADSTS")
+                || stderr.contains("az login")
+                || stderr.contains("expired")
             {
                 return Err(ProviderError::AuthRequired(stderr.into_owned()));
             }

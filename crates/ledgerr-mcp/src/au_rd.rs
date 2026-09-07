@@ -8,8 +8,8 @@ use rust_decimal::Decimal;
 use serde_json::{json, Value};
 
 use ledger_core::au_rd::{
-    ActivityType, AuRdActivity, AuRdCompliance, AuRdEligibility, AuRdExpenditure,
-    AuRdOffset, ExpenditureCategory,
+    ActivityType, AuRdActivity, AuRdCompliance, AuRdEligibility, AuRdExpenditure, AuRdOffset,
+    ExpenditureCategory,
 };
 use ufo_types::{iso::Lei, satisfies::Satisfies};
 
@@ -30,7 +30,11 @@ pub fn handle_au_rd_check_eligibility(
         lei,
         activity_id: activity_id.to_string(),
         activity_name: activity_name.to_string(),
-        activity_type: if is_core { ActivityType::Core } else { ActivityType::Supporting },
+        activity_type: if is_core {
+            ActivityType::Core
+        } else {
+            ActivityType::Supporting
+        },
         anzsic_code: String::new(),
         period_start: NaiveDate::from_ymd_opt(2024, 7, 1).unwrap(),
         period_end: NaiveDate::from_ymd_opt(2025, 6, 30).unwrap(),

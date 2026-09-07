@@ -29,9 +29,7 @@ pub struct TypeNode {
 }
 
 /// Supported relationship kinds between Rust types.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TypeRelationshipKind {
     Implements,
@@ -73,9 +71,7 @@ impl TypeRelationshipKind {
 }
 
 /// A directed relationship between two type nodes.
-#[derive(
-    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct TypeRelationship {
     pub source: String,
     pub target: String,
@@ -210,7 +206,13 @@ pub(crate) fn type_node(id: &str, label: &str, kind: &str) -> TypeNode {
 
 #[cfg(test)]
 #[allow(dead_code)]
-pub(crate) fn typed_node(id: &str, label: &str, kind: &str, z_layer: &str, semantic_type: &str) -> TypeNode {
+pub(crate) fn typed_node(
+    id: &str,
+    label: &str,
+    kind: &str,
+    z_layer: &str,
+    semantic_type: &str,
+) -> TypeNode {
     TypeNode {
         id: id.to_string(),
         label: label.to_string(),

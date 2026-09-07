@@ -121,7 +121,9 @@ pub fn load_store(path: &Path) -> Result<OntologyStore, ToolError> {
 }
 
 pub fn persist_store(store: &OntologyStore, path: &Path) -> Result<(), ToolError> {
-    store.persist(path).map_err(|e| ToolError::Internal(e.to_string()))
+    store
+        .persist(path)
+        .map_err(|e| ToolError::Internal(e.to_string()))
 }
 
 pub fn upsert_entities(

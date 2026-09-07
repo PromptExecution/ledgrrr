@@ -83,9 +83,11 @@ impl<S: ProcessSurface> SurfaceHarness<S> {
             .machine
             .apply_maintenance(&maintain_action, now.elapsed())
         {
-            Ok(()) => {
-                LifecyclePromise::fulfilled(PromiseOp::Maintain, now.elapsed(), maintain_action.clone())
-            }
+            Ok(()) => LifecyclePromise::fulfilled(
+                PromiseOp::Maintain,
+                now.elapsed(),
+                maintain_action.clone(),
+            ),
             Err(e) => LifecyclePromise::rejected(PromiseOp::Maintain, now.elapsed(), e),
         };
 
