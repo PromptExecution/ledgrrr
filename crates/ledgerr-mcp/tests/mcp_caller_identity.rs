@@ -226,14 +226,19 @@ fn stdio_agent_id_gates_budget_tool_family() {
     let mut client = McpStdioClient::spawn("caller-identity-core", Some("stdio-agent-core"));
     initialize_stdio(&mut client);
 
-    // ledgerr_budget is now in AGT_GATED_TOOL_FAMILIES — an identity
-    // being configured must gate it. Omitting the required `action` tag
-    // triggers governance denial before reaching the real handler.
-    let response = call_tool(&mut client, "ledgerr_budget", json!({}));
+    // ledgerr_budget is now in AGT_GATED_TOOL_FAMILIES with
+    // ledgerr_budget.reconcile* in the approval gate — an identity
+    // being configured must gate it. Sending "reconcile" triggers
+    // the approval policy (RequiresApproval → GovernanceDenied).
+    let response = call_tool(
+        &mut client,
+        "ledgerr_budget",
+        json!({"action": "reconcile"}),
+    );
     assert_eq!(
         error_type(&response).as_deref(),
         Some("GovernanceDenied"),
-        "ledgerr_budget is AGT-gated — governance must deny: {response:?}"
+        "ledgerr_budget.reconcile is AGT-gated — governance must deny: {response:?}"
     );
 }
 

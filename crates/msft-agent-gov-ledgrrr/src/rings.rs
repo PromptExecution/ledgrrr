@@ -193,6 +193,7 @@ mod tests {
             "ledgerr_evidence",
             "ledgerr_focus",
             "ledgerr_gcp_billing",
+            "ledgerr_budget",
         ]
         .into_iter()
         .map(String::from)
