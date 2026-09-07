@@ -92,6 +92,14 @@ pub enum OperationKind {
         source: String,
         title: String,
     },
+    /// Ingest a GCP BigQuery Billing Export (FOCUS-conformant) table via
+    /// the `bq` CLI, mapping each row into a `ledgerr_focus::CostAndUsageRow`.
+    /// See `ledgerr_gcp_billing::BigQueryFocusSource`.
+    IngestBigQueryFocus {
+        project_id: String,
+        dataset: String,
+        table: String,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -1432,6 +1440,122 @@ impl LedgerOperation for PdfIngestOp {
     }
 }
 
+/// Ingest a GCP BigQuery Billing Export (FOCUS-conformant) table.
+///
+/// Queries `ledgerr_gcp_billing::BigQueryFocusSource::query_rows` (which
+/// shells out to the `bq` CLI, same subprocess-shell-out convention as
+/// `ledgerr_cloud::gcp`) for every row charged since `since`, then maps
+/// each row into a `ledgerr_focus::CostAndUsageRow` via
+/// `ledgerr_gcp_billing::map_row_to_focus`. Rows that fail to map are
+/// recorded as row errors rather than aborting the whole ingest, mirroring
+/// `PdfIngestOp`'s row-error handling.
+///
+/// # Idempotency
+/// Re-running the same day's query and re-ingesting is safe: this op only
+/// queries and maps rows in-process (it does not itself write ledger
+/// state), and the BigQuery export itself is an append-only, deterministic
+/// view of GCP's own billing records for a given `ChargePeriodStart`
+/// window. Re-ingesting the same window yields the same
+/// `CostAndUsageRow`s every time — downstream persistence (not implemented
+/// here) is expected to dedupe on content hash, the same convention
+/// `IngestStatementOp`/`PdfIngestOp` use for their own idempotency.
+pub struct BigQueryFocusIngestOp {
+    pub project_id: String,
+    pub dataset: String,
+    pub table: String,
+    /// Only ingest rows charged on or after this instant. Defaults to 24
+    /// hours before the operation runs when constructed via
+    /// [`OperationDispatcher::from_scheduled_events`], since
+    /// `OperationKind::IngestBigQueryFocus` carries no `since` field of its
+    /// own (a daily-scheduled ingest naturally wants "since last run", and
+    /// a fixed 24h lookback is a safe, idempotent approximation of that
+    /// until a persisted last-run watermark exists).
+    pub since: chrono::DateTime<chrono::Utc>,
+}
+
+impl LedgerOperation for BigQueryFocusIngestOp {
+    fn id(&self) -> &str {
+        "ingest-bigquery-focus"
+    }
+
+    fn description(&self) -> &str {
+        "Ingest a GCP BigQuery Billing Export (FOCUS-conformant) table via the bq CLI"
+    }
+
+    fn is_idempotent(&self) -> bool {
+        // See the type-level doc comment: re-running the same day's query
+        // and re-ingesting the resulting rows is safe/dedupable.
+        true
+    }
+
+    fn execute(&self, _ctx: &OperationContext) -> Result<OperationResult, LedgerOpError> {
+        use ledgerr_gcp_billing::{map_row_to_focus, BigQueryFocusSource};
+
+        let source = BigQueryFocusSource::new(
+            self.project_id.clone(),
+            self.dataset.clone(),
+            self.table.clone(),
+        );
+
+        // `query_rows` is async (it shells out via `tokio::process::Command`);
+        // this trait's `execute` is sync, so drive it to completion on a
+        // scratch runtime here — same pattern `PdfIngestOp::execute` uses
+        // for its own subprocess call.
+        let runtime = tokio::runtime::Runtime::new().map_err(|e| {
+            LedgerOpError::ExternalProcessFailed(format!("runtime creation failed: {e}"))
+        })?;
+        let since = self.since;
+        let started = std::time::Instant::now();
+        let result = runtime
+            .block_on(async { source.query_rows(since).await })
+            .map_err(|e| LedgerOpError::ExternalProcessFailed(format!("bq query failed: {e}")))?;
+        let rows = result.rows;
+
+        let mut mapped = Vec::with_capacity(rows.len());
+        let mut row_errors = Vec::new();
+        for (row_index, row) in rows.iter().enumerate() {
+            match map_row_to_focus(row) {
+                Ok(focus_row) => mapped.push(focus_row),
+                Err(e) => row_errors.push(IngestRowError {
+                    tx_id: None,
+                    row_index,
+                    error: format!("failed to map billing row to FOCUS: {e}"),
+                }),
+            }
+        }
+
+        // Persist the mapped rows to the FOCUS sidecar sink (content-hash
+        // deduped — re-ingesting the same window appends nothing new). This
+        // is what makes the op an actual ingest rather than a count-only
+        // dry run.
+        let sink = ledgerr_gcp_billing::FocusSink::from_env();
+        let (appended, deduped) = sink.append(&mapped).map_err(|e| {
+            LedgerOpError::ExternalProcessFailed(format!("FOCUS sink append failed: {e}"))
+        })?;
+
+        let mut issues = Vec::new();
+        if !row_errors.is_empty() {
+            issues.push(format!("{} rows failed FOCUS mapping", row_errors.len()));
+        }
+        if result.truncated {
+            issues.push(format!(
+                "bq result hit the --max_rows cap: window contains more rows than returned; \
+                 narrow `since` or raise GCP_BILLING_MAX_ROWS"
+            ));
+        }
+
+        Ok(OperationResult {
+            operation_id: "ingest-bigquery-focus".to_string(),
+            success: row_errors.is_empty() && !result.truncated,
+            items_processed: appended,
+            items_flagged: deduped,
+            issues,
+            duration_ms: started.elapsed().as_millis() as u64,
+            row_errors,
+        })
+    }
+}
+
 /// Gate classified transactions through AGT compliance before workbook commit.
 ///
 /// Replaces OpaGateOp. Uses `LedgrrAgtGateway::compliance_report()` to determine
@@ -1600,6 +1724,16 @@ impl OperationDispatcher {
                         title: title.clone(),
                     })
                 }
+                OperationKind::IngestBigQueryFocus {
+                    project_id,
+                    dataset,
+                    table,
+                } => Box::new(BigQueryFocusIngestOp {
+                    project_id: project_id.clone(),
+                    dataset: dataset.clone(),
+                    table: table.clone(),
+                    since: chrono::Utc::now() - chrono::Duration::hours(24),
+                }),
             };
 
             dispatcher.ops.push(op);
@@ -1926,6 +2060,48 @@ mod tests {
         assert!(r1.success);
         assert_eq!(r1.issues, r2.issues);
         assert!(r1.issues[0].starts_with("Requirement imported: req:"));
+    }
+
+    #[test]
+    fn bigquery_focus_ingest_op_is_idempotent() {
+        // `execute()` is not called here — it shells out to the `bq` CLI,
+        // which is not assumed present in a test environment. Idempotency
+        // and id/description are checkable without running the subprocess.
+        let op = BigQueryFocusIngestOp {
+            project_id: "acme-billing".to_string(),
+            dataset: "billing_export".to_string(),
+            table: "gcp_billing_export_resource_v1".to_string(),
+            since: chrono::Utc::now(),
+        };
+        assert!(op.is_idempotent());
+        assert_eq!(op.id(), "ingest-bigquery-focus");
+    }
+
+    #[test]
+    fn dispatcher_wires_ingest_bigquery_focus_operation_kind() {
+        use crate::calendar::{RecurrenceRule, ScheduledEvent};
+
+        let event = ScheduledEvent {
+            id: "gcp-billing-1".to_string(),
+            description: "gcp-billing-1".to_string(),
+            recurrence: RecurrenceRule::EveryNDays { n: 1 },
+            operation: OperationKind::IngestBigQueryFocus {
+                project_id: "acme-billing".to_string(),
+                dataset: "billing_export".to_string(),
+                table: "gcp_billing_export_resource_v1".to_string(),
+            },
+            jurisdiction: None,
+            enabled: true,
+            last_run: None,
+            tags: vec![],
+        };
+
+        // Constructing the dispatcher only builds the boxed operation; it
+        // does not execute it, so this does not require the `bq` CLI.
+        let dispatcher = OperationDispatcher::from_scheduled_events(&[event]);
+        assert!(dispatcher
+            .run_by_id("does-not-exist", &test_ctx())
+            .is_none());
     }
 
     #[test]

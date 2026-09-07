@@ -71,9 +71,9 @@ fn external_tool_descriptors() -> Vec<Value> {
 
 // Public re-exports are always available (they're just constants).
 pub use crate::contract::{
-    AUDIT_TOOL, BUDGET_TOOL, DOCUMENTS_TOOL, EVIDENCE_TOOL, FOCUS_TOOL, MANIFEST_TOOL,
-    ONTOLOGY_TOOL, RECONCILIATION_TOOL, REVIEW_TOOL, SCHEMA_TOOL, TAX_TOOL, WORKFLOW_TOOL,
-    XERO_TOOL,
+    AUDIT_TOOL, BUDGET_TOOL, DOCUMENTS_TOOL, EVIDENCE_TOOL, FOCUS_TOOL, GCP_BILLING_TOOL,
+    MANIFEST_TOOL, ONTOLOGY_TOOL, RECONCILIATION_TOOL, REVIEW_TOOL, SCHEMA_TOOL, TAX_TOOL,
+    WORKFLOW_TOOL, XERO_TOOL,
 };
 
 // ── Default dispatch ──────────────────────────────────────────────────────────
@@ -317,6 +317,153 @@ pub fn handle_budget_tool(arguments: &Value) -> Value {
     }
 }
 
+/// Handler for `ledgerr_gcp_billing` — GCP BigQuery Billing Export
+/// (FOCUS-conformant) ingestion into `ledgerr_focus::CostAndUsageRow`.
+///
+/// `BigQueryFocusSource::query_rows` is async (it shells out to the `bq`
+/// CLI via `tokio::process::Command`, same convention as
+/// `handle_budget_tool`'s `ReconcileRunner`); this handler drives it to
+/// completion on a scratch current-thread runtime for the same reason
+/// `handle_budget_tool` does — see that function's doc comment.
+///
+/// `ingest_since` and `query_last_run` locate the billing export table via
+/// the `GCP_BILLING_PROJECT_ID`, `GCP_BILLING_DATASET`, and
+/// `GCP_BILLING_TABLE` environment variables (no live export exists yet —
+/// see `ledgerr_gcp_billing`'s crate docs — so a missing `bq` binary or
+/// unset export surfaces as a normal `isError: true` envelope, not a
+/// panic). `dry_run_map_row` needs none of them, since it only exercises
+/// `map_row_to_focus` on an inline row and never queries BigQuery.
+pub fn handle_gcp_billing_tool(arguments: &Value) -> Value {
+    use crate::contract::{parse_gcp_billing, GcpBillingArgs};
+    use ledgerr_gcp_billing::map_row_to_focus;
+
+    let request = match parse_gcp_billing(arguments) {
+        Ok(r) => r,
+        Err(err) => return error_envelope(&err),
+    };
+
+    match request {
+        GcpBillingArgs::IngestSince { since } => {
+            let since = match chrono::DateTime::parse_from_rfc3339(&since) {
+                Ok(dt) => dt.with_timezone(&chrono::Utc),
+                Err(e) => {
+                    return error_envelope(&ToolError::InvalidInput(format!(
+                        "invalid RFC 3339 'since' timestamp '{since}': {e}"
+                    )))
+                }
+            };
+            let source = match gcp_billing_source_from_env() {
+                Ok(s) => s,
+                Err(err) => return error_envelope(&err),
+            };
+
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(rt) => rt,
+                Err(e) => {
+                    return error_envelope(&ToolError::Internal(format!(
+                        "failed to start gcp-billing-ingest runtime: {e}"
+                    )))
+                }
+            };
+            let result = match runtime.block_on(async { source.query_rows(since).await }) {
+                Ok(r) => r,
+                Err(e) => {
+                    return error_envelope(&ToolError::Internal(format!("bq query failed: {e}")))
+                }
+            };
+
+            let mut mapped_rows = Vec::with_capacity(result.rows.len());
+            let mut row_errors: Vec<Value> = Vec::new();
+            for (row_index, row) in result.rows.iter().enumerate() {
+                match map_row_to_focus(row) {
+                    Ok(focus_row) => mapped_rows.push(focus_row),
+                    Err(e) => row_errors.push(json!({
+                        "row_index": row_index,
+                        "error": e.to_string(),
+                    })),
+                }
+            }
+
+            // Persist mapped rows to the FOCUS sidecar sink (content-hash
+            // deduped). This is the actual ingest — previously rows were
+            // counted and discarded.
+            let sink = ledgerr_gcp_billing::FocusSink::from_env();
+            let (rows_written, rows_deduped) = match sink.append(&mapped_rows) {
+                Ok(counts) => counts,
+                Err(e) => {
+                    return error_envelope(&ToolError::Internal(format!(
+                        "FOCUS sink append failed: {e}"
+                    )))
+                }
+            };
+
+            let mut issues: Vec<String> = Vec::new();
+            if result.truncated {
+                issues.push(
+                    "bq result hit the --max_rows cap: window contains more rows than \
+                     returned; narrow `since` or raise GCP_BILLING_MAX_ROWS"
+                        .to_string(),
+                );
+            }
+
+            json!({
+                "content": [text_content(json!({
+                    "rows_queried": result.rows.len(),
+                    "rows_mapped": mapped_rows.len(),
+                    "rows_written": rows_written,
+                    "rows_deduped": rows_deduped,
+                    "sink_path": sink.path().display().to_string(),
+                    "truncated": result.truncated,
+                    "issues": issues,
+                    "row_errors": row_errors,
+                }))],
+                "isError": false
+            })
+        }
+        GcpBillingArgs::QueryLastRun => {
+            // No persisted last-run watermark exists yet — see
+            // `ledger_core::ledger_ops::BigQueryFocusIngestOp`'s doc comment
+            // on idempotency, which explains why a fixed lookback window
+            // stands in for one today. Report "never run" rather than
+            // fabricating a value.
+            json!({
+                "content": [text_content(json!({
+                    "last_run": Value::Null,
+                    "note": "no persisted last-run watermark; each ingest_since call re-queries the window it is given",
+                }))],
+                "isError": false
+            })
+        }
+        GcpBillingArgs::DryRunMapRow { raw_row_json } => match map_row_to_focus(&raw_row_json) {
+            Ok(focus_row) => json!({
+                "content": [text_content(json!(focus_row))],
+                "isError": false
+            }),
+            Err(e) => error_envelope(&ToolError::InvalidInput(e.to_string())),
+        },
+    }
+}
+
+fn gcp_billing_source_from_env() -> Result<ledgerr_gcp_billing::BigQueryFocusSource, ToolError> {
+    let project_id = std::env::var("GCP_BILLING_PROJECT_ID").map_err(|_| {
+        ToolError::InvalidInput(
+            "GCP_BILLING_PROJECT_ID environment variable is not set".to_string(),
+        )
+    })?;
+    let dataset = std::env::var("GCP_BILLING_DATASET").map_err(|_| {
+        ToolError::InvalidInput("GCP_BILLING_DATASET environment variable is not set".to_string())
+    })?;
+    let table = std::env::var("GCP_BILLING_TABLE").map_err(|_| {
+        ToolError::InvalidInput("GCP_BILLING_TABLE environment variable is not set".to_string())
+    })?;
+    Ok(ledgerr_gcp_billing::BigQueryFocusSource::new(
+        project_id, dataset, table,
+    ))
+}
+
 /// Hardcoded list of published tool names (always available).
 const BUILTIN_TOOL_NAMES: &[&str] = &[
     DOCUMENTS_TOOL,
@@ -332,6 +479,7 @@ const BUILTIN_TOOL_NAMES: &[&str] = &[
     SCHEMA_TOOL,
     MANIFEST_TOOL,
     BUDGET_TOOL,
+    GCP_BILLING_TOOL,
 ];
 
 fn builtin_tool_input_schema(name: &str) -> Value {
@@ -349,9 +497,8 @@ fn builtin_tool_description(name: &str) -> &'static str {
         ONTOLOGY_TOOL => "Ontology graph: query paths, upsert entities/edges, export snapshots",
         XERO_TOOL => "Xero integration: contacts, accounts, invoices, and entity linking",
         EVIDENCE_TOOL => "Evidence provenance: trace transactions and identify gaps",
-        BUDGET_TOOL => {
-            "GPU-training cloud budget reconciliation: AWS, GCP, Azure, HuggingFace Jobs"
-        }
+        BUDGET_TOOL => "GPU-training cloud budget reconciliation: AWS, GCP, Azure, HuggingFace Jobs",
+        GCP_BILLING_TOOL => "GCP BigQuery Billing Export (FOCUS-conformant) ingestion into ledgerr_focus::CostAndUsageRow",
         _ => "Ledgerr MCP tool",
     }
 }

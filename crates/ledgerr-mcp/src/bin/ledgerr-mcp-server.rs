@@ -233,6 +233,11 @@ const AGT_GATED_TOOL_FAMILIES: &[&str] = &[
     mcp_adapter::XERO_TOOL,
     mcp_adapter::EVIDENCE_TOOL,
     mcp_adapter::FOCUS_TOOL,
+    // GCP billing ingest spawns a `bq` subprocess against live billing data
+    // and writes the FOCUS sink — same trust class as documents/focus
+    // ingests, so it gets the same call-time governance gate. (budget
+    // remains ungated, pre-existing — tracked separately.)
+    mcp_adapter::GCP_BILLING_TOOL,
 ];
 
 /// Governance gate for `tools/call` (issue #225: "Wire
@@ -382,6 +387,10 @@ fn handle_request(request: Value, agent_id: Option<&str>) -> Option<Value> {
                 mcp_adapter::BUDGET_TOOL => {
                     let arguments = params.get("arguments").cloned().unwrap_or(Value::Null);
                     mcp_adapter::handle_budget_tool(&arguments)
+                }
+                mcp_adapter::GCP_BILLING_TOOL => {
+                    let arguments = params.get("arguments").cloned().unwrap_or(Value::Null);
+                    mcp_adapter::handle_gcp_billing_tool(&arguments)
                 }
                 "l3dg3rr_list_accounts" => mcp_adapter::handle_list_accounts(global_raw_service()),
                 "l3dg3rr_get_pipeline_status" => {

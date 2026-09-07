@@ -4975,6 +4975,8 @@ dependencies = [
  "glam 0.27.0",
  "kasuari",
  "ledger-attest",
+ "ledgerr-focus",
+ "ledgerr-gcp-billing",
  "msft-agent-gov-ledgrrr",
  "notify",
  "petgraph 0.6.5",
@@ -5041,6 +5043,20 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 2.0.20",
+]
+
+[[package]]
+name = "ledgerr-gcp-billing"
+version = "1.10.0"
+dependencies = [
+ "blake3",
+ "chrono",
+ "ledgerr-focus",
+ "rust_decimal",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
 ]
 
 [[package]]
@@ -5114,6 +5130,7 @@ dependencies = [
  "ledger-core",
  "ledgerr-cloud",
  "ledgerr-focus",
+ "ledgerr-gcp-billing",
  "ledgerr-llm",
  "ledgerr-mcp",
  "ledgerr-mcp-core",

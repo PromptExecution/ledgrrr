@@ -196,13 +196,13 @@ fn list_tool_names(client: &mut McpStdioClient) -> BTreeSet<String> {
 }
 
 #[test]
-fn e2e_default_env_shows_all_thirteen_tools() {
+fn e2e_default_env_shows_all_published_tools() {
     let mut client = McpStdioClient::spawn(None);
     initialize_client(&mut client);
     let names = list_tool_names(&mut client);
     assert_eq!(
         names.len(),
-        13,
+        ledgerr_mcp::contract::PUBLISHED_TOOLS.len(),
         "default (no LEDGERR_MCP_RING) must be unchanged from pre-#222 behavior: {names:?}"
     );
     assert!(names.contains("ledgerr_reconciliation"));
@@ -228,7 +228,7 @@ fn e2e_restricted_ring_narrows_the_list_over_stdio() {
     assert!(!names.contains("ledgerr_xero"));
     assert!(!names.contains("ledgerr_review"));
     assert!(
-        names.len() < 13,
+        names.len() < ledgerr_mcp::contract::PUBLISHED_TOOLS.len(),
         "restricted must be a strict narrowing: {names:?}"
     );
 }
@@ -240,7 +240,7 @@ fn e2e_unrecognized_ring_value_falls_back_to_unfiltered() {
     let names = list_tool_names(&mut client);
     assert_eq!(
         names.len(),
-        13,
+        ledgerr_mcp::contract::PUBLISHED_TOOLS.len(),
         "an unrecognized LEDGERR_MCP_RING value must fail open to unfiltered, not panic or deny-all: {names:?}"
     );
 }
