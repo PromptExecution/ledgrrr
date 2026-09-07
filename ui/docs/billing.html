@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>l3dg3rr — Billing</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💵</text></svg>" />
+</head>
+<body>
+  <div id="billing-app">
+    <header id="bill-nav">
+      <div id="bill-nav-title">l3dg3rr <span id="bill-nav-sep">/</span> Billing</div>
+      <a id="bill-nav-back" href="./index.html">&larr; Pipeline Visualization</a>
+    </header>
+
+    <main id="bill-main">
+      <p id="bill-sample-banner">
+        Sample data — not live. This dashboard is UI scaffolding ahead of the
+        <code>ledgerr_gcp_billing</code> ingestion pipeline.
+      </p>
+
+      <section id="bill-summary" aria-label="Monthly spend summary"></section>
+
+      <div id="bill-grid">
+        <section id="bill-providers" aria-label="Spend by provider"></section>
+        <section id="bill-services" aria-label="Spend by service"></section>
+      </div>
+
+      <section id="bill-trend" aria-label="Daily spend trend"></section>
+
+      <section id="bill-tags" aria-label="Tag-based cost allocation"></section>
+    </main>
+  </div>
+  <script type="module" src="/src/billing/main.ts"></script>
+</body>
+</html>

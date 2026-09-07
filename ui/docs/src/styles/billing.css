@@ -1,0 +1,391 @@
+/* ============================================================================
+   Billing / cost dashboard — sibling page to the pipeline-viz app.
+   Same slate dark palette as src/styles/main.css, kept self-contained so
+   this page doesn't pull in the iso-canvas / taskbar stylesheets it has no
+   use for.
+   ============================================================================ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  min-height: 100%;
+  background: #0f172a;
+  color: #f1f5f9;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#billing-app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Top nav ---- */
+
+#bill-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 20px;
+  background: #1e293b;
+  border-bottom: 1px solid #334155;
+}
+
+#bill-nav-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f1f5f9;
+  letter-spacing: 0.02em;
+}
+
+#bill-nav-sep {
+  color: #64748b;
+  font-weight: 400;
+  margin: 0 2px;
+}
+
+#bill-nav-back {
+  font-size: 12px;
+  color: #93c5fd;
+  text-decoration: none;
+}
+
+#bill-nav-back:hover {
+  color: #bfdbfe;
+  text-decoration: underline;
+}
+
+/* ---- Main layout ---- */
+
+#bill-main {
+  flex: 1;
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+#bill-sample-banner {
+  font-size: 12px;
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+#bill-sample-banner code {
+  font-family: 'JetBrains Mono', 'Fira Mono', monospace;
+  font-size: 11px;
+}
+
+#bill-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 720px) {
+  #bill-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Card shell ---- */
+
+.bill-card {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  padding: 16px 18px;
+}
+
+.bill-card__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #cbd5e1;
+  margin-bottom: 12px;
+}
+
+.bill-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.bill-card__head .bill-card__title {
+  margin-bottom: 0;
+}
+
+.bill-card__subtitle {
+  font-size: 11px;
+  color: #64748b;
+}
+
+/* ---- 1. Budget summary meter ---- */
+
+.bill-summary__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.bill-summary__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.bill-summary__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fca5a5;
+}
+
+.bill-summary__figure {
+  font-size: 32px;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin-bottom: 12px;
+}
+
+.bill-summary__of {
+  font-size: 13px;
+  font-weight: 400;
+  color: #64748b;
+  margin-left: 6px;
+}
+
+.bill-meter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bill-meter__track {
+  flex: 1;
+  height: 10px;
+  background: #0f172a;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.bill-meter__fill {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.3s ease;
+}
+
+.bill-meter__pct {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #94a3b8;
+  min-width: 36px;
+  text-align: right;
+}
+
+/* ---- 2 & 3. Horizontal bar lists (providers / services) ---- */
+
+.bill-hbar-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bill-hbar-row {
+  display: grid;
+  grid-template-columns: 108px 1fr 76px;
+  align-items: center;
+  gap: 10px;
+}
+
+.bill-hbar-list--services .bill-hbar-row {
+  grid-template-columns: 132px 1fr 76px;
+}
+
+.bill-hbar-row__label {
+  font-size: 12px;
+  color: #cbd5e1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bill-hbar-row__swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.bill-hbar-row__track {
+  height: 16px;
+  background: #0f172a;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.bill-hbar-row__fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  min-width: 3px;
+}
+
+.bill-hbar-row__value {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #94a3b8;
+  text-align: right;
+}
+
+/* ---- 4. Daily trend line chart ---- */
+
+.bill-trend {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+
+.bill-trend__baseline {
+  stroke: #334155;
+  stroke-width: 1;
+}
+
+.bill-trend__area {
+  fill: rgba(59, 130, 246, 0.1);
+  stroke: none;
+}
+
+.bill-trend__line {
+  fill: none;
+  stroke: #3b82f6;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.bill-trend__end-dot {
+  fill: #3b82f6;
+  stroke: #1e293b;
+  stroke-width: 2;
+}
+
+.bill-trend__hit {
+  cursor: default;
+}
+
+.bill-trend__hit:hover {
+  fill: rgba(148, 163, 184, 0.15);
+}
+
+.bill-trend__axis-label {
+  font-size: 9px;
+  fill: #64748b;
+}
+
+.bill-trend__end-label {
+  font-size: 11px;
+  font-weight: 600;
+  fill: #cbd5e1;
+}
+
+/* ---- 5. Tag allocation table ---- */
+
+.bill-table-wrap {
+  overflow-x: auto;
+}
+
+.bill-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.bill-table th {
+  text-align: left;
+  font-weight: 500;
+  color: #64748b;
+  padding: 6px 8px;
+  border-bottom: 1px solid #334155;
+  white-space: nowrap;
+}
+
+.bill-table th:nth-child(3) {
+  text-align: right;
+}
+
+.bill-table td {
+  padding: 8px;
+  border-bottom: 1px solid #263449;
+  color: #cbd5e1;
+  white-space: nowrap;
+}
+
+.bill-table__tag {
+  font-family: 'JetBrains Mono', 'Fira Mono', monospace;
+  font-size: 11px;
+}
+
+.bill-table__amount {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.bill-status-icon {
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+.bill-status-text {
+  font-weight: 500;
+}
+
+.bill-status-text--good {
+  color: #86efac;
+}
+
+.bill-status-text--bad {
+  color: #fca5a5;
+}
+
+/* ---- Narrow viewport ---- */
+
+@media (max-width: 480px) {
+  .bill-hbar-row {
+    grid-template-columns: 84px 1fr 64px;
+  }
+
+  .bill-hbar-list--services .bill-hbar-row {
+    grid-template-columns: 96px 1fr 64px;
+  }
+
+  .bill-summary__figure {
+    font-size: 26px;
+  }
+}
