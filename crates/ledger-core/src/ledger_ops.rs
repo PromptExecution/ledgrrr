@@ -1440,6 +1440,7 @@ impl LedgerOperation for PdfIngestOp {
     }
 }
 
+#[cfg(feature = "gcp-billing")]
 /// Ingest a GCP BigQuery Billing Export (FOCUS-conformant) table.
 ///
 /// Queries `ledgerr_gcp_billing::BigQueryFocusSource::query_rows` (which
@@ -1473,6 +1474,7 @@ pub struct BigQueryFocusIngestOp {
     pub since: chrono::DateTime<chrono::Utc>,
 }
 
+#[cfg(feature = "gcp-billing")]
 impl LedgerOperation for BigQueryFocusIngestOp {
     fn id(&self) -> &str {
         "ingest-bigquery-focus"
@@ -1644,6 +1646,30 @@ impl LedgerOperation for CedarGateOp {
     }
 }
 
+/// Fallback for feature-gated operations when the feature is disabled.
+///
+/// Returns `NotImplemented` on `execute`, preserving the match arm so the
+/// `OperationKind` enum stays exhaustive without requiring the feature.
+#[allow(dead_code)]
+pub(crate) struct NotImplementedOp(pub &'static str);
+
+impl LedgerOperation for NotImplementedOp {
+    fn id(&self) -> &str {
+        self.0
+    }
+
+    fn description(&self) -> &str {
+        "Operation not available — enable the required cargo feature"
+    }
+
+    fn execute(&self, _ctx: &OperationContext) -> Result<OperationResult, LedgerOpError> {
+        Err(LedgerOpError::NotImplemented(format!(
+            "{} requires a cargo feature that is not enabled",
+            self.0
+        )))
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Dispatcher
 // ---------------------------------------------------------------------------
@@ -1724,6 +1750,7 @@ impl OperationDispatcher {
                         title: title.clone(),
                     })
                 }
+                #[cfg(feature = "gcp-billing")]
                 OperationKind::IngestBigQueryFocus {
                     project_id,
                     dataset,
@@ -1734,6 +1761,10 @@ impl OperationDispatcher {
                     table: table.clone(),
                     since: chrono::Utc::now() - chrono::Duration::hours(24),
                 }),
+                #[cfg(not(feature = "gcp-billing"))]
+                OperationKind::IngestBigQueryFocus { .. } => {
+                    Box::new(NotImplementedOp("ingest-bigquery-focus"))
+                },
             };
 
             dispatcher.ops.push(op);
@@ -2063,6 +2094,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gcp-billing")]
     fn bigquery_focus_ingest_op_is_idempotent() {
         // `execute()` is not called here — it shells out to the `bq` CLI,
         // which is not assumed present in a test environment. Idempotency
