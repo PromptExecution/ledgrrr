@@ -235,9 +235,11 @@ const AGT_GATED_TOOL_FAMILIES: &[&str] = &[
     mcp_adapter::FOCUS_TOOL,
     // GCP billing ingest spawns a `bq` subprocess against live billing data
     // and writes the FOCUS sink — same trust class as documents/focus
-    // ingests, so it gets the same call-time governance gate. (budget
-    // remains ungated, pre-existing — tracked separately.)
+    // ingests, so it gets the same call-time governance gate.
     mcp_adapter::GCP_BILLING_TOOL,
+    // Budget reconciliation is a write op that reconciles cloud spend —
+    // same trust class as reconciliation/ingest tools.
+    mcp_adapter::BUDGET_TOOL,
 ];
 
 /// Governance gate for `tools/call` (issue #225: "Wire
@@ -251,7 +253,7 @@ const AGT_GATED_TOOL_FAMILIES: &[&str] = &[
 ///   → always `None` (proceed). Preserves exact pre-#224 behavior — identity
 ///   and enforcement are both strictly opt-in.
 /// - Only tool names in `AGT_GATED_TOOL_FAMILIES` are gated. `ledgerr_schema`,
-///   `ledgerr_manifest`, `ledgerr_budget`, every legacy `l3dg3rr_*` tool, and
+///   `ledgerr_manifest`, every legacy `l3dg3rr_*` tool, and
 ///   external b00t-provider tools have no action-pattern mapping in
 ///   `rings.rs`/`policy.rs` at all — gating them here would be an
 ///   undocumented blanket deny bolted onto identity plumbing, not a real

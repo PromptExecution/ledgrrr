@@ -23,7 +23,7 @@
 //!    `ledgerr_reconciliation.commit*` approval rule) → denied with
 //!    `error_type: "GovernanceDenied"`, never reaching the real handler.
 //!
-//! A tool family outside `AGT_GATED_TOOL_FAMILIES` (`ledgerr_budget`) stays
+//! A tool family outside `AGT_GATED_TOOL_FAMILIES` (`ledgerr_schema`) stays
 //! ungated even with an identity configured, matching the design doc's
 //! "core group" precedent from PR #232 (`ledgerr_schema`/`ledgerr_manifest`).
 
@@ -207,18 +207,33 @@ fn stdio_agent_id_does_not_gate_non_agt_tool_family() {
     let mut client = McpStdioClient::spawn("caller-identity-core", Some("stdio-agent-core"));
     initialize_stdio(&mut client);
 
-    // ledgerr_budget is outside AGT_GATED_TOOL_FAMILIES — it has no
-    // action-pattern mapping in rings.rs/policy.rs at all (same as
-    // ledgerr_schema/ledgerr_manifest, PR #232's "core group" precedent) —
-    // so an identity being configured must not start gating it. Omitting
-    // the required `action` tag makes the real handler fail with
-    // InvalidInput; the point is that it's never reached via the
-    // governance path (GovernanceDenied), proving the gate was skipped.
-    let response = call_tool(&mut client, "ledgerr_budget", json!({}));
+    // ledgerr_schema is a CORE_TOOL_FAMILY (outside AGT_GATED_TOOL_FAMILIES) —
+    // it has no action-pattern mapping in rings.rs/policy.rs, so an identity
+    // being configured must not start gating it. Omitting the required
+    // arguments makes the real handler fail with InvalidInput; the point is
+    // that it's never reached via the governance path (GovernanceDenied),
+    // proving the gate was skipped.
+    let response = call_tool(&mut client, "ledgerr_schema", json!({}));
     assert_ne!(
         error_type(&response).as_deref(),
         Some("GovernanceDenied"),
-        "ledgerr_budget is not AGT-gated — governance must not run: {response:?}"
+        "ledgerr_schema is not AGT-gated — governance must not run: {response:?}"
+    );
+}
+
+#[test]
+fn stdio_agent_id_gates_budget_tool_family() {
+    let mut client = McpStdioClient::spawn("caller-identity-core", Some("stdio-agent-core"));
+    initialize_stdio(&mut client);
+
+    // ledgerr_budget is now in AGT_GATED_TOOL_FAMILIES — an identity
+    // being configured must gate it. Omitting the required `action` tag
+    // triggers governance denial before reaching the real handler.
+    let response = call_tool(&mut client, "ledgerr_budget", json!({}));
+    assert_eq!(
+        error_type(&response).as_deref(),
+        Some("GovernanceDenied"),
+        "ledgerr_budget is AGT-gated — governance must deny: {response:?}"
     );
 }
 

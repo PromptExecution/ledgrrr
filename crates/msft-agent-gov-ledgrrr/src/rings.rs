@@ -41,6 +41,7 @@ fn admin_action_patterns() -> Vec<String> {
         "ledgerr_evidence.*".to_string(),
         "ledgerr_focus.*".to_string(),
         "ledgerr_gcp_billing.*".to_string(),
+        "ledgerr_budget.*".to_string(),
     ]
 }
 
@@ -67,6 +68,9 @@ fn standard_action_patterns() -> Vec<String> {
         "ledgerr_gcp_billing.ingest_since".to_string(),
         "ledgerr_gcp_billing.query_last_run".to_string(),
         "ledgerr_gcp_billing.dry_run_map_row".to_string(),
+        // Budget reconciliation is a write op — same trust class as
+        // documents.ingest / gcp_billing.ingest_since.
+        "ledgerr_budget.reconcile".to_string(),
     ]
 }
 
@@ -224,17 +228,16 @@ mod tests {
     fn admin_visible_families_cover_all_ring_gated_published_tools() {
         let families = ring_visible_tool_families(Ring::Admin);
         // All ring-gated published families. `ledgerr_schema`/`ledgerr_manifest`
-        // are CORE (outside the ring model), and `ledgerr_budget` has no
-        // ring action-pattern mapping yet (pre-existing gap, tracked with the
-        // gcp_billing gating work).
+        // are CORE (outside the ring model).
         assert_eq!(
             families.len(),
-            11,
-            "expected all 11 ring-gated families: {families:?}"
+            12,
+            "expected all 12 ring-gated families: {families:?}"
         );
         assert!(families.contains("ledgerr_reconciliation"));
         assert!(families.contains("ledgerr_xero"));
         assert!(families.contains("ledgerr_gcp_billing"));
+        assert!(families.contains("ledgerr_budget"));
     }
 
     #[test]
