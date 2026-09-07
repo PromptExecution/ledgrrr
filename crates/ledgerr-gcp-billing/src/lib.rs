@@ -210,7 +210,7 @@ impl BigQueryFocusSource {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let rows = parse_bq_json_rows(&stdout)?;
         Ok(QueryResult {
-            truncated: rows.len() as u64 >= max_rows,
+            truncated: rows.len() as u64 > max_rows,
             rows,
         })
     }

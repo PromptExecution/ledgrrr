@@ -62,6 +62,7 @@ policies:
       - "ledgerr_reconciliation.reverse*"
       - "ledgerr_workflow.commit*"
       - "ledgerr_workflow.approve*"
+      - "ledgerr_budget.reconcile*"
     min_approvals: 1
 
   - name: ingest-rate-limit
@@ -95,4 +96,6 @@ policies:
       - "ledgerr_xero.*"
       - "ledgerr_workflow.*"
       - "ledgerr_reconciliation.*"
+      - "ledgerr_budget.*"
+      - "ledgerr_gcp_billing.*"
 "#;
