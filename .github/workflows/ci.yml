@@ -12,9 +12,17 @@ permissions:
 env:
   TOOL_MDBOOK_VERSION: "0.5.0"
   TOOL_MDBOOK_MERMAID_VERSION: "0.17.0"
+  CARGO_INCREMENTAL: "0"
+  # sccache config — uses GCS when SCCACHE_GCS_BUCKET secret is set
+  SCCACHE_GCS_BUCKET: ${{ secrets.SCCACHE_GCS_BUCKET }}
+  SCCACHE_GCS_KEY_PREFIX: ledgrrr-ci
+  FEATURES: "audit,autoresearch,b00t,classification,core,default,events,full,hsm,legacy,legal-z3,llm,local-llm,mistralrs-llm,ontology,reconciliation,self-update,tax,xero"
 
 jobs:
-  test-and-build:
+  # ─────────────────────────────────────────────────────────────────────
+  # Job 1: Lint + SARIF (parallel, ~5min)
+  # ─────────────────────────────────────────────────────────────────────
+  clippy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -22,6 +30,16 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Rust cache (registry + target)
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: clippy
+
+      - name: sccache setup
+        uses: mozilla-actions/sccache-action@v0.0.7
 
       - name: Install Linux desktop dependencies
         run: |
@@ -34,12 +52,17 @@ jobs:
             libz3-dev \
             patchelf
 
-      - name: Install Clippy SARIF converter
-        run: cargo install clippy-sarif --locked
+      - name: Install clippy-sarif (binstall)
+        run: |
+          if ! command -v clippy-sarif &>/dev/null; then
+            cargo install clippy-sarif --locked
+          fi
 
       - name: Generate Clippy SARIF
+        env:
+          SCCACHE_GCS_OAUTH_URL: ${{ secrets.SCCACHE_GCS_OAUTH_URL }}
         run: |
-          cargo clippy --workspace --all-targets --features 'audit,autoresearch,b00t,classification,core,default,events,full,hsm,legacy,legal-z3,llm,local-llm,mistralrs-llm,ontology,reconciliation,self-update,tax,xero' --message-format=json > clippy.json
+          cargo clippy --workspace --all-targets --features "$FEATURES" --message-format=json > clippy.json
           clippy-sarif < clippy.json > clippy.sarif
 
       - name: Upload Clippy SARIF
@@ -47,20 +70,96 @@ jobs:
         with:
           sarif_file: clippy.sarif
 
-      - name: Install just
-        run: cargo install just --locked
+  # ─────────────────────────────────────────────────────────────────────
+  # Job 2: Tests (parallel, ~8min with warm cache)
+  # ─────────────────────────────────────────────────────────────────────
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache (registry + target)
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: test
+
+      - name: sccache setup
+        uses: mozilla-actions/sccache-action@v0.0.7
+
+      - name: Install Linux desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libayatana-appindicator3-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libwebkit2gtk-4.1-dev \
+            libz3-dev \
+            patchelf
+
+      - name: Install cargo-nextest (binstall)
+        run: |
+          if ! command -v cargo-nextest &>/dev/null; then
+            cargo install cargo-nextest --locked
+          fi
+
+      - name: Validate datum AST parser and linter
+        run: cargo nextest run -p datum --no-fail-fast 2>&1
+
+      - name: Cargo test (nextest)
+        env:
+          SCCACHE_GCS_OAUTH_URL: ${{ secrets.SCCACHE_GCS_OAUTH_URL }}
+        run: cargo nextest run --workspace --all-targets --features "$FEATURES" --no-fail-fast
+
+      - name: Doc tests (nextest doesn't run doctests)
+        run: cargo test --doc --workspace --features "$FEATURES"
+
+      - name: Test legal-z3 feature with native Z3
+        run: cargo nextest run -p ledger-core --test legal_z3_integration --features legal-z3 --no-fail-fast
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Job 3: Build + container + E2E (parallel, ~8min with warm cache)
+  # ─────────────────────────────────────────────────────────────────────
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache (registry + target)
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: build
+
+      - name: sccache setup
+        uses: mozilla-actions/sccache-action@v0.0.7
+
+      - name: Install Linux desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libayatana-appindicator3-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libwebkit2gtk-4.1-dev \
+            libz3-dev \
+            patchelf
+
+      - name: Install just (binstall)
+        run: |
+          if ! command -v just &>/dev/null; then
+            cargo install just --locked
+          fi
 
       - name: Check generated artifact drift (bindings.ts + mcp-capability-contract.md + viz-manifest.json)
         run: just check-drift
-
-      - name: Validate datum AST parser and linter
-        run: cargo test -p datum 2>&1
-
-      - name: Cargo test
-        run: cargo test --workspace --all-targets --features 'audit,autoresearch,b00t,classification,core,default,events,full,hsm,legacy,legal-z3,llm,local-llm,mistralrs-llm,ontology,reconciliation,self-update,tax,xero'
-
-      - name: Test legal-z3 feature with native Z3
-        run: cargo test -p ledger-core --test legal_z3_integration --features legal-z3
 
       - name: Run MVP E2E flow
         run: ./scripts/e2e_mvp.sh
@@ -69,6 +168,8 @@ jobs:
         run: docker build -f Containerfile -t tax-ledger:ci .
 
       - name: Build ledgerr-mcp binary
+        env:
+          SCCACHE_GCS_OAUTH_URL: ${{ secrets.SCCACHE_GCS_OAUTH_URL }}
         run: cargo build -p ledgerr-mcp --release --bin ledgerr-mcp-server
 
       - name: Upload binary as artifact
@@ -77,6 +178,9 @@ jobs:
           name: ledgerr-mcp
           path: target/release/ledgerr-mcp-server
 
+  # ─────────────────────────────────────────────────────────────────────
+  # Job 4: Windows (unchanged)
+  # ─────────────────────────────────────────────────────────────────────
   windows-desktop-test-install:
     name: Windows desktop TestInstall
     runs-on: windows-latest
@@ -85,6 +189,11 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache (registry + target)
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: windows
 
       - name: Run complete dogfood acceptance flow
         shell: pwsh
@@ -100,8 +209,11 @@ jobs:
             dist/windows/*.sha256
           if-no-files-found: ignore
 
+  # ─────────────────────────────────────────────────────────────────────
+  # Job 5: Publish (needs all 3 Linux jobs)
+  # ─────────────────────────────────────────────────────────────────────
   publish-mcp-registry:
-    needs: test-and-build
+    needs: [clippy, test, build]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
@@ -116,6 +228,9 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache (registry + target)
+        uses: Swatinem/rust-cache@v2
 
       - name: Get version
         run: echo "VERSION=v$(cargo pkgid -p ledgerr-mcp | cut -d'#' -f2)" >> $GITHUB_ENV
@@ -148,6 +263,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # ─────────────────────────────────────────────────────────────────────
+  # Job 6: Docs (unchanged)
+  # ─────────────────────────────────────────────────────────────────────
   docs-check:
     name: Validate GitHub Pages docs build
     runs-on: ubuntu-latest
@@ -157,6 +275,9 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache (registry + target)
+        uses: Swatinem/rust-cache@v2
 
       - name: Setup Node
         uses: actions/setup-node@v4
