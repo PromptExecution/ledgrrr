@@ -12,6 +12,10 @@ permissions:
 env:
   TOOL_MDBOOK_VERSION: "0.5.0"
   TOOL_MDBOOK_MERMAID_VERSION: "0.17.0"
+  CARGO_INCREMENTAL: "0"
+  # sccache config — uses GCS when SCCACHE_GCS_BUCKET secret is set
+  SCCACHE_GCS_BUCKET: ${{ secrets.SCCACHE_GCS_BUCKET }}
+  SCCACHE_GCS_KEY_PREFIX: ledgrrr-ci
 
 jobs:
   test-and-build:
@@ -22,6 +26,14 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Rust cache (registry + target)
+        uses: Swatinem/rust-cache@v2
+
+      - name: sccache setup
+        uses: mozilla-actions/sccache-action@v0.0.7
 
       - name: Install Linux desktop dependencies
         run: |
@@ -38,6 +50,8 @@ jobs:
         run: cargo install clippy-sarif --locked
 
       - name: Generate Clippy SARIF
+        env:
+          SCCACHE_GCS_OAUTH_URL: ${{ secrets.SCCACHE_GCS_OAUTH_URL }}
         run: |
           cargo clippy --workspace --all-targets --features 'audit,autoresearch,b00t,classification,core,default,events,full,hsm,legacy,legal-z3,llm,local-llm,mistralrs-llm,ontology,reconciliation,self-update,tax,xero' --message-format=json > clippy.json
           clippy-sarif < clippy.json > clippy.sarif
@@ -50,17 +64,23 @@ jobs:
       - name: Install just
         run: cargo install just --locked
 
+      - name: Install cargo-nextest
+        run: cargo install cargo-nextest --locked
+
       - name: Check generated artifact drift (bindings.ts + mcp-capability-contract.md + viz-manifest.json)
         run: just check-drift
 
       - name: Validate datum AST parser and linter
-        run: cargo test -p datum 2>&1
+        run: cargo nextest run -p datum --no-fail-fast 2>&1
 
-      - name: Cargo test
-        run: cargo test --workspace --all-targets --features 'audit,autoresearch,b00t,classification,core,default,events,full,hsm,legacy,legal-z3,llm,local-llm,mistralrs-llm,ontology,reconciliation,self-update,tax,xero'
+      - name: Cargo test (nextest)
+        run: cargo nextest run --workspace --all-targets --features 'audit,autoresearch,b00t,classification,core,default,events,full,hsm,legacy,legal-z3,llm,local-llm,mistralrs-llm,ontology,reconciliation,self-update,tax,xero' --no-fail-fast
+
+      - name: Doc tests (nextest doesn't run doctests)
+        run: cargo test --doc --workspace --features 'audit,autoresearch,b00t,classification,core,default,events,full,hsm,legacy,legal-z3,llm,local-llm,mistralrs-llm,ontology,reconciliation,self-update,tax,xero'
 
       - name: Test legal-z3 feature with native Z3
-        run: cargo test -p ledger-core --test legal_z3_integration --features legal-z3
+        run: cargo nextest run -p ledger-core --test legal_z3_integration --features legal-z3 --no-fail-fast
 
       - name: Run MVP E2E flow
         run: ./scripts/e2e_mvp.sh
@@ -85,6 +105,11 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache (registry + target)
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: windows
 
       - name: Run complete dogfood acceptance flow
         shell: pwsh
@@ -116,6 +141,9 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache (registry + target)
+        uses: Swatinem/rust-cache@v2
 
       - name: Get version
         run: echo "VERSION=v$(cargo pkgid -p ledgerr-mcp | cut -d'#' -f2)" >> $GITHUB_ENV
@@ -157,6 +185,9 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache (registry + target)
+        uses: Swatinem/rust-cache@v2
 
       - name: Setup Node
         uses: actions/setup-node@v4
