@@ -1290,7 +1290,7 @@ Open design/roadmap gaps are tracked in:\n\
 }
 
 pub fn generated_agent_runbook_markdown() -> String {
-    format!(
+    let mut runbook = format!(
         "# Agent MCP Runbook (Generated)\n\n\
 This file is generated from `crates/ledgerr-mcp/src/contract.rs`.\n\n\
 Agent workflows must use `initialize`, `notifications/initialized`, `tools/list`, and `tools/call` over stdio.\n\n\
@@ -1354,7 +1354,31 @@ Expected blocked outcomes:\n\n\
             AUDIT_TOOL,
             json!({"action":"event_history","time_start":"2026-12-31","time_end":"2026-01-01"})
         ),
-    )
+    );
+    runbook
+        .push_str("\n## `ledgerr_gcp_billing` — GCP BigQuery Billing Export (FOCUS) ingestion\n\n");
+    runbook.push_str("Environment (all optional; sane defaults):\n\n");
+    runbook.push_str("| Var | Default | Purpose |\n");
+    runbook.push_str("|---|---|---|\n");
+    runbook.push_str("| `GCP_BILLING_PROJECT_ID` / `GCP_BILLING_DATASET` / `GCP_BILLING_TABLE` | — (required for `ingest_since`) | BigQuery billing export table location |\n");
+    runbook.push_str("| `GCP_BILLING_SIDECAR_PATH` | `~/.local/share/b00t/focus/gcp_billing_focus_rows.jsonl` | JSONL sink for mapped `CostAndUsageRow`s (content-hash deduped; atomic tmp+rename writes) |\n");
+    runbook.push_str("| `GCP_BILLING_MAX_ROWS` | `50000` | Explicit `--max_rows` for `bq query`. Never rely on bq's own default (100, silently truncated). Hitting the cap sets `truncated: true` in the response and fails the scheduled op — narrow `since` or raise the cap. |\n");
+    runbook.push_str("| `GCP_BILLING_QUERY_TIMEOUT_SECS` | `120` | Wall-clock bound on the `bq` subprocess (mirrors `PdfIngestOp`). A hang fails the call instead of stalling the MCP server. |\n\n");
+    runbook.push_str("First-run validation against a real export (the row-shape mapping in\n");
+    runbook.push_str("`ledgerr-gcp-billing` was written against Google's published FOCUS column\n");
+    runbook.push_str("names, not a live export — see its crate docs):\n\n");
+    runbook.push_str("```bash\n");
+    runbook.push_str("bq query --use_legacy_sql=false --max_rows=5 --format=json \\\n");
+    runbook
+        .push_str("  'SELECT * FROM `PROJECT.DATASET.TABLE` ORDER BY ChargePeriodStart DESC' \\\n");
+    runbook.push_str("  > /tmp/real_rows.json\n");
+    runbook.push_str("# then for each row object, call:\n");
+    runbook.push_str("#   {\"name\":\"ledgerr_gcp_billing\",\"arguments\":{\"action\":\"dry_run_map_row\",\"raw_row_json\":{...}}}\n");
+    runbook
+        .push_str("# a clean map confirms the field-name guesses; a MissingField/InvalidValue\n");
+    runbook.push_str("# error names exactly which column guess needs correction.\n");
+    runbook.push_str("```\n");
+    runbook
 }
 
 pub fn generated_mcp_cli_demo_script() -> String {

@@ -78,3 +78,28 @@ bash scripts/mcp_e2e.sh
 
 - Hidden compatibility aliases still exist for older `l3dg3rr_*` and proxy-style calls, but agents should not depend on them.
 - Use `docs/mcp-capability-contract.md` as the concise surface map.
+
+## `ledgerr_gcp_billing` — GCP BigQuery Billing Export (FOCUS) ingestion
+
+Environment (all optional; sane defaults):
+
+| Var | Default | Purpose |
+|---|---|---|
+| `GCP_BILLING_PROJECT_ID` / `GCP_BILLING_DATASET` / `GCP_BILLING_TABLE` | — (required for `ingest_since`) | BigQuery billing export table location |
+| `GCP_BILLING_SIDECAR_PATH` | `~/.local/share/b00t/focus/gcp_billing_focus_rows.jsonl` | JSONL sink for mapped `CostAndUsageRow`s (content-hash deduped; atomic tmp+rename writes) |
+| `GCP_BILLING_MAX_ROWS` | `50000` | Explicit `--max_rows` for `bq query`. Never rely on bq's own default (100, silently truncated). Hitting the cap sets `truncated: true` in the response and fails the scheduled op — narrow `since` or raise the cap. |
+| `GCP_BILLING_QUERY_TIMEOUT_SECS` | `120` | Wall-clock bound on the `bq` subprocess (mirrors `PdfIngestOp`). A hang fails the call instead of stalling the MCP server. |
+
+First-run validation against a real export (the row-shape mapping in
+`ledgerr-gcp-billing` was written against Google's published FOCUS column
+names, not a live export — see its crate docs):
+
+```bash
+bq query --use_legacy_sql=false --max_rows=5 --format=json \
+  'SELECT * FROM `PROJECT.DATASET.TABLE` ORDER BY ChargePeriodStart DESC' \
+  > /tmp/real_rows.json
+# then for each row object, call:
+#   {"name":"ledgerr_gcp_billing","arguments":{"action":"dry_run_map_row","raw_row_json":{...}}}
+# a clean map confirms the field-name guesses; a MissingField/InvalidValue
+# error names exactly which column guess needs correction.
+```
