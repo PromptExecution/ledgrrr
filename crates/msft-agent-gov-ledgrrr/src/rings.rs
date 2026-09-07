@@ -43,6 +43,7 @@ fn admin_action_patterns() -> Vec<String> {
         "ledgerr_xero.*".to_string(),
         "ledgerr_evidence.*".to_string(),
         "ledgerr_focus.*".to_string(),
+        "ledgerr_gcp_billing.*".to_string(),
     ]
 }
 
@@ -63,6 +64,12 @@ fn standard_action_patterns() -> Vec<String> {
         "ledgerr_ontology.*".to_string(),
         "ledgerr_evidence.*".to_string(),
         "ledgerr_focus.*".to_string(),
+        // Ingest is a write op, but Standard already allows ingests
+        // (documents.ingest_pdf/ingest_rows); billing ingest is the same
+        // trust class. All three actions exposed.
+        "ledgerr_gcp_billing.ingest_since".to_string(),
+        "ledgerr_gcp_billing.query_last_run".to_string(),
+        "ledgerr_gcp_billing.dry_run_map_row".to_string(),
     ]
 }
 
@@ -76,6 +83,10 @@ fn restricted_action_patterns() -> Vec<String> {
         "ledgerr_evidence.list_nodes".to_string(),
         "ledgerr_evidence.node_detail".to_string(),
         "ledgerr_focus.*".to_string(),
+        // Read-only + no-side-effect actions only — ingest_since spawns a
+        // subprocess and writes the sink, so Restricted does not get it.
+        "ledgerr_gcp_billing.query_last_run".to_string(),
+        "ledgerr_gcp_billing.dry_run_map_row".to_string(),
     ]
 }
 
@@ -180,6 +191,7 @@ mod tests {
             "ledgerr_ontology",
             "ledgerr_evidence",
             "ledgerr_focus",
+            "ledgerr_gcp_billing",
         ]
         .into_iter()
         .map(String::from)
@@ -197,19 +209,35 @@ mod tests {
         );
         assert_eq!(
             restricted,
-            ["ledgerr_documents", "ledgerr_audit", "ledgerr_tax", "ledgerr_evidence", "ledgerr_focus"]
-                .into_iter()
-                .map(String::from)
-                .collect::<BTreeSet<_>>()
+            [
+                "ledgerr_documents",
+                "ledgerr_audit",
+                "ledgerr_tax",
+                "ledgerr_evidence",
+                "ledgerr_focus",
+                "ledgerr_gcp_billing",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect::<BTreeSet<_>>()
         );
     }
 
     #[test]
-    fn admin_visible_families_cover_all_published_tools() {
+    fn admin_visible_families_cover_all_ring_gated_published_tools() {
         let families = ring_visible_tool_families(Ring::Admin);
-        assert_eq!(families.len(), 10, "expected all 10 PUBLISHED_TOOL_NAMES families: {families:?}");
+        // All ring-gated published families. `ledgerr_schema`/`ledgerr_manifest`
+        // are CORE (outside the ring model), and `ledgerr_budget` has no
+        // ring action-pattern mapping yet (pre-existing gap, tracked with the
+        // gcp_billing gating work).
+        assert_eq!(
+            families.len(),
+            11,
+            "expected all 11 ring-gated families: {families:?}"
+        );
         assert!(families.contains("ledgerr_reconciliation"));
         assert!(families.contains("ledgerr_xero"));
+        assert!(families.contains("ledgerr_gcp_billing"));
     }
 
     #[test]

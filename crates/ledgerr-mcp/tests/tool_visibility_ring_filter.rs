@@ -46,10 +46,8 @@ fn unfiltered_for_admin_ring() {
 
 #[test]
 fn standard_ring_hides_reconciliation_and_xero_but_keeps_core() {
-    let filtered = mcp_adapter::filter_tools_for_ring(
-        mcp_adapter::tool_descriptors(),
-        Some(Ring::Standard),
-    );
+    let filtered =
+        mcp_adapter::filter_tools_for_ring(mcp_adapter::tool_descriptors(), Some(Ring::Standard));
     let names = tool_names(&filtered);
 
     // Core group always present.
@@ -85,10 +83,8 @@ fn restricted_ring_is_a_strict_subset_of_standard() {
 
 #[test]
 fn sandboxed_ring_sees_only_the_core_group() {
-    let filtered = mcp_adapter::filter_tools_for_ring(
-        mcp_adapter::tool_descriptors(),
-        Some(Ring::Sandboxed),
-    );
+    let filtered =
+        mcp_adapter::filter_tools_for_ring(mcp_adapter::tool_descriptors(), Some(Ring::Sandboxed));
     let names = tool_names(&filtered);
     assert_eq!(
         names,
@@ -183,7 +179,10 @@ fn initialize_client(client: &mut McpStdioClient) {
             "clientInfo": { "name": "tool-visibility-ring-filter-e2e", "version": "0.1.0" }
         }),
     );
-    assert!(initialize.get("result").is_some(), "initialize must succeed");
+    assert!(
+        initialize.get("result").is_some(),
+        "initialize must succeed"
+    );
     client.send_notification_initialized();
 }
 
@@ -197,13 +196,13 @@ fn list_tool_names(client: &mut McpStdioClient) -> BTreeSet<String> {
 }
 
 #[test]
-fn e2e_default_env_shows_all_thirteen_tools() {
+fn e2e_default_env_shows_all_published_tools() {
     let mut client = McpStdioClient::spawn(None);
     initialize_client(&mut client);
     let names = list_tool_names(&mut client);
     assert_eq!(
         names.len(),
-        13,
+        ledgerr_mcp::contract::PUBLISHED_TOOLS.len(),
         "default (no LEDGERR_MCP_RING) must be unchanged from pre-#222 behavior: {names:?}"
     );
     assert!(names.contains("ledgerr_reconciliation"));
@@ -216,13 +215,22 @@ fn e2e_restricted_ring_narrows_the_list_over_stdio() {
     initialize_client(&mut client);
     let names = list_tool_names(&mut client);
 
-    assert!(names.contains("ledgerr_schema"), "core group must survive: {names:?}");
-    assert!(names.contains("ledgerr_manifest"), "core group must survive: {names:?}");
+    assert!(
+        names.contains("ledgerr_schema"),
+        "core group must survive: {names:?}"
+    );
+    assert!(
+        names.contains("ledgerr_manifest"),
+        "core group must survive: {names:?}"
+    );
     assert!(names.contains("ledgerr_documents"));
     assert!(!names.contains("ledgerr_reconciliation"));
     assert!(!names.contains("ledgerr_xero"));
     assert!(!names.contains("ledgerr_review"));
-    assert!(names.len() < 13, "restricted must be a strict narrowing: {names:?}");
+    assert!(
+        names.len() < ledgerr_mcp::contract::PUBLISHED_TOOLS.len(),
+        "restricted must be a strict narrowing: {names:?}"
+    );
 }
 
 #[test]
@@ -232,7 +240,7 @@ fn e2e_unrecognized_ring_value_falls_back_to_unfiltered() {
     let names = list_tool_names(&mut client);
     assert_eq!(
         names.len(),
-        13,
+        ledgerr_mcp::contract::PUBLISHED_TOOLS.len(),
         "an unrecognized LEDGERR_MCP_RING value must fail open to unfiltered, not panic or deny-all: {names:?}"
     );
 }
