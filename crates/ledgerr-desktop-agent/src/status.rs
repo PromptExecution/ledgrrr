@@ -207,11 +207,7 @@ fn detect_package() -> PackageStatus {
 
 /// Candidate tray binaries this repo already builds, checked next to the
 /// running controller binary and then on PATH.
-const TRAY_CANDIDATES: &[&str] = &[
-    "ledgrrr-tray.exe",
-    "host-tauri.exe",
-    "host-tauri",
-];
+const TRAY_CANDIDATES: &[&str] = &["ledgrrr-tray.exe", "host-tauri.exe", "host-tauri"];
 
 /// Finds a tray binary next to this controller's own executable, then on
 /// PATH. Shared by [`status::collect`] (reporting) and

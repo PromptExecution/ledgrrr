@@ -1,10 +1,6 @@
 mod common;
 
-fn check(
-    cost_basis_method: &str,
-    chain: &str,
-    address: &str,
-) -> serde_json::Value {
+fn check(cost_basis_method: &str, chain: &str, address: &str) -> serde_json::Value {
     ledgerr_mcp::crypto::handle_crypto_cost_basis_check(
         "HWUPKR0MPOU8FGXBT394",
         "0xabc123",

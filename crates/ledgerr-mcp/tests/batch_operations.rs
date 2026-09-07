@@ -3,8 +3,8 @@ mod common;
 use ledger_core::ingest::{deterministic_tx_id, TransactionInput};
 use ledgerr_mcp::{
     ApplyMappingBulkRequest, BatchClassifyRequest, BatchMode, BatchResolveFlagsRequest,
-    ClassifyTransactionRequest, FlagResolution, IngestPdfRequest, SimilarityMatchType, QueryTransactionsRequest,
-    TurboLedgerService, TurboLedgerTools,
+    ClassifyTransactionRequest, FlagResolution, IngestPdfRequest, QueryTransactionsRequest,
+    SimilarityMatchType, TurboLedgerService, TurboLedgerTools,
 };
 
 fn service() -> TurboLedgerService {
@@ -13,7 +13,10 @@ fn service() -> TurboLedgerService {
         .expect("manifest")
 }
 
-fn ingest_test_transactions(svc: &TurboLedgerService, dir: &tempfile::TempDir) -> (String, String, String) {
+fn ingest_test_transactions(
+    svc: &TurboLedgerService,
+    dir: &tempfile::TempDir,
+) -> (String, String, String) {
     let journal_path = dir.path().join("ledger.beancount");
     let workbook_path = dir.path().join("tax-ledger.xlsx");
     let source_ref = dir.path().join("ctx.rkyv");
@@ -227,7 +230,9 @@ fn test_batch_classify_dry_run_skips_all() {
 
     // All should have None or empty category
     for tx in query_response.transactions {
-        assert!(tx.category.is_none() || tx.category.as_ref().map(|c| c.is_empty()).unwrap_or(true));
+        assert!(
+            tx.category.is_none() || tx.category.as_ref().map(|c| c.is_empty()).unwrap_or(true)
+        );
     }
 
     // Verify all items are marked as skipped
@@ -321,10 +326,16 @@ fn test_apply_mapping_bulk_matches_similar() {
         .expect("apply mapping bulk should succeed");
 
     // Should find matches based on description similarity
-    assert_eq!(response.classification_summary.total_requested, response.matched_tx_ids.len());
+    assert_eq!(
+        response.classification_summary.total_requested,
+        response.matched_tx_ids.len()
+    );
 
     // Verify the classification summary
-    assert_eq!(response.classification_summary.total_requested, response.matched_tx_ids.len());
+    assert_eq!(
+        response.classification_summary.total_requested,
+        response.matched_tx_ids.len()
+    );
     assert!(response.classification_summary.succeeded <= response.matched_tx_ids.len());
 }
 

@@ -54,7 +54,10 @@ fn carryforward_preserves_st_lt_character() {
     assert_eq!(result.total_net_loss, "-6000.00");
     let cf_total: f64 = result.carryforward_short_term.parse::<f64>().unwrap()
         + result.carryforward_long_term.parse::<f64>().unwrap();
-    assert!((cf_total - 3000.0).abs() < 0.01, "carryforward should be ~3000, got {cf_total}");
+    assert!(
+        (cf_total - 3000.0).abs() < 0.01,
+        "carryforward should be ~3000, got {cf_total}"
+    );
     assert!(result.carryforward_short_term.parse::<f64>().unwrap() > 0.0);
     assert!(result.carryforward_long_term.parse::<f64>().unwrap() > 0.0);
 }
@@ -93,5 +96,9 @@ fn warning_on_carryforward_exceeds_20_years() {
     };
     let result = compute_capital_loss(&input);
     let has_20yr_warning = result.warnings.iter().any(|w| w.contains("20 years"));
-    assert!(has_20yr_warning, "expected warning about 20-year horizon, got: {:?}", result.warnings);
+    assert!(
+        has_20yr_warning,
+        "expected warning about 20-year horizon, got: {:?}",
+        result.warnings
+    );
 }

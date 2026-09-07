@@ -97,8 +97,11 @@ fn classify(tx) {
 fn build_overlay_rules_dir() -> tempfile::TempDir {
     let dir = tempfile::TempDir::new().expect("create temp rules dir");
 
-    fs::write(dir.path().join("classify_fallback.rhai"), FALLBACK_RULE_BODY)
-        .expect("write fallback rule");
+    fs::write(
+        dir.path().join("classify_fallback.rhai"),
+        FALLBACK_RULE_BODY,
+    )
+    .expect("write fallback rule");
 
     let client_dir = dir.path().join("client");
     fs::create_dir(&client_dir).expect("create client overlay dir");
@@ -181,8 +184,11 @@ fn unmatched_transaction_still_falls_through_to_unclassified_with_overlay_presen
 fn missing_client_overlay_directory_is_not_an_error() {
     // No client/ subdirectory at all — the normal, unconfigured state.
     let dir = tempfile::TempDir::new().expect("create temp rules dir");
-    fs::write(dir.path().join("classify_fallback.rhai"), FALLBACK_RULE_BODY)
-        .expect("write fallback rule");
+    fs::write(
+        dir.path().join("classify_fallback.rhai"),
+        FALLBACK_RULE_BODY,
+    )
+    .expect("write fallback rule");
 
     let registry = RuleRegistry::load_from_dir(dir.path())
         .expect("rules directory loads without a client overlay");

@@ -74,12 +74,15 @@ impl Constraint for CategoryConstraint {}
 // Matches the date-format conventions already detected in
 // `document_shape.rs::detect_date_format` (`%m/%d/%Y`, `%m/%d`).
 static TRANSACTION_ROW: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?x)
+    Regex::new(
+        r"(?x)
         ^\s*(?P<date>\d{1,2}/\d{1,2}(?:/\d{2,4})?)\s+
         (?P<description>.+?)\s+
         (?P<amount>-?\$?\d[\d,]*\.\d{2})
         (?:\s+\$?(?P<balance>\d[\d,]*\.\d{2}))?\s*$
-    ").expect("static regex is valid")
+    ",
+    )
+    .expect("static regex is valid")
 });
 
 static STATEMENT_HEADER: LazyLock<Regex> = LazyLock::new(|| {
@@ -87,11 +90,13 @@ static STATEMENT_HEADER: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 static FEE_SCHEDULE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)(monthly\s+service\s+fee|overdraft\s+fee|interest\s+rate|APY)").expect("static regex is valid")
+    Regex::new(r"(?i)(monthly\s+service\s+fee|overdraft\s+fee|interest\s+rate|APY)")
+        .expect("static regex is valid")
 });
 
 static DISCLAIMER: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)(member\s+FDIC|equal\s+housing\s+lender|see\s+reverse\s+side)").expect("static regex is valid")
+    Regex::new(r"(?i)(member\s+FDIC|equal\s+housing\s+lender|see\s+reverse\s+side)")
+        .expect("static regex is valid")
 });
 
 impl Satisfies<CategoryConstraint> for DoclingNode {
@@ -154,7 +159,11 @@ pub fn classify_document(graph: &DoclingDocumentGraph) -> Vec<ClassifiedNode<'_>
             for &category in &CATEGORY_ORDER {
                 let result = node.satisfies(&CategoryConstraint(category));
                 if result.disposition.is_satisfied() {
-                    return ClassifiedNode { node, category, result };
+                    return ClassifiedNode {
+                        node,
+                        category,
+                        result,
+                    };
                 }
             }
             ClassifiedNode {
@@ -185,7 +194,9 @@ pub fn node_to_transaction_input(
     account_id: &str,
 ) -> Result<TransactionInput, BridgeError> {
     if classified.category != NodeCategory::TransactionRow {
-        return Err(BridgeError::NotATransactionRow(classified.node.node_id.clone()));
+        return Err(BridgeError::NotATransactionRow(
+            classified.node.node_id.clone(),
+        ));
     }
     let text = classified.node.text.as_deref().unwrap_or_default();
     let caps = TRANSACTION_ROW
@@ -310,7 +321,11 @@ mod tests {
 
     #[test]
     fn classifies_transaction_row() {
-        let g = graph(vec![node("n1", "05/01 Check 1042 -$120.00 $4,880.00", Some(2))]);
+        let g = graph(vec![node(
+            "n1",
+            "05/01 Check 1042 -$120.00 $4,880.00",
+            Some(2),
+        )]);
         let classified = classify_document(&g);
         assert_eq!(classified.len(), 1);
         assert_eq!(classified[0].category, NodeCategory::TransactionRow);
@@ -326,25 +341,40 @@ mod tests {
 
     #[test]
     fn classifies_fee_schedule() {
-        let g = graph(vec![node("n1", "Monthly service fee: $12.00 unless minimum balance met", None)]);
+        let g = graph(vec![node(
+            "n1",
+            "Monthly service fee: $12.00 unless minimum balance met",
+            None,
+        )]);
         assert_eq!(classify_document(&g)[0].category, NodeCategory::FeeSchedule);
     }
 
     #[test]
     fn classifies_disclaimer() {
-        let g = graph(vec![node("n1", "Wells Fargo Bank, N.A. Member FDIC.", None)]);
+        let g = graph(vec![node(
+            "n1",
+            "Wells Fargo Bank, N.A. Member FDIC.",
+            None,
+        )]);
         assert_eq!(classify_document(&g)[0].category, NodeCategory::Disclaimer);
     }
 
     #[test]
     fn unclassified_when_no_pattern_matches() {
         let g = graph(vec![node("n1", "Table of Contents", None)]);
-        assert_eq!(classify_document(&g)[0].category, NodeCategory::Unclassified);
+        assert_eq!(
+            classify_document(&g)[0].category,
+            NodeCategory::Unclassified
+        );
     }
 
     #[test]
     fn bridges_transaction_row_to_real_transaction_input_not_placeholder_garbage() {
-        let g = graph(vec![node("n1", "05/01 Check 1042 -$120.00 $4,880.00", Some(2))]);
+        let g = graph(vec![node(
+            "n1",
+            "05/01 Check 1042 -$120.00 $4,880.00",
+            Some(2),
+        )]);
         let classified = classify_document(&g);
         let tx = node_to_transaction_input(&classified[0], "acct-123").unwrap();
 
@@ -372,8 +402,14 @@ mod tests {
             node("n2", "Ending balance on 5/31 $4,880.00", None),
         ]);
         let header = extract_statement_header(&g).unwrap();
-        assert_eq!(header.opening_balance, Decimal::from_str("5000.00").unwrap());
-        assert_eq!(header.closing_balance, Decimal::from_str("4880.00").unwrap());
+        assert_eq!(
+            header.opening_balance,
+            Decimal::from_str("5000.00").unwrap()
+        );
+        assert_eq!(
+            header.closing_balance,
+            Decimal::from_str("4880.00").unwrap()
+        );
     }
 
     #[test]

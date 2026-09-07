@@ -47,9 +47,15 @@ pub fn focus_rows_to_t00n(
         "ChargeFrequency",
     ];
     let custom_fields = &[
-        ("x_ExperimentId", rows.iter().any(|r| r.x_experiment_id.is_some())),
+        (
+            "x_ExperimentId",
+            rows.iter().any(|r| r.x_experiment_id.is_some()),
+        ),
         ("x_Variant", rows.iter().any(|r| r.x_variant.is_some())),
-        ("x_Personality", rows.iter().any(|r| r.x_personality.is_some())),
+        (
+            "x_Personality",
+            rows.iter().any(|r| r.x_personality.is_some()),
+        ),
         ("x_AgentId", rows.iter().any(|r| r.x_agent_id.is_some())),
     ];
 
@@ -101,7 +107,9 @@ pub fn focus_rows_to_t00n(
 pub fn focus_delta_to_t00n(delta: &FocusDelta) -> String {
     let mut out = String::new();
     out.push_str("# reqif.yaml: focus-delta/v1\n");
-    out.push_str("focus_delta{experiment_id,control_billed,treatment_billed,delta_billed,recommendation}:\n");
+    out.push_str(
+        "focus_delta{experiment_id,control_billed,treatment_billed,delta_billed,recommendation}:\n",
+    );
     out.push_str(&format!(
         "  {},{:.2},{:.2},{:.2},{}\n",
         delta.experiment_id,
@@ -141,7 +149,10 @@ pub fn experiment_comparison_to_t00n(
     let c_acc = control_scores.get("accuracy").copied().unwrap_or(0.0);
     let c_util = control_scores.get("utility").copied().unwrap_or(0.0);
     let c_risk = control_scores.get("risk").copied().unwrap_or(0.0);
-    out.push_str(&format!("  control,{:.2},{:.0},{:.0},{:.2},{:.2},{:.2}\n", c_roi, c_cost, c_time, c_acc, c_util, c_risk));
+    out.push_str(&format!(
+        "  control,{:.2},{:.0},{:.0},{:.2},{:.2},{:.2}\n",
+        c_roi, c_cost, c_time, c_acc, c_util, c_risk
+    ));
 
     let t_roi = treatment_scores.get("roi").copied().unwrap_or(0.0);
     let t_cost = treatment_scores.get("cost").copied().unwrap_or(0.0);
@@ -149,9 +160,15 @@ pub fn experiment_comparison_to_t00n(
     let t_acc = treatment_scores.get("accuracy").copied().unwrap_or(0.0);
     let t_util = treatment_scores.get("utility").copied().unwrap_or(0.0);
     let t_risk = treatment_scores.get("risk").copied().unwrap_or(0.0);
-    out.push_str(&format!("  treatment,{:.2},{:.0},{:.0},{:.2},{:.2},{:.2}\n", t_roi, t_cost, t_time, t_acc, t_util, t_risk));
+    out.push_str(&format!(
+        "  treatment,{:.2},{:.0},{:.0},{:.2},{:.2},{:.2}\n",
+        t_roi, t_cost, t_time, t_acc, t_util, t_risk
+    ));
 
-    out.push_str(&format!("recommendation: {}\n", t00n_escape(recommendation)));
+    out.push_str(&format!(
+        "recommendation: {}\n",
+        t00n_escape(recommendation)
+    ));
     out
 }
 
@@ -161,7 +178,10 @@ pub fn validate_t00n_row_count(t00n: &str) -> Result<usize, String> {
     static ROW_COUNT_RE: LazyLock<regex::Regex> =
         LazyLock::new(|| regex::Regex::new(r"\[(\d+)\]").expect("TOON row-count regex is valid"));
 
-    let lines: Vec<&str> = t00n.lines().filter(|l| !l.trim().is_empty() && !l.trim().starts_with('#')).collect();
+    let lines: Vec<&str> = t00n
+        .lines()
+        .filter(|l| !l.trim().is_empty() && !l.trim().starts_with('#'))
+        .collect();
     if lines.is_empty() {
         return Err("empty t00n document".into());
     }

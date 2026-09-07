@@ -133,27 +133,33 @@ fn normalize_unicode(s: &str) -> String {
 fn expand_financial_tokens(tokens: &BTreeSet<String>) -> BTreeSet<String> {
     const GLOSSARY: &[(&str, &[&str])] = &[
         // German → English
-        ("ausland",      &["foreign", "international", "abroad", "overseas"]),
+        (
+            "ausland",
+            &["foreign", "international", "abroad", "overseas"],
+        ),
         ("ueberweisung", &["transfer", "wire", "remittance"]),
-        ("zahlung",      &["payment", "transfer"]),
-        ("gehalt",       &["salary", "income", "wage", "employment"]),
-        ("arbeitgeber",  &["employer", "employment", "income", "wage"]),
+        ("zahlung", &["payment", "transfer"]),
+        ("gehalt", &["salary", "income", "wage", "employment"]),
+        ("arbeitgeber", &["employer", "employment", "income", "wage"]),
         ("arbeitnehmer", &["employee", "employment"]),
-        ("einkommen",    &["income", "earnings"]),
-        ("kapital",      &["capital", "investment"]),
-        ("dividende",    &["dividend", "income"]),
-        ("miete",        &["rent", "rental"]),
-        ("freiberuf",    &["freelance", "contractor", "selfemployment"]),
-        ("selbstaendig", &["selfemployment", "freelance", "contractor"]),
-        ("krypto",       &["crypto", "cryptocurrency"]),
-        ("zinsen",       &["interest", "income"]),
-        ("erstattung",   &["refund", "reimbursement"]),
+        ("einkommen", &["income", "earnings"]),
+        ("kapital", &["capital", "investment"]),
+        ("dividende", &["dividend", "income"]),
+        ("miete", &["rent", "rental"]),
+        ("freiberuf", &["freelance", "contractor", "selfemployment"]),
+        (
+            "selbstaendig",
+            &["selfemployment", "freelance", "contractor"],
+        ),
+        ("krypto", &["crypto", "cryptocurrency"]),
+        ("zinsen", &["interest", "income"]),
+        ("erstattung", &["refund", "reimbursement"]),
         // French → English
-        ("virement",     &["transfer", "wire", "remittance"]),
-        ("etranger",     &["foreign", "international"]),
-        ("salaire",      &["salary", "income", "employment"]),
-        ("revenu",       &["income", "revenue", "earnings"]),
-        ("loyer",        &["rent", "rental"]),
+        ("virement", &["transfer", "wire", "remittance"]),
+        ("etranger", &["foreign", "international"]),
+        ("salaire", &["salary", "income", "employment"]),
+        ("revenu", &["income", "revenue", "earnings"]),
+        ("loyer", &["rent", "rental"]),
     ];
     let mut expanded = tokens.clone();
     for token in tokens.iter() {
@@ -570,8 +576,7 @@ impl SemanticRuleSelector for RuleRegistry {
 
         // Unicode-normalize then expand German/French financial terms to their
         // English equivalents so "Auslandüberweisung" bridges to "foreign_income".
-        let base_tokens =
-            semantic_tokens(&format!("{} {}", tx.account_id, tx.description));
+        let base_tokens = semantic_tokens(&format!("{} {}", tx.account_id, tx.description));
         let query = expand_financial_tokens(&base_tokens);
         let mut scored = self
             .semantic_index
@@ -758,8 +763,14 @@ mod tests {
 
     #[test]
     fn lexical_similarity_scores_intersection_over_union() {
-        let a: BTreeSet<String> = ["foo", "bar", "baz"].iter().map(|s| s.to_string()).collect();
-        let b: BTreeSet<String> = ["foo", "bar", "qux"].iter().map(|s| s.to_string()).collect();
+        let a: BTreeSet<String> = ["foo", "bar", "baz"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let b: BTreeSet<String> = ["foo", "bar", "qux"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let sim = lexical_similarity(&a, &b);
         // intersection={foo,bar}=2, union={foo,bar,baz,qux}=4 → 0.5
         assert!((sim - 0.5).abs() < 1e-9);

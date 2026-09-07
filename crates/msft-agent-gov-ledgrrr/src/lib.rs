@@ -34,7 +34,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use thiserror::Error;
 
-pub use agentmesh::{ClientError, GovernanceResult, LifecycleManager, LifecycleState, Ring, TrustScore, TrustTier};
+pub use agentmesh::{
+    ClientError, GovernanceResult, LifecycleManager, LifecycleState, Ring, TrustScore, TrustTier,
+};
 
 #[derive(Debug, Error)]
 pub enum AgtError {
@@ -177,8 +179,7 @@ impl LedgrrAgtGateway {
         use std::str::FromStr;
 
         // Validate Cedar syntax. Reject unparseable bundles immediately.
-        PolicySet::from_str(cedar_src)
-            .map_err(|e| AgtError::CedarParse(format!("{e:?}")))?;
+        PolicySet::from_str(cedar_src).map_err(|e| AgtError::CedarParse(format!("{e:?}")))?;
 
         // Cedar→YAML translation not yet implemented. Fall back to the built-in
         // ledgrrr default policy and surface a structured warning so operators
@@ -189,7 +190,11 @@ impl LedgrrAgtGateway {
              falling back to LEDGERR_POLICY_YAML. Cedar policy validated for syntax only."
         );
 
-        Self::build_gateway(agent_id, policy::LEDGERR_POLICY_YAML, TrustConfig::default())
+        Self::build_gateway(
+            agent_id,
+            policy::LEDGERR_POLICY_YAML,
+            TrustConfig::default(),
+        )
     }
 
     /// Shared construction core used by `new`, `with_trust_config`, `with_policy_path`,
@@ -359,7 +364,10 @@ impl LedgrrAgtGateway {
     /// attestations so that [`ComplianceGrade::Partial`] is reachable when
     /// only a subset has been attested.
     pub fn register_compliance_control(&self, control_id: &str) {
-        tracing::debug!(control_id, "register_compliance_control: pre-registering control");
+        tracing::debug!(
+            control_id,
+            "register_compliance_control: pre-registering control"
+        );
         self.compliance_store.register_control(control_id);
     }
 
@@ -417,7 +425,12 @@ impl LedgrrAgtGateway {
                     allowed: false,
                     policy: PolicyDecision::Deny(format!("scanner error: {e}")),
                     trust: self.client.trust.get_trust_score(&self.client.identity.did),
-                    ring: self.rings.read().unwrap().get_ring(agent_id).unwrap_or(Ring::Sandboxed),
+                    ring: self
+                        .rings
+                        .read()
+                        .unwrap()
+                        .get_ring(agent_id)
+                        .unwrap_or(Ring::Sandboxed),
                     reason: Some("scan_error".to_string()),
                 });
             }
@@ -620,9 +633,7 @@ impl LedgrrAgtGateway {
 
             let reason = match &result.decision {
                 PolicyDecision::Deny(r) => Some(r.clone()),
-                PolicyDecision::RequiresApproval(r) => {
-                    Some(format!("approval_required: {r}"))
-                }
+                PolicyDecision::RequiresApproval(r) => Some(format!("approval_required: {r}")),
                 PolicyDecision::RateLimited { retry_after_secs } => {
                     Some(format!("rate_limited — retry after {retry_after_secs}s"))
                 }
@@ -644,11 +655,9 @@ impl LedgrrAgtGateway {
         if ring == Ring::Admin {
             self.client.trust.record_success(&self.client.identity.did);
             if let Some(id) = tx_id {
-                self.client.audit.log(
-                    agent_id,
-                    &format!("arc-kit-au:tx_id:{id}"),
-                    "correlated",
-                );
+                self.client
+                    .audit
+                    .log(agent_id, &format!("arc-kit-au:tx_id:{id}"), "correlated");
             }
             return ToolCallDecision {
                 allowed: true,
@@ -662,11 +671,9 @@ impl LedgrrAgtGateway {
         let result = self.client.execute_with_governance(&dot_action, None);
 
         if let Some(id) = tx_id {
-            self.client.audit.log(
-                agent_id,
-                &format!("arc-kit-au:tx_id:{id}"),
-                "correlated",
-            );
+            self.client
+                .audit
+                .log(agent_id, &format!("arc-kit-au:tx_id:{id}"), "correlated");
         }
 
         let reason = match &result.decision {
@@ -726,10 +733,7 @@ impl LedgrrAgtGateway {
             }
         }
 
-        self.rings
-            .write()
-            .unwrap()
-            .assign(agent_id, Ring::Standard);
+        self.rings.write().unwrap().assign(agent_id, Ring::Standard);
         self.ring_shadow
             .write()
             .unwrap()
@@ -793,10 +797,7 @@ impl LedgrrAgtGateway {
             ring
         };
 
-        self.rings
-            .write()
-            .unwrap()
-            .assign(agent_id, actual_ring);
+        self.rings.write().unwrap().assign(agent_id, actual_ring);
         self.ring_shadow
             .write()
             .unwrap()
@@ -855,7 +856,11 @@ impl LedgrrAgtGateway {
             });
             // Active → Degraded is required before Degraded → Quarantined.
             if lm.state() == LifecycleState::Active {
-                if let Err(e) = lm.transition(LifecycleState::Degraded, "quarantine_agent pre-step", "system") {
+                if let Err(e) = lm.transition(
+                    LifecycleState::Degraded,
+                    "quarantine_agent pre-step",
+                    "system",
+                ) {
                     tracing::warn!(agent_id, error = %e, "quarantine_agent: Active→Degraded transition failed");
                     return;
                 }
@@ -894,7 +899,9 @@ impl LedgrrAgtGateway {
         {
             let mut lc = self.lifecycle_map.write().unwrap();
             let lm = lc.get_mut(agent_id).ok_or_else(|| {
-                AgtError::Lifecycle(format!("decommission_agent: agent '{agent_id}' not registered"))
+                AgtError::Lifecycle(format!(
+                    "decommission_agent: agent '{agent_id}' not registered"
+                ))
             })?;
 
             match lm.state() {
@@ -910,13 +917,20 @@ impl LedgrrAgtGateway {
             lm.decommission("decommission_agent")
                 .map_err(|e| AgtError::Lifecycle(format!("decommission transition failed: {e}")))?;
             // Then to terminal Decommissioned.
-            lm.transition(LifecycleState::Decommissioned, "decommission_agent finalize", "system")
-                .map_err(|e| AgtError::Lifecycle(format!("Decommissioned finalize failed: {e}")))?;
+            lm.transition(
+                LifecycleState::Decommissioned,
+                "decommission_agent finalize",
+                "system",
+            )
+            .map_err(|e| AgtError::Lifecycle(format!("Decommissioned finalize failed: {e}")))?;
         }
 
         // Demote to Sandboxed in ring structures (RingEnforcer has no remove method).
         // The lifecycle gate fires before the ring check, so this is belt-and-suspenders.
-        self.rings.write().unwrap().assign(agent_id, Ring::Sandboxed);
+        self.rings
+            .write()
+            .unwrap()
+            .assign(agent_id, Ring::Sandboxed);
         self.ring_shadow.write().unwrap().remove(agent_id);
 
         if let Err(e) = self.save_rings() {
@@ -943,10 +957,7 @@ impl LedgrrAgtGateway {
     /// Prefer [`trust_score_for_agent`](Self::trust_score_for_agent), which accepts a bare
     /// `agent_id` string and constructs the `did:agentmesh:` prefix internally.  Passing a raw
     /// `agent_id` here silently returns the default initial score instead of an error.
-    #[deprecated(
-        since = "1.8.1",
-        note = "use trust_score_for_agent(agent_id) instead"
-    )]
+    #[deprecated(since = "1.8.1", note = "use trust_score_for_agent(agent_id) instead")]
     pub fn trust_score(&self, did: &str) -> TrustScore {
         self.client.trust.get_trust_score(did)
     }
@@ -1007,10 +1018,7 @@ impl LedgrrAgtGateway {
         }
 
         // Register in the ring enforcer at Standard and activate lifecycle.
-        self.rings
-            .write()
-            .unwrap()
-            .assign(sub_id, Ring::Standard);
+        self.rings.write().unwrap().assign(sub_id, Ring::Standard);
         self.ring_shadow
             .write()
             .unwrap()
@@ -1121,7 +1129,8 @@ mod tests {
     #[test]
     fn promote_to_admin_sets_ring() {
         let gw = LedgrrAgtGateway::new("hermes").unwrap();
-        gw.promote_to_admin("hermes").expect("promote_to_admin must persist");
+        gw.promote_to_admin("hermes")
+            .expect("promote_to_admin must persist");
         let r = gw.check_tool_call("hermes", "ledgerr_reconciliation", "commit_entry");
         assert_eq!(r.ring, Ring::Admin);
     }
@@ -1208,7 +1217,6 @@ mod tests {
         );
     }
 
-
     // --- Gap 1 tests ---
 
     /// Bearer tokens in a `redact()` call must be replaced; JWT prefix `eyJ`
@@ -1216,9 +1224,8 @@ mod tests {
     #[test]
     fn redact_bearer_token() {
         let gw = LedgrrAgtGateway::new("sec-agent").unwrap();
-        let output = gw.redact(
-            "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.foo.bar",
-        );
+        let output =
+            gw.redact("Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.foo.bar");
         assert!(
             !output.contains("eyJ"),
             "JWT prefix must not appear in redacted output: {output}"
@@ -1242,11 +1249,8 @@ mod tests {
     fn check_tool_call_with_credential_in_action_does_not_panic() {
         let gw = LedgrrAgtGateway::new("sec-agent").unwrap();
         // Simulate a misconfigured caller passing a bearer token as the action.
-        let decision = gw.check_tool_call(
-            "sec-agent",
-            "ledgerr_documents",
-            "Bearer sk-live-abc123",
-        );
+        let decision =
+            gw.check_tool_call("sec-agent", "ledgerr_documents", "Bearer sk-live-abc123");
         // Either Allow (redacted to an unknown action that hits Deny) or Deny —
         // both are acceptable; the requirement is no panic and an intact chain.
         let _ = decision;
@@ -1264,11 +1268,12 @@ mod tests {
         {
             let gw = LedgrrAgtGateway::with_persist_path("alpha", dir.path())
                 .expect("gateway construction must succeed");
-            gw.promote_to_admin("alpha").expect("promote_to_admin must persist");
+            gw.promote_to_admin("alpha")
+                .expect("promote_to_admin must persist");
             // gw drops here — in-memory state gone
         }
-        let gw2 = LedgrrAgtGateway::with_persist_path("alpha", dir.path())
-            .expect("reload must succeed");
+        let gw2 =
+            LedgrrAgtGateway::with_persist_path("alpha", dir.path()).expect("reload must succeed");
         let ring = gw2
             .rings
             .read()
@@ -1300,10 +1305,11 @@ mod tests {
         {
             let gw = LedgrrAgtGateway::with_persist_path("gamma", dir.path())
                 .expect("gateway construction must succeed");
-            gw.promote_to_admin("gamma").expect("promote_to_admin must persist");
+            gw.promote_to_admin("gamma")
+                .expect("promote_to_admin must persist");
         }
-        let gw2 = LedgrrAgtGateway::with_persist_path("gamma", dir.path())
-            .expect("reload must succeed");
+        let gw2 =
+            LedgrrAgtGateway::with_persist_path("gamma", dir.path()).expect("reload must succeed");
         // Admin ring bypasses policy gate — commit must be allowed.
         let r = gw2.check_tool_call("gamma", "ledgerr_reconciliation", "commit_entry");
         assert_eq!(r.ring, Ring::Admin, "ring must be Admin after reload");
@@ -1319,7 +1325,8 @@ mod tests {
         gw.register_agent("q-agent");
         // Confirm it's allowed before quarantine.
         assert!(
-            gw.check_tool_call("q-agent", "ledgerr_documents", "list_accounts").allowed,
+            gw.check_tool_call("q-agent", "ledgerr_documents", "list_accounts")
+                .allowed,
             "registered agent must be allowed before quarantine"
         );
         gw.quarantine_agent("q-agent");
@@ -1331,7 +1338,8 @@ mod tests {
         );
         assert!(
             r.reason.as_deref().unwrap_or("").contains("Quarantined"),
-            "reason must name the lifecycle state: {:?}", r.reason
+            "reason must name the lifecycle state: {:?}",
+            r.reason
         );
     }
 
@@ -1364,7 +1372,10 @@ mod tests {
         );
         // check_tool_call must still deny.
         let r = gw.check_tool_call("dr-agent", "ledgerr_documents", "list_accounts");
-        assert!(!r.allowed, "re-registered decommissioned agent must still be denied");
+        assert!(
+            !r.allowed,
+            "re-registered decommissioned agent must still be denied"
+        );
     }
 
     /// quarantine_agent demotes the ring and records Quarantined lifecycle state.
@@ -1380,7 +1391,11 @@ mod tests {
         );
         // Ring must be Restricted (belt-and-suspenders demotion).
         let ring = gw.rings.read().unwrap().get_ring("qr-agent");
-        assert_eq!(ring, Some(Ring::Restricted), "ring must be Restricted after quarantine");
+        assert_eq!(
+            ring,
+            Some(Ring::Restricted),
+            "ring must be Restricted after quarantine"
+        );
     }
 
     /// An active, unaffected agent's check_tool_call is unchanged by lifecycle machinery.
@@ -1394,7 +1409,10 @@ mod tests {
             "registered agent must be Active"
         );
         let r = gw.check_tool_call("healthy", "ledgerr_documents", "list_accounts");
-        assert!(r.allowed, "active agent must be allowed through lifecycle check");
+        assert!(
+            r.allowed,
+            "active agent must be allowed through lifecycle check"
+        );
     }
 
     // --- Gap 10 tests ---
@@ -1427,12 +1445,8 @@ mod tests {
         let gw_b = LedgrrAgtGateway::new("my-agent").unwrap();
 
         let a = gw_a.check_tool_call("my-agent", "ledgerr_documents", "list_accounts");
-        let b = gw_b.check_tool_call_with_tx(
-            "my-agent",
-            "ledgerr_documents",
-            "list_accounts",
-            None,
-        );
+        let b =
+            gw_b.check_tool_call_with_tx("my-agent", "ledgerr_documents", "list_accounts", None);
 
         assert_eq!(
             a.allowed, b.allowed,
@@ -1465,9 +1479,7 @@ mod tests {
         );
 
         let entries = gw.client.audit.entries();
-        let correlated = entries
-            .iter()
-            .find(|e| e.action.contains(tx_id));
+        let correlated = entries.iter().find(|e| e.action.contains(tx_id));
         assert!(
             correlated.is_some(),
             "correlation entry with exact tx_id must appear in audit chain; entries: {entries:?}"
@@ -1535,7 +1547,10 @@ mod tests {
             "deny reason must name the threat type; got: {:?}",
             dec.policy
         );
-        assert_eq!(dec.reason.as_deref(), Some("rug_pull_or_poisoning_detected"));
+        assert_eq!(
+            dec.reason.as_deref(),
+            Some("rug_pull_or_poisoning_detected")
+        );
 
         // Agent must be quarantined.
         let lc = gw.lifecycle_map.read().unwrap();
@@ -1612,7 +1627,8 @@ mod tests {
     fn spawn_sub_agent_has_independent_trust() {
         let gw = LedgrrAgtGateway::new("hermes").expect("gateway init");
 
-        gw.spawn_sub_agent("hermes-sub").expect("spawn must succeed");
+        gw.spawn_sub_agent("hermes-sub")
+            .expect("spawn must succeed");
 
         assert!(
             gw.is_sub_agent("hermes-sub"),
@@ -1620,11 +1636,7 @@ mod tests {
         );
         assert!(!gw.is_sub_agent("hermes"), "parent is not a sub-agent");
 
-        let dec_sub = gw.check_tool_call(
-            "hermes-sub",
-            "ledgerr_documents",
-            "read_document",
-        );
+        let dec_sub = gw.check_tool_call("hermes-sub", "ledgerr_documents", "read_document");
         assert!(
             dec_sub.allowed,
             "hermes-sub check_tool_call must be allowed; reason: {:?}",
@@ -1665,7 +1677,11 @@ mod tests {
             !dec.allowed,
             "unspawned agent must be denied; got allowed=true"
         );
-        assert_eq!(dec.ring, Ring::Sandboxed, "unspawned agent must be Sandboxed");
+        assert_eq!(
+            dec.ring,
+            Ring::Sandboxed,
+            "unspawned agent must be Sandboxed"
+        );
     }
 
     /// Despawning a sub-agent causes subsequent `check_tool_call` to be denied.
@@ -1692,7 +1708,8 @@ mod tests {
     #[test]
     fn spawn_duplicate_sub_agent_returns_err() {
         let gw = LedgrrAgtGateway::new("hermes").expect("gateway init");
-        gw.spawn_sub_agent("hermes-dup").expect("first spawn must succeed");
+        gw.spawn_sub_agent("hermes-dup")
+            .expect("first spawn must succeed");
 
         let result = gw.spawn_sub_agent("hermes-dup");
         assert!(
@@ -1739,7 +1756,9 @@ mod compliance_gateway_tests {
         gw.attest_z3_proof("soc2-cc6.1", "abc123def");
         let report = gw.compliance_report();
         assert!(
-            report.controls_satisfied.contains(&"soc2-cc6.1".to_string()),
+            report
+                .controls_satisfied
+                .contains(&"soc2-cc6.1".to_string()),
             "attested control must appear in controls_satisfied; got: {:?}",
             report.controls_satisfied
         );

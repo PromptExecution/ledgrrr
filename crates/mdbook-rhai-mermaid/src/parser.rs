@@ -142,7 +142,6 @@ pub struct Edge {
     pub arm_index: Option<usize>,
     /// Whether this edge represents a default/fallback path.
     pub is_default: bool,
-
 }
 
 #[derive(Debug, Default)]

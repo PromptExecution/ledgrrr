@@ -68,7 +68,11 @@ impl McpHttpClient {
 
     /// Perform the MCP `initialize` handshake and send the mandatory
     /// `notifications/initialized` follow-up.
-    pub fn initialize(&mut self, client_name: &str, client_version: &str) -> Result<Value, McpClientError> {
+    pub fn initialize(
+        &mut self,
+        client_name: &str,
+        client_version: &str,
+    ) -> Result<Value, McpClientError> {
         let id = self.alloc_id();
         let body = json!({
             "jsonrpc": "2.0",
@@ -225,8 +229,14 @@ pub struct Rubric {
 /// - `related_decisions` <- always empty; reqif-opa-mcp carries no decision
 ///   links, those are created later in arc-kit-au itself
 /// - `imported_at` <- caller-supplied (usually `Utc::now()` at conversion time)
-pub fn requirement_record_to_node(rec: &RequirementRecord, imported_at: DateTime<Utc>) -> Requirement {
-    let source = match (rec.attrs.get("source_standard"), rec.attrs.get("source_url")) {
+pub fn requirement_record_to_node(
+    rec: &RequirementRecord,
+    imported_at: DateTime<Utc>,
+) -> Requirement {
+    let source = match (
+        rec.attrs.get("source_standard"),
+        rec.attrs.get("source_url"),
+    ) {
         (Some(std), Some(url)) => Some(format!(
             "{} ({})",
             std.as_str().unwrap_or_default(),
@@ -254,8 +264,14 @@ mod tests {
     fn sample_record() -> RequirementRecord {
         let mut attrs = HashMap::new();
         attrs.insert("severity".to_string(), json!("high"));
-        attrs.insert("source_standard".to_string(), json!("NIST SSDF 1.1 (SP 800-218)"));
-        attrs.insert("source_url".to_string(), json!("https://doi.org/10.6028/NIST.SP.800-218"));
+        attrs.insert(
+            "source_standard".to_string(),
+            json!("NIST SSDF 1.1 (SP 800-218)"),
+        );
+        attrs.insert(
+            "source_url".to_string(),
+            json!("https://doi.org/10.6028/NIST.SP.800-218"),
+        );
 
         RequirementRecord {
             uid: "REQ-NIST-SSDF-002".to_string(),
@@ -315,7 +331,8 @@ mod tests {
 
     #[test]
     fn extract_rpc_result_parses_single_sse_frame() {
-        let sse = "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}\n\n";
+        let sse =
+            "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}\n\n";
         let result = extract_rpc_result(sse).unwrap();
         assert_eq!(result["ok"], json!(true));
     }

@@ -110,9 +110,7 @@ pub(crate) fn parse_aws_budgets(
         .get("BudgetLimit")
         .and_then(|v| v.get("Amount"))
         .and_then(Value::as_str)
-        .ok_or_else(|| {
-            ProviderError::Parse("missing Budgets[0].BudgetLimit.Amount".to_string())
-        })?;
+        .ok_or_else(|| ProviderError::Parse("missing Budgets[0].BudgetLimit.Amount".to_string()))?;
 
     let usd: Decimal = amount_str.parse().map_err(|e| {
         ProviderError::Parse(format!("invalid BudgetLimit.Amount '{amount_str}': {e}"))
@@ -134,10 +132,7 @@ mod tests {
     use super::*;
 
     fn fixture(name: &str) -> String {
-        let path = format!(
-            "{}/tests/fixtures/{name}",
-            env!("CARGO_MANIFEST_DIR")
-        );
+        let path = format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"));
         std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("failed to read fixture {path}: {e}"))
     }

@@ -59,11 +59,17 @@ pub struct CapabilityRegistry(pub Vec<CapabilityOffer>);
 
 impl CapabilityRegistry {
     pub fn models(&self) -> Vec<&CapabilityOffer> {
-        self.0.iter().filter(|o| o.kind == CapabilityKind::Model).collect()
+        self.0
+            .iter()
+            .filter(|o| o.kind == CapabilityKind::Model)
+            .collect()
     }
 
     pub fn surfaces(&self) -> Vec<&CapabilityOffer> {
-        self.0.iter().filter(|o| o.kind == CapabilityKind::Surface).collect()
+        self.0
+            .iter()
+            .filter(|o| o.kind == CapabilityKind::Surface)
+            .collect()
     }
 
     pub fn find(&self, name: &str) -> Option<&CapabilityOffer> {
@@ -374,7 +380,10 @@ impl ProcessSurface for HandshakeSurface {
 
         let peer_doc = surface_clone.peer_doc;
         let acquired = if matches!(result, HandshakeResult::Matched) {
-            peer_doc.as_ref().map(|d| d.offers.clone()).unwrap_or_default()
+            peer_doc
+                .as_ref()
+                .map(|d| d.offers.clone())
+                .unwrap_or_default()
         } else {
             Vec::new()
         };
@@ -506,8 +515,7 @@ mod tests {
             api_key: Some("local-tool-tray".into()),
             params: HashMap::new(),
         };
-        let mut s = HandshakeSurface::new("l3dg3rr", "v1", "host")
-            .with_offers(vec![offer.clone()]);
+        let mut s = HandshakeSurface::new("l3dg3rr", "v1", "host").with_offers(vec![offer.clone()]);
         s.handshake_dir = tmp.path().join("hs");
         s.write_doc().expect("write doc");
 
@@ -523,7 +531,9 @@ mod tests {
             name: "test-model".into(),
             endpoint: Some("http://localhost:8080".into()),
             api_key: None,
-            params: [("version".to_string(), "2".to_string())].into_iter().collect(),
+            params: [("version".to_string(), "2".to_string())]
+                .into_iter()
+                .collect(),
         };
         let json = serde_json::to_string(&offer).expect("serialize");
         let back: CapabilityOffer = serde_json::from_str(&json).expect("deserialize");

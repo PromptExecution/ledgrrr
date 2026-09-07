@@ -4,12 +4,12 @@
 //! - AC 213: Subprocess spawns correctly, NDJSON parses, classifications work
 //! - AC 214: Idempotency - re-running same PDF skips all rows via Blake3 dedup
 
-use tempfile::TempDir;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
+use tempfile::TempDir;
 
-use ledger_core::ledger_ops::{PdfIngestOp, OperationContext, IngestRowError, LedgerOperation};
+use ledger_core::ledger_ops::{IngestRowError, LedgerOperation, OperationContext, PdfIngestOp};
 use ledger_core::workbook::{initialize_workbook, WorkbookWriter};
 
 #[test]
@@ -21,12 +21,16 @@ fn ac_213_subprocess_spawns_and_parses_ndjson() {
 
     // Create a minimal PDF fixture
     let mut pdf_file = fs::File::create(&pdf_path).unwrap();
-    pdf_file.write_all(b"%PDF-1.4\n%minimal pdf fixture\n").unwrap();
+    pdf_file
+        .write_all(b"%PDF-1.4\n%minimal pdf fixture\n")
+        .unwrap();
 
     // Create a rules directory with a simple rule
     fs::create_dir_all(&rules_dir).unwrap();
     let rule_path = rules_dir.join("classify.rhai");
-    fs::write(&rule_path, r#"
+    fs::write(
+        &rule_path,
+        r#"
         fn classify(tx) {
             # Return a basic classification
             return #{
@@ -36,7 +40,9 @@ fn ac_213_subprocess_spawns_and_parses_ndjson() {
                 reason: "Default classification"
             };
         }
-    "#).unwrap();
+    "#,
+    )
+    .unwrap();
 
     // Initialize workbook
     initialize_workbook(&workbook_path).unwrap();
@@ -126,7 +132,9 @@ fn ac_214_idempotency_via_blake3_deduplication() {
 
     // Create a minimal PDF fixture
     let mut pdf_file = fs::File::create(&pdf_path).unwrap();
-    pdf_file.write_all(b"%PDF-1.4\n%minimal pdf fixture\n").unwrap();
+    pdf_file
+        .write_all(b"%PDF-1.4\n%minimal pdf fixture\n")
+        .unwrap();
 
     // Create rules directory
     fs::create_dir_all(&rules_dir).unwrap();
@@ -173,8 +181,10 @@ fn ac_214_idempotency_via_blake3_deduplication() {
     match result2 {
         Ok(op_result) => {
             // Success
-            assert!(op_result.items_processed == 0 || count1 == 0,
-                    "Second run should process 0 rows when workbook is not empty");
+            assert!(
+                op_result.items_processed == 0 || count1 == 0,
+                "Second run should process 0 rows when workbook is not empty"
+            );
         }
         Err(ledger_core::ledger_ops::LedgerOpError::ExternalProcessFailed(_)) => {
             // Subprocess not available - skip
@@ -189,7 +199,10 @@ fn ac_214_idempotency_via_blake3_deduplication() {
     let tx_ids2 = writer.get_existing_tx_ids().unwrap();
     let count2 = tx_ids2.len();
 
-    assert_eq!(count1, count2, "Idempotency: tx_ids should not increase on re-ingest");
+    assert_eq!(
+        count1, count2,
+        "Idempotency: tx_ids should not increase on re-ingest"
+    );
 }
 
 #[test]
@@ -321,7 +334,10 @@ fn test_persists_transactions_to_workbook() {
                 // Verify transactions were persisted to workbook
                 let writer = WorkbookWriter::new(&workbook_path);
                 let tx_ids = writer.get_existing_tx_ids().unwrap();
-                assert!(!tx_ids.is_empty(), "Transactions should be persisted to workbook");
+                assert!(
+                    !tx_ids.is_empty(),
+                    "Transactions should be persisted to workbook"
+                );
             }
         }
         Err(ledger_core::ledger_ops::LedgerOpError::ExternalProcessFailed(_)) => {

@@ -56,7 +56,10 @@ pub fn compute_depreciation(input: &DepreciationInput) -> DepreciationSchedule {
     let (place_year, place_month) = parse_ymd(&input.placed_in_service);
     let total_basis: f64 = input.total_basis.parse().expect("valid total_basis");
     let land_value: f64 = input.land_value.parse().expect("valid land_value");
-    let prior_accumulated: f64 = input.prior_accumulated.parse().expect("valid prior_accumulated");
+    let prior_accumulated: f64 = input
+        .prior_accumulated
+        .parse()
+        .expect("valid prior_accumulated");
 
     let base_depreciable = total_basis - land_value;
     let base_months = months_in_tax_year(place_year, place_month, tax_year);

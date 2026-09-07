@@ -103,18 +103,29 @@ pub fn compute_capital_loss(input: &CapitalLossInput) -> CapitalLossOutcome {
     let abs_loss = total.abs();
 
     let deductible = if is_loss {
-        if abs_loss <= limit { abs_loss } else { limit }
+        if abs_loss <= limit {
+            abs_loss
+        } else {
+            limit
+        }
     } else {
         Decimal::ZERO
     };
 
-    let remaining_loss = if is_loss { abs_loss - deductible } else { Decimal::ZERO };
+    let remaining_loss = if is_loss {
+        abs_loss - deductible
+    } else {
+        Decimal::ZERO
+    };
 
     let (cf_st, cf_lt) = if is_loss && !total.is_zero() {
         let st_abs = net_short.abs();
         let weight_st = st_abs / abs_loss;
         let weight_lt = Decimal::ONE - weight_st;
-        ((remaining_loss * weight_st).round_dp(2), (remaining_loss * weight_lt).round_dp(2))
+        (
+            (remaining_loss * weight_st).round_dp(2),
+            (remaining_loss * weight_lt).round_dp(2),
+        )
     } else {
         (Decimal::ZERO, Decimal::ZERO)
     };

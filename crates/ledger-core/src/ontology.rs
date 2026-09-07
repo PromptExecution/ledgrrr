@@ -237,10 +237,7 @@ impl OntologySnapshot {
         Ok(())
     }
 
-    pub fn upsert_artifacts(
-        &mut self,
-        inputs: Vec<ArtifactInput>,
-    ) -> ArtifactUpsertResult {
+    pub fn upsert_artifacts(&mut self, inputs: Vec<ArtifactInput>) -> ArtifactUpsertResult {
         let mut inserted_count = 0usize;
         let mut ids = Vec::with_capacity(inputs.len());
 
@@ -274,8 +271,7 @@ impl OntologySnapshot {
         &mut self,
         inputs: Vec<RelationInput>,
     ) -> Result<RelationUpsertResult, OntologyError> {
-        let known_ids: BTreeSet<String> =
-            self.artifacts.iter().map(|a| a.id.clone()).collect();
+        let known_ids: BTreeSet<String> = self.artifacts.iter().map(|a| a.id.clone()).collect();
 
         let mut inserted_count = 0usize;
         let mut ids = Vec::with_capacity(inputs.len());
@@ -287,7 +283,8 @@ impl OntologySnapshot {
                 ));
             }
 
-            let id = relation_content_hash(&input.from, &input.to, &input.relation, &input.provenance);
+            let id =
+                relation_content_hash(&input.from, &input.to, &input.relation, &input.provenance);
             ids.push(id.clone());
 
             if self.relations.iter().any(|existing| existing.id == id) {
@@ -351,9 +348,7 @@ impl OntologySnapshot {
                 .filter(|r| r.from == current_id)
                 .cloned()
                 .collect::<Vec<_>>();
-            outgoing.sort_by(|a, b| {
-                (&a.relation, &a.to, &a.id).cmp(&(&b.relation, &b.to, &b.id))
-            });
+            outgoing.sort_by(|a, b| (&a.relation, &a.to, &a.id).cmp(&(&b.relation, &b.to, &b.id)));
 
             for rel in outgoing {
                 if visited.contains(&rel.to) {

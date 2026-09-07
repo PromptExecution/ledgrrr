@@ -7,9 +7,9 @@
 //! Open via Justfile: just demo-viz  (builds + generates + opens via PowerShell)
 
 use holon_viz::{CytoscapeGraph, Holon, HolonKind, HtmlRenderer};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use serde_json::Value;
 
 fn main() {
     let holons = sample_tax_pipeline();
@@ -17,8 +17,8 @@ fn main() {
 
     // Write alongside the cargo target dir so the Justfile PowerShell step
     // can find it at D:\Projects\l3dg3rr\target\holon-viz-demo.html
-    let out_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/holon-viz-demo.html");
+    let out_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/holon-viz-demo.html");
 
     match HtmlRenderer::write_to_file(&graph, &out_path) {
         Ok(()) => {
