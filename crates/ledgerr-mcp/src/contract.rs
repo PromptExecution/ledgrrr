@@ -38,6 +38,7 @@ pub const SHAPE_TOOL: &str = "get_document_shape";
 pub const SCHEMA_TOOL: &str = "ledgerr_schema";
 pub const MANIFEST_TOOL: &str = "ledgerr_manifest";
 pub const BUDGET_TOOL: &str = "ledgerr_budget";
+pub const GCP_BILLING_TOOL: &str = "ledgerr_gcp_billing";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolContractSpec {
@@ -62,9 +63,10 @@ pub const TOOL_REGISTRY: &[&str] = &[
     SCHEMA_TOOL,
     MANIFEST_TOOL,
     BUDGET_TOOL,
+    GCP_BILLING_TOOL,
 ];
 
-pub const PUBLISHED_TOOLS: [ToolContractSpec; 13] = [
+pub const PUBLISHED_TOOLS: [ToolContractSpec; 14] = [
     ToolContractSpec {
         name: DOCUMENTS_TOOL,
         purpose: "document intake (PDF, image, CSV), tagging, filesystem metadata sync",
@@ -199,6 +201,11 @@ pub const PUBLISHED_TOOLS: [ToolContractSpec; 13] = [
         name: BUDGET_TOOL,
         purpose: "GPU-training cloud budget reconciliation across AWS, GCP, Azure, and HuggingFace Jobs",
         actions: &["reconcile"],
+    },
+    ToolContractSpec {
+        name: GCP_BILLING_TOOL,
+        purpose: "GCP BigQuery Billing Export (FOCUS-conformant) ingestion into ledgerr_focus::CostAndUsageRow",
+        actions: &["ingest_since", "query_last_run", "dry_run_map_row"],
     },
 ];
 
@@ -1025,6 +1032,38 @@ pub fn parse_budget(arguments: &Value) -> Result<BudgetArgs, ToolError> {
     parse_args(arguments)
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "action", deny_unknown_fields)]
+pub enum GcpBillingArgs {
+    /// Query and ingest every row from the configured GCP BigQuery Billing
+    /// Export (FOCUS-conformant) table charged on or after `since`, mapping
+    /// each into a `ledgerr_focus::CostAndUsageRow` (see
+    /// `ledgerr_gcp_billing::BigQueryFocusSource`).
+    #[serde(rename = "ingest_since")]
+    IngestSince {
+        /// RFC 3339 timestamp; only rows with `ChargePeriodStart >= since`
+        /// are ingested.
+        since: String,
+    },
+    /// Report metadata about the most recent `ingest_since` run.
+    #[serde(rename = "query_last_run")]
+    QueryLastRun,
+    /// Map a single raw `bq query --format=json` row object into a FOCUS
+    /// `CostAndUsageRow` without querying BigQuery at all — useful for
+    /// validating field-name guesses against a hand-pasted sample row
+    /// before wiring up a real export.
+    #[serde(rename = "dry_run_map_row")]
+    DryRunMapRow {
+        /// One row object, shaped like a single element of `bq query
+        /// --format=json`'s output array.
+        raw_row_json: Value,
+    },
+}
+
+pub fn parse_gcp_billing(arguments: &Value) -> Result<GcpBillingArgs, ToolError> {
+    parse_args(arguments)
+}
+
 fn parse_args<T>(arguments: &Value) -> Result<T, ToolError>
 where
     T: for<'de> Deserialize<'de>,
@@ -1047,6 +1086,7 @@ pub fn tool_input_schema(name: &str) -> Value {
         EVIDENCE_TOOL => root_schema_to_value(schema_for!(EvidenceArgs)),
         SCHEMA_TOOL => root_schema_to_value(schema_for!(SchemaArgs)),
         BUDGET_TOOL => root_schema_to_value(schema_for!(BudgetArgs)),
+        GCP_BILLING_TOOL => root_schema_to_value(schema_for!(GcpBillingArgs)),
         _ => json!({ "type": "object" }),
     }
 }

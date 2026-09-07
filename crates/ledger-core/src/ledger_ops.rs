@@ -55,12 +55,24 @@ pub struct IngestRowError {
 /// Discriminated union of operation kinds, used in [`crate::calendar::ScheduledEvent`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum OperationKind {
-    IngestStatement { source_glob: String },
-    ClassifyTransactions { rule_dir: String },
-    ReconcileAccount { account_id: String },
-    ExportWorkbook { output_path: String },
-    GenerateAuditTrail { year: i32 },
-    CheckTaxDeadline { deadline_id: String },
+    IngestStatement {
+        source_glob: String,
+    },
+    ClassifyTransactions {
+        rule_dir: String,
+    },
+    ReconcileAccount {
+        account_id: String,
+    },
+    ExportWorkbook {
+        output_path: String,
+    },
+    GenerateAuditTrail {
+        year: i32,
+    },
+    CheckTaxDeadline {
+        deadline_id: String,
+    },
     /// Record a decision as an immutable, content-hashed evidence entry.
     /// Systems-modeling registry vertical — see
     /// `docs/systems-modeling-registry-rescope.md` (epic part 2).
@@ -76,7 +88,18 @@ pub enum OperationKind {
         currency: String,
     },
     /// Import a requirement record from an external source (e.g. ReqIF).
-    ImportRequirement { source: String, title: String },
+    ImportRequirement {
+        source: String,
+        title: String,
+    },
+    /// Ingest a GCP BigQuery Billing Export (FOCUS-conformant) table via
+    /// the `bq` CLI, mapping each row into a `ledgerr_focus::CostAndUsageRow`.
+    /// See `ledgerr_gcp_billing::BigQueryFocusSource`.
+    IngestBigQueryFocus {
+        project_id: String,
+        dataset: String,
+        table: String,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -127,10 +150,7 @@ impl OperationContext {
     }
 
     #[cfg(feature = "cedar-policy")]
-    pub fn with_gateway(
-        mut self,
-        gateway: Arc<msft_agent_gov_ledgrrr::LedgrrAgtGateway>,
-    ) -> Self {
+    pub fn with_gateway(mut self, gateway: Arc<msft_agent_gov_ledgrrr::LedgrrAgtGateway>) -> Self {
         self.gateway = Some(gateway);
         self
     }
@@ -370,15 +390,7 @@ impl LedgerOperation for IngestStatementOp {
 
             let meta = MetaCtx::default();
             let gate = CommitGate::Approved { confidence: 1.0 };
-            let audit_row = AuditRow::new(
-                filename,
-                filename,
-                1.0,
-                &[],
-                &meta,
-                true,
-                &gate,
-            );
+            let audit_row = AuditRow::new(filename, filename, 1.0, &[], &meta, true, &gate);
             let writer = WorkbookWriter::new(wb_path);
             let _ = writer.append_audit_row(&audit_row);
         }
@@ -612,8 +624,8 @@ impl LedgerOperation for ReconcileAccountOp {
         if rows.len() >= 4 {
             let amounts: Vec<f64> = rows.iter().map(|(_, _, a)| a.abs()).collect();
             let mean = amounts.iter().sum::<f64>() / amounts.len() as f64;
-            let variance = amounts.iter().map(|a| (a - mean).powi(2)).sum::<f64>()
-                / amounts.len() as f64;
+            let variance =
+                amounts.iter().map(|a| (a - mean).powi(2)).sum::<f64>() / amounts.len() as f64;
             let stdev = variance.sqrt();
             let threshold = mean + 3.0 * stdev;
             for (tx_id, _, amount) in &rows {
@@ -857,8 +869,15 @@ impl LedgerOperation for GenerateAuditTrailOp {
         let mut out_wb = Workbook::new();
 
         let tx_headers = [
-            "tx_id", "date", "vendor", "account", "amount",
-            "category", "confidence", "needs_review", "flag",
+            "tx_id",
+            "date",
+            "vendor",
+            "account",
+            "amount",
+            "category",
+            "confidence",
+            "needs_review",
+            "flag",
         ];
         let tx_ws = out_wb
             .add_worksheet()
@@ -878,7 +897,13 @@ impl LedgerOperation for GenerateAuditTrailOp {
         }
 
         let mut_headers = [
-            "timestamp", "tx_id", "agent_id", "ring", "action", "before", "after",
+            "timestamp",
+            "tx_id",
+            "agent_id",
+            "ring",
+            "action",
+            "before",
+            "after",
         ];
         let mut_ws = out_wb
             .add_worksheet()
@@ -965,9 +990,7 @@ impl LedgerOperation for CheckTaxDeadlineOp {
             if days_until >= 0 && days_until <= self.warn_days_before as i64 {
                 issues.push(format!(
                     "Tax deadline '{}' due {} (in {} days)",
-                    self.deadline_id,
-                    due_date,
-                    days_until
+                    self.deadline_id, due_date, days_until
                 ));
             }
         }
@@ -1050,11 +1073,10 @@ impl LedgerOperation for RecordCostOp {
     }
 
     fn execute(&self, _ctx: &OperationContext) -> Result<OperationResult, LedgerOpError> {
-        let hash = blake3::hash(
-            format!("{}|{}|{}", self.subject, self.amount, self.currency).as_bytes(),
-        )
-        .to_hex()
-        .to_string();
+        let hash =
+            blake3::hash(format!("{}|{}|{}", self.subject, self.amount, self.currency).as_bytes())
+                .to_hex()
+                .to_string();
         Ok(OperationResult {
             operation_id: "record-cost".to_string(),
             success: true,
@@ -1182,12 +1204,15 @@ impl LedgerOperation for PdfIngestOp {
         }
 
         // Use tokio runtime for async subprocess with timeout
-        let runtime = tokio::runtime::Runtime::new()
-            .map_err(|e| LedgerOpError::ExternalProcessFailed(format!("runtime creation failed: {e}")))?;
+        let runtime = tokio::runtime::Runtime::new().map_err(|e| {
+            LedgerOpError::ExternalProcessFailed(format!("runtime creation failed: {e}"))
+        })?;
         let input_path = self
             .input_path
             .to_str()
-            .ok_or_else(|| LedgerOpError::InvalidInput("input path must be valid UTF-8".to_string()))?
+            .ok_or_else(|| {
+                LedgerOpError::InvalidInput("input path must be valid UTF-8".to_string())
+            })?
             .to_string();
 
         let output = runtime.block_on(async {
@@ -1209,7 +1234,9 @@ impl LedgerOperation for PdfIngestOp {
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
                     .spawn()
-                    .map_err(|e| LedgerOpError::ExternalProcessFailed(format!("spawn failed: {e}")))?;
+                    .map_err(|e| {
+                        LedgerOpError::ExternalProcessFailed(format!("spawn failed: {e}"))
+                    })?;
 
                 let stdout = child.stdout.take().ok_or_else(|| {
                     LedgerOpError::ExternalProcessFailed("stdout not captured".to_string())
@@ -1223,7 +1250,9 @@ impl LedgerOperation for PdfIngestOp {
                     let mut buf = Vec::new();
                     use tokio::io::AsyncReadExt;
                     let mut reader = tokio::io::BufReader::new(stdout);
-                    reader.read_to_end(&mut buf).await
+                    reader
+                        .read_to_end(&mut buf)
+                        .await
                         .map_err(|e| LedgerOpError::Io(e))?;
                     Ok::<_, LedgerOpError>(buf)
                 })
@@ -1234,7 +1263,9 @@ impl LedgerOperation for PdfIngestOp {
                     let mut buf = Vec::new();
                     use tokio::io::AsyncReadExt;
                     let mut reader = tokio::io::BufReader::new(stderr);
-                    reader.read_to_end(&mut buf).await
+                    reader
+                        .read_to_end(&mut buf)
+                        .await
                         .map_err(|e| LedgerOpError::Io(e))?;
                     Ok::<_, LedgerOpError>(buf)
                 })
@@ -1299,13 +1330,13 @@ impl LedgerOperation for PdfIngestOp {
         }
 
         let mut engine = ClassificationEngine::default();
-        let registry = RuleRegistry::load_from_dir(&self.rule_dir).map_err(|e| {
-            LedgerOpError::InvalidInput(format!("failed to load rules: {e}"))
-        })?;
+        let registry = RuleRegistry::load_from_dir(&self.rule_dir)
+            .map_err(|e| LedgerOpError::InvalidInput(format!("failed to load rules: {e}")))?;
 
         // Get existing tx_ids from workbook for deduplication
         let writer = WorkbookWriter::new(&self.workbook_path);
-        let mut seen_tx_ids = writer.get_existing_tx_ids()
+        let mut seen_tx_ids = writer
+            .get_existing_tx_ids()
             .unwrap_or_else(|_| std::collections::HashSet::new());
 
         let mut processed = 0;
@@ -1340,17 +1371,21 @@ impl LedgerOperation for PdfIngestOp {
                     // (as it already does for the CSV/XLSX ingest path) —
                     // this replaces the old `&candidate.key`, a requirement's
                     // stable key, which had no vendor meaning at all.
-                    writer.append_row(crate::workbook::TransactionRow::new(
-                        &tx_id,
-                        &tx_input.date,
-                        &tx_input.description,
-                        &tx_input.account_id,
-                        &tx_input.amount,
-                        &outcome.category,
-                        outcome.confidence,
-                        outcome.needs_review,
-                        None,
-                    )).map_err(|e| LedgerOpError::Workbook(format!("failed to persist {}: {}", tx_id, e)))?;
+                    writer
+                        .append_row(crate::workbook::TransactionRow::new(
+                            &tx_id,
+                            &tx_input.date,
+                            &tx_input.description,
+                            &tx_input.account_id,
+                            &tx_input.amount,
+                            &outcome.category,
+                            outcome.confidence,
+                            outcome.needs_review,
+                            None,
+                        ))
+                        .map_err(|e| {
+                            LedgerOpError::Workbook(format!("failed to persist {}: {}", tx_id, e))
+                        })?;
                     seen_tx_ids.insert(tx_id);
                 }
                 Err(e) => {
@@ -1400,6 +1435,122 @@ impl LedgerOperation for PdfIngestOp {
                 vec![format!("{} rows had errors", row_errors.len())]
             },
             duration_ms: 0,
+            row_errors,
+        })
+    }
+}
+
+/// Ingest a GCP BigQuery Billing Export (FOCUS-conformant) table.
+///
+/// Queries `ledgerr_gcp_billing::BigQueryFocusSource::query_rows` (which
+/// shells out to the `bq` CLI, same subprocess-shell-out convention as
+/// `ledgerr_cloud::gcp`) for every row charged since `since`, then maps
+/// each row into a `ledgerr_focus::CostAndUsageRow` via
+/// `ledgerr_gcp_billing::map_row_to_focus`. Rows that fail to map are
+/// recorded as row errors rather than aborting the whole ingest, mirroring
+/// `PdfIngestOp`'s row-error handling.
+///
+/// # Idempotency
+/// Re-running the same day's query and re-ingesting is safe: this op only
+/// queries and maps rows in-process (it does not itself write ledger
+/// state), and the BigQuery export itself is an append-only, deterministic
+/// view of GCP's own billing records for a given `ChargePeriodStart`
+/// window. Re-ingesting the same window yields the same
+/// `CostAndUsageRow`s every time — downstream persistence (not implemented
+/// here) is expected to dedupe on content hash, the same convention
+/// `IngestStatementOp`/`PdfIngestOp` use for their own idempotency.
+pub struct BigQueryFocusIngestOp {
+    pub project_id: String,
+    pub dataset: String,
+    pub table: String,
+    /// Only ingest rows charged on or after this instant. Defaults to 24
+    /// hours before the operation runs when constructed via
+    /// [`OperationDispatcher::from_scheduled_events`], since
+    /// `OperationKind::IngestBigQueryFocus` carries no `since` field of its
+    /// own (a daily-scheduled ingest naturally wants "since last run", and
+    /// a fixed 24h lookback is a safe, idempotent approximation of that
+    /// until a persisted last-run watermark exists).
+    pub since: chrono::DateTime<chrono::Utc>,
+}
+
+impl LedgerOperation for BigQueryFocusIngestOp {
+    fn id(&self) -> &str {
+        "ingest-bigquery-focus"
+    }
+
+    fn description(&self) -> &str {
+        "Ingest a GCP BigQuery Billing Export (FOCUS-conformant) table via the bq CLI"
+    }
+
+    fn is_idempotent(&self) -> bool {
+        // See the type-level doc comment: re-running the same day's query
+        // and re-ingesting the resulting rows is safe/dedupable.
+        true
+    }
+
+    fn execute(&self, _ctx: &OperationContext) -> Result<OperationResult, LedgerOpError> {
+        use ledgerr_gcp_billing::{map_row_to_focus, BigQueryFocusSource};
+
+        let source = BigQueryFocusSource::new(
+            self.project_id.clone(),
+            self.dataset.clone(),
+            self.table.clone(),
+        );
+
+        // `query_rows` is async (it shells out via `tokio::process::Command`);
+        // this trait's `execute` is sync, so drive it to completion on a
+        // scratch runtime here — same pattern `PdfIngestOp::execute` uses
+        // for its own subprocess call.
+        let runtime = tokio::runtime::Runtime::new().map_err(|e| {
+            LedgerOpError::ExternalProcessFailed(format!("runtime creation failed: {e}"))
+        })?;
+        let since = self.since;
+        let started = std::time::Instant::now();
+        let result = runtime
+            .block_on(async { source.query_rows(since).await })
+            .map_err(|e| LedgerOpError::ExternalProcessFailed(format!("bq query failed: {e}")))?;
+        let rows = result.rows;
+
+        let mut mapped = Vec::with_capacity(rows.len());
+        let mut row_errors = Vec::new();
+        for (row_index, row) in rows.iter().enumerate() {
+            match map_row_to_focus(row) {
+                Ok(focus_row) => mapped.push(focus_row),
+                Err(e) => row_errors.push(IngestRowError {
+                    tx_id: None,
+                    row_index,
+                    error: format!("failed to map billing row to FOCUS: {e}"),
+                }),
+            }
+        }
+
+        // Persist the mapped rows to the FOCUS sidecar sink (content-hash
+        // deduped — re-ingesting the same window appends nothing new). This
+        // is what makes the op an actual ingest rather than a count-only
+        // dry run.
+        let sink = ledgerr_gcp_billing::FocusSink::from_env();
+        let (appended, deduped) = sink.append(&mapped).map_err(|e| {
+            LedgerOpError::ExternalProcessFailed(format!("FOCUS sink append failed: {e}"))
+        })?;
+
+        let mut issues = Vec::new();
+        if !row_errors.is_empty() {
+            issues.push(format!("{} rows failed FOCUS mapping", row_errors.len()));
+        }
+        if result.truncated {
+            issues.push(format!(
+                "bq result hit the --max_rows cap: window contains more rows than returned; \
+                 narrow `since` or raise GCP_BILLING_MAX_ROWS"
+            ));
+        }
+
+        Ok(OperationResult {
+            operation_id: "ingest-bigquery-focus".to_string(),
+            success: row_errors.is_empty() && !result.truncated,
+            items_processed: appended,
+            items_flagged: deduped,
+            issues,
+            duration_ms: started.elapsed().as_millis() as u64,
             row_errors,
         })
     }
@@ -1573,6 +1724,16 @@ impl OperationDispatcher {
                         title: title.clone(),
                     })
                 }
+                OperationKind::IngestBigQueryFocus {
+                    project_id,
+                    dataset,
+                    table,
+                } => Box::new(BigQueryFocusIngestOp {
+                    project_id: project_id.clone(),
+                    dataset: dataset.clone(),
+                    table: table.clone(),
+                    since: chrono::Utc::now() - chrono::Duration::hours(24),
+                }),
             };
 
             dispatcher.ops.push(op);
@@ -1714,13 +1875,15 @@ mod tests {
             source_glob: "statements/*.pdf".to_string(),
             vendor_hint: None,
         };
-        let ctx = test_ctx()
-            .with_input_path(PathBuf::from("/tmp/WF--BH--2024-01--statement.pdf"));
+        let ctx = test_ctx().with_input_path(PathBuf::from("/tmp/WF--BH--2024-01--statement.pdf"));
         let result = op.execute(&ctx);
         assert!(result.is_err());
         match result {
             Err(LedgerOpError::InvalidInput(msg)) => {
-                assert!(msg.contains("PdfIngestOp"), "error should mention PdfIngestOp, got: {msg}");
+                assert!(
+                    msg.contains("PdfIngestOp"),
+                    "error should mention PdfIngestOp, got: {msg}"
+                );
             }
             other => panic!("expected InvalidInput, got {other:?}"),
         }
@@ -1747,10 +1910,7 @@ mod tests {
             reqif_opa_mcp_dir: PathBuf::from("/tmp/reqif-opa-mcp"),
             account_id: "test-acct".to_string(),
         };
-        let ctx = OperationContext::new(
-            PathBuf::from("/tmp"),
-            PathBuf::from("/tmp/rules"),
-        );
+        let ctx = OperationContext::new(PathBuf::from("/tmp"), PathBuf::from("/tmp/rules"));
 
         let result = op.execute(&ctx);
         assert!(result.is_err());
@@ -1778,8 +1938,8 @@ mod tests {
     #[ignore = "requires uv + a reqif-opa-mcp checkout on disk"]
     fn pdf_ingest_op_real_subprocess_extraction_and_classification() {
         let reqif_opa_mcp_dir = dirs_next_home().join("promptexecution/reqif-opa-mcp");
-        let input_path = reqif_opa_mcp_dir
-            .join("samples/standards/upstream/owasp-asvs/OWASP_ASVS_5.0.0_en.pdf");
+        let input_path =
+            reqif_opa_mcp_dir.join("samples/standards/upstream/owasp-asvs/OWASP_ASVS_5.0.0_en.pdf");
         assert!(
             input_path.exists(),
             "expected sample PDF at {input_path:?} — is the reqif-opa-mcp checkout present?"
@@ -1793,12 +1953,11 @@ mod tests {
             reqif_opa_mcp_dir,
             account_id: "test-acct".to_string(),
         };
-        let ctx = OperationContext::new(
-            PathBuf::from("/tmp"),
-            PathBuf::from("/tmp/rules"),
-        );
+        let ctx = OperationContext::new(PathBuf::from("/tmp"), PathBuf::from("/tmp/rules"));
 
-        let result = op.execute(&ctx).expect("real subprocess extraction should succeed");
+        let result = op
+            .execute(&ctx)
+            .expect("real subprocess extraction should succeed");
         assert!(result.success);
         // The OWASP ASVS PDF is not a bank statement, so classify_document
         // should find zero TransactionRow-shaped nodes — proving the real
@@ -1808,7 +1967,9 @@ mod tests {
     }
 
     fn dirs_next_home() -> PathBuf {
-        std::env::var("HOME").map(PathBuf::from).expect("HOME must be set")
+        std::env::var("HOME")
+            .map(PathBuf::from)
+            .expect("HOME must be set")
     }
 
     #[test]
@@ -1899,6 +2060,48 @@ mod tests {
         assert!(r1.success);
         assert_eq!(r1.issues, r2.issues);
         assert!(r1.issues[0].starts_with("Requirement imported: req:"));
+    }
+
+    #[test]
+    fn bigquery_focus_ingest_op_is_idempotent() {
+        // `execute()` is not called here — it shells out to the `bq` CLI,
+        // which is not assumed present in a test environment. Idempotency
+        // and id/description are checkable without running the subprocess.
+        let op = BigQueryFocusIngestOp {
+            project_id: "acme-billing".to_string(),
+            dataset: "billing_export".to_string(),
+            table: "gcp_billing_export_resource_v1".to_string(),
+            since: chrono::Utc::now(),
+        };
+        assert!(op.is_idempotent());
+        assert_eq!(op.id(), "ingest-bigquery-focus");
+    }
+
+    #[test]
+    fn dispatcher_wires_ingest_bigquery_focus_operation_kind() {
+        use crate::calendar::{RecurrenceRule, ScheduledEvent};
+
+        let event = ScheduledEvent {
+            id: "gcp-billing-1".to_string(),
+            description: "gcp-billing-1".to_string(),
+            recurrence: RecurrenceRule::EveryNDays { n: 1 },
+            operation: OperationKind::IngestBigQueryFocus {
+                project_id: "acme-billing".to_string(),
+                dataset: "billing_export".to_string(),
+                table: "gcp_billing_export_resource_v1".to_string(),
+            },
+            jurisdiction: None,
+            enabled: true,
+            last_run: None,
+            tags: vec![],
+        };
+
+        // Constructing the dispatcher only builds the boxed operation; it
+        // does not execute it, so this does not require the `bq` CLI.
+        let dispatcher = OperationDispatcher::from_scheduled_events(&[event]);
+        assert!(dispatcher
+            .run_by_id("does-not-exist", &test_ctx())
+            .is_none());
     }
 
     #[test]
