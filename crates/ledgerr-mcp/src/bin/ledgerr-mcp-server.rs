@@ -56,8 +56,8 @@ fn main() {
 fn serve_http() {
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let addr = format!("0.0.0.0:{port}");
-    let server = tiny_http::Server::http(&addr)
-        .unwrap_or_else(|e| panic!("failed to bind {addr}: {e}"));
+    let server =
+        tiny_http::Server::http(&addr).unwrap_or_else(|e| panic!("failed to bind {addr}: {e}"));
     tracing::info!(%addr, "ledgerr-mcp HTTP transport listening");
 
     for mut request in server.incoming_requests() {
@@ -233,6 +233,11 @@ const AGT_GATED_TOOL_FAMILIES: &[&str] = &[
     mcp_adapter::XERO_TOOL,
     mcp_adapter::EVIDENCE_TOOL,
     mcp_adapter::FOCUS_TOOL,
+    // GCP billing ingest spawns a `bq` subprocess against live billing data
+    // and writes the FOCUS sink — same trust class as documents/focus
+    // ingests, so it gets the same call-time governance gate. (budget
+    // remains ungated, pre-existing — tracked separately.)
+    mcp_adapter::GCP_BILLING_TOOL,
 ];
 
 /// Governance gate for `tools/call` (issue #225: "Wire
@@ -383,9 +388,14 @@ fn handle_request(request: Value, agent_id: Option<&str>) -> Option<Value> {
                     let arguments = params.get("arguments").cloned().unwrap_or(Value::Null);
                     mcp_adapter::handle_budget_tool(&arguments)
                 }
+                mcp_adapter::GCP_BILLING_TOOL => {
+                    let arguments = params.get("arguments").cloned().unwrap_or(Value::Null);
+                    mcp_adapter::handle_gcp_billing_tool(&arguments)
+                }
                 "l3dg3rr_list_accounts" => mcp_adapter::handle_list_accounts(global_raw_service()),
                 "l3dg3rr_get_pipeline_status" => {
-                    let docling_ready = b00t_iface::docling::DoclingProcessSurface::new().is_ready();
+                    let docling_ready =
+                        b00t_iface::docling::DoclingProcessSurface::new().is_ready();
                     mcp_adapter::handle_pipeline_status(true, true, docling_ready, Vec::new())
                 }
                 "proxy_docling_ingest_pdf" => {

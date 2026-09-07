@@ -28,6 +28,7 @@ members = [
   "crates/ledgerr-desktop-agent",
   "crates/reqif-mcp-spike",
   "crates/ledgerr-cloud",
+  "crates/ledgerr-gcp-billing",
 ]
 resolver = "2"
 

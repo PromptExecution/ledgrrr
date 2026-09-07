@@ -71,9 +71,9 @@ fn external_tool_descriptors() -> Vec<Value> {
 
 // Public re-exports are always available (they're just constants).
 pub use crate::contract::{
-    AUDIT_TOOL, BUDGET_TOOL, DOCUMENTS_TOOL, EVIDENCE_TOOL, FOCUS_TOOL, MANIFEST_TOOL,
-    ONTOLOGY_TOOL, RECONCILIATION_TOOL, REVIEW_TOOL, SCHEMA_TOOL, TAX_TOOL, WORKFLOW_TOOL,
-    XERO_TOOL,
+    AUDIT_TOOL, BUDGET_TOOL, DOCUMENTS_TOOL, EVIDENCE_TOOL, FOCUS_TOOL, GCP_BILLING_TOOL,
+    MANIFEST_TOOL, ONTOLOGY_TOOL, RECONCILIATION_TOOL, REVIEW_TOOL, SCHEMA_TOOL, TAX_TOOL,
+    WORKFLOW_TOOL, XERO_TOOL,
 };
 
 // ── Default dispatch ──────────────────────────────────────────────────────────
@@ -130,7 +130,10 @@ pub fn tool_descriptors() -> Vec<Value> {
 ///
 /// This function only affects what `tools/list` reports; it does not gate
 /// `tools/call` dispatch, which is unchanged by this increment.
-pub fn filter_tools_for_ring(tools: Vec<Value>, ring: Option<msft_agent_gov_ledgrrr::Ring>) -> Vec<Value> {
+pub fn filter_tools_for_ring(
+    tools: Vec<Value>,
+    ring: Option<msft_agent_gov_ledgrrr::Ring>,
+) -> Vec<Value> {
     use msft_agent_gov_ledgrrr::{rings, Ring};
 
     let Some(ring) = ring else {
@@ -314,6 +317,153 @@ pub fn handle_budget_tool(arguments: &Value) -> Value {
     }
 }
 
+/// Handler for `ledgerr_gcp_billing` — GCP BigQuery Billing Export
+/// (FOCUS-conformant) ingestion into `ledgerr_focus::CostAndUsageRow`.
+///
+/// `BigQueryFocusSource::query_rows` is async (it shells out to the `bq`
+/// CLI via `tokio::process::Command`, same convention as
+/// `handle_budget_tool`'s `ReconcileRunner`); this handler drives it to
+/// completion on a scratch current-thread runtime for the same reason
+/// `handle_budget_tool` does — see that function's doc comment.
+///
+/// `ingest_since` and `query_last_run` locate the billing export table via
+/// the `GCP_BILLING_PROJECT_ID`, `GCP_BILLING_DATASET`, and
+/// `GCP_BILLING_TABLE` environment variables (no live export exists yet —
+/// see `ledgerr_gcp_billing`'s crate docs — so a missing `bq` binary or
+/// unset export surfaces as a normal `isError: true` envelope, not a
+/// panic). `dry_run_map_row` needs none of them, since it only exercises
+/// `map_row_to_focus` on an inline row and never queries BigQuery.
+pub fn handle_gcp_billing_tool(arguments: &Value) -> Value {
+    use crate::contract::{parse_gcp_billing, GcpBillingArgs};
+    use ledgerr_gcp_billing::map_row_to_focus;
+
+    let request = match parse_gcp_billing(arguments) {
+        Ok(r) => r,
+        Err(err) => return error_envelope(&err),
+    };
+
+    match request {
+        GcpBillingArgs::IngestSince { since } => {
+            let since = match chrono::DateTime::parse_from_rfc3339(&since) {
+                Ok(dt) => dt.with_timezone(&chrono::Utc),
+                Err(e) => {
+                    return error_envelope(&ToolError::InvalidInput(format!(
+                        "invalid RFC 3339 'since' timestamp '{since}': {e}"
+                    )))
+                }
+            };
+            let source = match gcp_billing_source_from_env() {
+                Ok(s) => s,
+                Err(err) => return error_envelope(&err),
+            };
+
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(rt) => rt,
+                Err(e) => {
+                    return error_envelope(&ToolError::Internal(format!(
+                        "failed to start gcp-billing-ingest runtime: {e}"
+                    )))
+                }
+            };
+            let result = match runtime.block_on(async { source.query_rows(since).await }) {
+                Ok(r) => r,
+                Err(e) => {
+                    return error_envelope(&ToolError::Internal(format!("bq query failed: {e}")))
+                }
+            };
+
+            let mut mapped_rows = Vec::with_capacity(result.rows.len());
+            let mut row_errors: Vec<Value> = Vec::new();
+            for (row_index, row) in result.rows.iter().enumerate() {
+                match map_row_to_focus(row) {
+                    Ok(focus_row) => mapped_rows.push(focus_row),
+                    Err(e) => row_errors.push(json!({
+                        "row_index": row_index,
+                        "error": e.to_string(),
+                    })),
+                }
+            }
+
+            // Persist mapped rows to the FOCUS sidecar sink (content-hash
+            // deduped). This is the actual ingest — previously rows were
+            // counted and discarded.
+            let sink = ledgerr_gcp_billing::FocusSink::from_env();
+            let (rows_written, rows_deduped) = match sink.append(&mapped_rows) {
+                Ok(counts) => counts,
+                Err(e) => {
+                    return error_envelope(&ToolError::Internal(format!(
+                        "FOCUS sink append failed: {e}"
+                    )))
+                }
+            };
+
+            let mut issues: Vec<String> = Vec::new();
+            if result.truncated {
+                issues.push(
+                    "bq result hit the --max_rows cap: window contains more rows than \
+                     returned; narrow `since` or raise GCP_BILLING_MAX_ROWS"
+                        .to_string(),
+                );
+            }
+
+            json!({
+                "content": [text_content(json!({
+                    "rows_queried": result.rows.len(),
+                    "rows_mapped": mapped_rows.len(),
+                    "rows_written": rows_written,
+                    "rows_deduped": rows_deduped,
+                    "sink_path": sink.path().display().to_string(),
+                    "truncated": result.truncated,
+                    "issues": issues,
+                    "row_errors": row_errors,
+                }))],
+                "isError": false
+            })
+        }
+        GcpBillingArgs::QueryLastRun => {
+            // No persisted last-run watermark exists yet — see
+            // `ledger_core::ledger_ops::BigQueryFocusIngestOp`'s doc comment
+            // on idempotency, which explains why a fixed lookback window
+            // stands in for one today. Report "never run" rather than
+            // fabricating a value.
+            json!({
+                "content": [text_content(json!({
+                    "last_run": Value::Null,
+                    "note": "no persisted last-run watermark; each ingest_since call re-queries the window it is given",
+                }))],
+                "isError": false
+            })
+        }
+        GcpBillingArgs::DryRunMapRow { raw_row_json } => match map_row_to_focus(&raw_row_json) {
+            Ok(focus_row) => json!({
+                "content": [text_content(json!(focus_row))],
+                "isError": false
+            }),
+            Err(e) => error_envelope(&ToolError::InvalidInput(e.to_string())),
+        },
+    }
+}
+
+fn gcp_billing_source_from_env() -> Result<ledgerr_gcp_billing::BigQueryFocusSource, ToolError> {
+    let project_id = std::env::var("GCP_BILLING_PROJECT_ID").map_err(|_| {
+        ToolError::InvalidInput(
+            "GCP_BILLING_PROJECT_ID environment variable is not set".to_string(),
+        )
+    })?;
+    let dataset = std::env::var("GCP_BILLING_DATASET").map_err(|_| {
+        ToolError::InvalidInput("GCP_BILLING_DATASET environment variable is not set".to_string())
+    })?;
+    let table = std::env::var("GCP_BILLING_TABLE").map_err(|_| {
+        ToolError::InvalidInput("GCP_BILLING_TABLE environment variable is not set".to_string())
+    })?;
+    Ok(ledgerr_gcp_billing::BigQueryFocusSource::new(
+        project_id, dataset, table,
+    ))
+}
+
 /// Hardcoded list of published tool names (always available).
 const BUILTIN_TOOL_NAMES: &[&str] = &[
     DOCUMENTS_TOOL,
@@ -329,6 +479,7 @@ const BUILTIN_TOOL_NAMES: &[&str] = &[
     SCHEMA_TOOL,
     MANIFEST_TOOL,
     BUDGET_TOOL,
+    GCP_BILLING_TOOL,
 ];
 
 fn builtin_tool_input_schema(name: &str) -> Value {
@@ -347,6 +498,7 @@ fn builtin_tool_description(name: &str) -> &'static str {
         XERO_TOOL => "Xero integration: contacts, accounts, invoices, and entity linking",
         EVIDENCE_TOOL => "Evidence provenance: trace transactions and identify gaps",
         BUDGET_TOOL => "GPU-training cloud budget reconciliation: AWS, GCP, Azure, HuggingFace Jobs",
+        GCP_BILLING_TOOL => "GCP BigQuery Billing Export (FOCUS-conformant) ingestion into ledgerr_focus::CostAndUsageRow",
         _ => "Ledgerr MCP tool",
     }
 }
@@ -1300,36 +1452,144 @@ pub fn handle_tax_tool(service: &TurboLedgerService, arguments: &Value) -> Value
                 "workbook_path": workbook_path,
             }),
         ),
-        TaxArgs::AuRdCheckEligibility { lei, activity_id, activity_name, has_hypothesis, has_technical_uncertainty, is_systematic, is_core } =>
-            crate::au_rd::handle_au_rd_check_eligibility(&lei, &activity_id, &activity_name, has_hypothesis, has_technical_uncertainty, is_systematic, is_core),
-        TaxArgs::AuRdClassifyExpenditure { lei, tx_id, category, amount_aud } =>
-            crate::au_rd::handle_au_rd_classify_expenditure(&lei, &tx_id, &category, &amount_aud),
-        TaxArgs::AuRdCalculateOffset { lei, total_eligible_aud, is_refundable } =>
-            crate::au_rd::handle_au_rd_calculate_offset(&lei, &total_eligible_aud, is_refundable),
-        TaxArgs::UsRdcFourPartTestCheck { lei, activity_id, activity_name, technical_in_nature, permits_experimentation, technological_uncertainty, systematic_process } =>
-            crate::us_rdc::handle_us_rdc_four_part_test(&lei, &activity_id, &activity_name, technical_in_nature, permits_experimentation, technological_uncertainty, systematic_process),
-        TaxArgs::CryptoCostBasisCheck { lei, tx_hash, tx_type, gross_proceeds, cost_basis, date, acquisition_date, jurisdiction, currency, cost_basis_method, chain, address } =>
-            crate::crypto::handle_crypto_cost_basis_check(&lei, &tx_hash, &tx_type, &gross_proceeds, &cost_basis, &date, acquisition_date.as_deref(), &jurisdiction, &currency, &cost_basis_method, &chain, &address),
-        TaxArgs::ComputeFeie { tax_year, foreign_earned_income, days_qualified, housing_exclusion, test, test_start, test_end, qualifying_days, window_start, window_end } =>
-            crate::feie::handle_compute_feie(tax_year, &foreign_earned_income, days_qualified, housing_exclusion.as_deref(), &test, &test_start, test_end.as_deref(), qualifying_days, window_start.as_deref(), window_end.as_deref()),
-        TaxArgs::ComputeDepreciation { tax_year, placed_in_service, total_basis, land_value, improvements, prior_accumulated } =>
-            crate::schedule_e::handle_compute_depreciation(tax_year, placed_in_service, total_basis, land_value, improvements, prior_accumulated),
-        TaxArgs::ComputeFbar { tax_year, filing_status, living_abroad, accounts } => {
+        TaxArgs::AuRdCheckEligibility {
+            lei,
+            activity_id,
+            activity_name,
+            has_hypothesis,
+            has_technical_uncertainty,
+            is_systematic,
+            is_core,
+        } => crate::au_rd::handle_au_rd_check_eligibility(
+            &lei,
+            &activity_id,
+            &activity_name,
+            has_hypothesis,
+            has_technical_uncertainty,
+            is_systematic,
+            is_core,
+        ),
+        TaxArgs::AuRdClassifyExpenditure {
+            lei,
+            tx_id,
+            category,
+            amount_aud,
+        } => crate::au_rd::handle_au_rd_classify_expenditure(&lei, &tx_id, &category, &amount_aud),
+        TaxArgs::AuRdCalculateOffset {
+            lei,
+            total_eligible_aud,
+            is_refundable,
+        } => crate::au_rd::handle_au_rd_calculate_offset(&lei, &total_eligible_aud, is_refundable),
+        TaxArgs::UsRdcFourPartTestCheck {
+            lei,
+            activity_id,
+            activity_name,
+            technical_in_nature,
+            permits_experimentation,
+            technological_uncertainty,
+            systematic_process,
+        } => crate::us_rdc::handle_us_rdc_four_part_test(
+            &lei,
+            &activity_id,
+            &activity_name,
+            technical_in_nature,
+            permits_experimentation,
+            technological_uncertainty,
+            systematic_process,
+        ),
+        TaxArgs::CryptoCostBasisCheck {
+            lei,
+            tx_hash,
+            tx_type,
+            gross_proceeds,
+            cost_basis,
+            date,
+            acquisition_date,
+            jurisdiction,
+            currency,
+            cost_basis_method,
+            chain,
+            address,
+        } => crate::crypto::handle_crypto_cost_basis_check(
+            &lei,
+            &tx_hash,
+            &tx_type,
+            &gross_proceeds,
+            &cost_basis,
+            &date,
+            acquisition_date.as_deref(),
+            &jurisdiction,
+            &currency,
+            &cost_basis_method,
+            &chain,
+            &address,
+        ),
+        TaxArgs::ComputeFeie {
+            tax_year,
+            foreign_earned_income,
+            days_qualified,
+            housing_exclusion,
+            test,
+            test_start,
+            test_end,
+            qualifying_days,
+            window_start,
+            window_end,
+        } => crate::feie::handle_compute_feie(
+            tax_year,
+            &foreign_earned_income,
+            days_qualified,
+            housing_exclusion.as_deref(),
+            &test,
+            &test_start,
+            test_end.as_deref(),
+            qualifying_days,
+            window_start.as_deref(),
+            window_end.as_deref(),
+        ),
+        TaxArgs::ComputeDepreciation {
+            tax_year,
+            placed_in_service,
+            total_basis,
+            land_value,
+            improvements,
+            prior_accumulated,
+        } => crate::schedule_e::handle_compute_depreciation(
+            tax_year,
+            placed_in_service,
+            total_basis,
+            land_value,
+            improvements,
+            prior_accumulated,
+        ),
+        TaxArgs::ComputeFbar {
+            tax_year,
+            filing_status,
+            living_abroad,
+            accounts,
+        } => {
             let input = crate::fbar::FbarInput {
                 tax_year,
                 filing_status,
                 living_abroad,
-                accounts: accounts.into_iter().map(|a| crate::fbar::ForeignAccountInput {
-                    account_id: a.account_id,
-                    institution: a.institution,
-                    country: a.country,
-                    currency: a.currency,
-                    daily_balances: a.daily_balances.into_iter().map(|d| crate::fbar::DailyBalance {
-                        date: d.date,
-                        balance: d.balance,
-                    }).collect(),
-                    year_end_rate: a.year_end_rate,
-                }).collect(),
+                accounts: accounts
+                    .into_iter()
+                    .map(|a| crate::fbar::ForeignAccountInput {
+                        account_id: a.account_id,
+                        institution: a.institution,
+                        country: a.country,
+                        currency: a.currency,
+                        daily_balances: a
+                            .daily_balances
+                            .into_iter()
+                            .map(|d| crate::fbar::DailyBalance {
+                                date: d.date,
+                                balance: d.balance,
+                            })
+                            .collect(),
+                        year_end_rate: a.year_end_rate,
+                    })
+                    .collect(),
             };
             let result = crate::fbar::compute_fbar(&input);
             let payload = serde_json::to_value(&result).unwrap_or_default();
@@ -1338,13 +1598,25 @@ pub fn handle_tax_tool(service: &TurboLedgerService, arguments: &Value) -> Value
                 "isError": false,
             })
         }
-        TaxArgs::ComputeCapitalLoss { tax_year, filing_status, short_term_losses, long_term_losses, short_term_gains, long_term_gains, prior_short_term_carryforward, prior_long_term_carryforward } =>
-            crate::capital_loss::handle_compute_capital_loss(
-                tax_year, &filing_status, &short_term_losses, &long_term_losses,
-                &short_term_gains, &long_term_gains,
-                prior_short_term_carryforward.as_deref(),
-                prior_long_term_carryforward.as_deref(),
-            ),
+        TaxArgs::ComputeCapitalLoss {
+            tax_year,
+            filing_status,
+            short_term_losses,
+            long_term_losses,
+            short_term_gains,
+            long_term_gains,
+            prior_short_term_carryforward,
+            prior_long_term_carryforward,
+        } => crate::capital_loss::handle_compute_capital_loss(
+            tax_year,
+            &filing_status,
+            &short_term_losses,
+            &long_term_losses,
+            &short_term_gains,
+            &long_term_gains,
+            prior_short_term_carryforward.as_deref(),
+            prior_long_term_carryforward.as_deref(),
+        ),
     }
 }
 
@@ -1693,9 +1965,12 @@ pub fn handle_import_ofx(service: &TurboLedgerService, arguments: &Value) -> Val
         "expense" => OffsetKind::Expense,
         "equity" => OffsetKind::Equity,
         "liability" => OffsetKind::Liability,
-        _ => return error_envelope(&ToolError::InvalidInput(format!(
-            "invalid offset_kind '{}': expected revenue, expense, equity, or liability", offset_kind_str
-        ))),
+        _ => {
+            return error_envelope(&ToolError::InvalidInput(format!(
+                "invalid offset_kind '{}': expected revenue, expense, equity, or liability",
+                offset_kind_str
+            )))
+        }
     };
 
     let config = beankeeper_bridge::ConversionConfig {
@@ -3581,7 +3856,10 @@ pub fn handle_evidence_tool(service: &TurboLedgerService, arguments: &Value) -> 
                 rationale,
                 source,
                 status,
-                related_decisions: related_decisions.into_iter().map(arc_kit_au::NodeId).collect(),
+                related_decisions: related_decisions
+                    .into_iter()
+                    .map(arc_kit_au::NodeId)
+                    .collect(),
                 imported_at: chrono::Utc::now(),
             };
             let node_id = node.node_id();

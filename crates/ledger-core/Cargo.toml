@@ -37,6 +37,8 @@ notify = "8.2"
 ledger-attest = { path = "../ledger-attest" }
 async-nats = { version = "0.45", features = ["service"], optional = true }
 futures-util = { version = "0.3", optional = true }
+ledgerr-focus = { workspace = true }
+ledgerr-gcp-billing = { path = "../ledgerr-gcp-billing" }
 
 # filesystem metadata — xattr on Linux; sidecar fallback is pure std
 [target.'cfg(target_os = "linux")'.dependencies]
