@@ -168,10 +168,7 @@ impl BigQueryFocusSource {
     /// hit the `--max_rows` cap, meaning the window contained more rows
     /// than one query returned and the caller MUST narrow `since` (or page)
     /// rather than treat the result as complete.
-    pub async fn query_rows(
-        &self,
-        since: DateTime<Utc>,
-    ) -> Result<QueryResult, BigQueryError> {
+    pub async fn query_rows(&self, since: DateTime<Utc>) -> Result<QueryResult, BigQueryError> {
         self.validate().map_err(|e| {
             BigQueryError::QueryFailed(format!("invalid BigQuery table identifier: {e}"))
         })?;

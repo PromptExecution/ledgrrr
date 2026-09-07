@@ -175,8 +175,7 @@ mod tests {
         // b00t_bin points at a binary that doesn't exist — if this path were
         // reached (it must not be), the test would fail with a
         // KeyProvisioning error instead of returning the OPENAI_API_KEY.
-        let config =
-            LlmConfig::provision_with(&store, "definitely-not-a-real-binary-xyz").unwrap();
+        let config = LlmConfig::provision_with(&store, "definitely-not-a-real-binary-xyz").unwrap();
 
         std::env::remove_var("OPENAI_API_KEY");
         assert_eq!(config.api_key, "sk-real-openai-key");
@@ -190,8 +189,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = SettingsStore::new_json_file(dir.path().join("settings.json"));
 
-        let config =
-            LlmConfig::provision_with(&store, "definitely-not-a-real-binary-xyz").unwrap();
+        let config = LlmConfig::provision_with(&store, "definitely-not-a-real-binary-xyz").unwrap();
 
         std::env::remove_var(B00T_SERVER_KEY_ENV);
         assert_eq!(config.api_key, "b00t-sk-headless-ci-key");
@@ -209,8 +207,7 @@ mod tests {
 
         // Binary that doesn't exist — proves the stored key was used instead
         // of attempting to mint a new one.
-        let config =
-            LlmConfig::provision_with(&store, "definitely-not-a-real-binary-xyz").unwrap();
+        let config = LlmConfig::provision_with(&store, "definitely-not-a-real-binary-xyz").unwrap();
 
         assert_eq!(config.api_key, "b00t-sk-already-stored");
     }
@@ -222,8 +219,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = SettingsStore::new_json_file(dir.path().join("settings.json"));
 
-        let result =
-            LlmConfig::provision_with(&store, "definitely-not-a-real-binary-xyz-12345");
+        let result = LlmConfig::provision_with(&store, "definitely-not-a-real-binary-xyz-12345");
 
         let err = result.expect_err("must fail, never silently proceed with an empty key");
         let message = err.to_string();

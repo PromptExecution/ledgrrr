@@ -85,7 +85,9 @@ impl LlmConfig {
     /// Deliberately independent of `api_key` — the base URL a client talks to
     /// and whether it currently holds a valid key are orthogonal.
     pub fn resolved_base_url(&self) -> &str {
-        self.base_url.as_deref().unwrap_or(DEFAULT_B00T_SERVER_BASE_URL)
+        self.base_url
+            .as_deref()
+            .unwrap_or(DEFAULT_B00T_SERVER_BASE_URL)
     }
 }
 
@@ -344,7 +346,8 @@ mod tests {
         let _lock = ENV_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         clear_base_url_env();
         let config = LlmConfig::from_env();
-        let client = LlmClient::new(config).expect("client construction never fails on base_url alone");
+        let client =
+            LlmClient::new(config).expect("client construction never fails on base_url alone");
         assert_eq!(
             client.chat_url,
             format!("{DEFAULT_B00T_SERVER_BASE_URL}/v1/chat/completions")

@@ -53,7 +53,10 @@ fn coverage_02_detects_missing_month() {
     let report = assert_account_coverage(&request, &tx_rows).expect("coverage ok");
     assert!(report.has_gaps, "expected gaps");
     assert_eq!(report.gaps.len(), 1);
-    assert!(report.gaps[0].1.contains("12"), "month 12 should be missing");
+    assert!(
+        report.gaps[0].1.contains("12"),
+        "month 12 should be missing"
+    );
 }
 
 #[test]
@@ -73,7 +76,10 @@ fn coverage_03_detects_duplicate_source_refs() {
     );
     let report = assert_account_coverage(&request, &tx_rows).expect("coverage ok");
     assert!(report.has_duplicates, "expected duplicates for january");
-    assert!(report.has_gaps, "the other 11 months of 2023 have no coverage");
+    assert!(
+        report.has_gaps,
+        "the other 11 months of 2023 have no coverage"
+    );
     assert_eq!(report.gaps.len(), 11);
 }
 

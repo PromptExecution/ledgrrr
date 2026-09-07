@@ -68,7 +68,9 @@ fn read_request(stream: &mut TcpStream) -> CapturedRequest {
 
     let mut body_bytes = vec![0u8; content_length];
     if content_length > 0 {
-        stream.read_exact(&mut body_bytes).expect("read request body");
+        stream
+            .read_exact(&mut body_bytes)
+            .expect("read request body");
     }
     let body = String::from_utf8(body_bytes).expect("utf8 body");
 
@@ -226,7 +228,9 @@ fn extract_receipt_bytes_sends_vision_content_and_parses_the_response() {
 
         let body: Value = serde_json::from_str(&req.body).expect("request body is valid JSON");
         let messages = body["messages"].as_array().expect("messages array");
-        let user_content = messages[1]["content"].as_array().expect("user content array");
+        let user_content = messages[1]["content"]
+            .as_array()
+            .expect("user content array");
         assert_eq!(user_content[0]["type"], "image_url");
         let url = user_content[0]["image_url"]["url"].as_str().unwrap();
         assert!(

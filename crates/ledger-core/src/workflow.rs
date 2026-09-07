@@ -183,39 +183,37 @@ impl WorkflowToml {
             .map(|s| s.id.as_str())
             .unwrap_or_default();
 
-        let states: Vec<State> = self
-            .state
-            .iter()
-            .map(|s| {
-                let outgoing: Vec<&TransitionDecl> =
-                    self.transitions.iter().filter(|t| t.from == s.id).collect();
+        let states: Vec<State> =
+            self.state
+                .iter()
+                .map(|s| {
+                    let outgoing: Vec<&TransitionDecl> =
+                        self.transitions.iter().filter(|t| t.from == s.id).collect();
 
-                let mut state = if s.terminal == Some(true) && outgoing.is_empty() {
-                    State::final_state(s.id.clone())
-                } else {
-                    State::atomic(s.id.clone())
-                };
+                    let mut state = if s.terminal == Some(true) && outgoing.is_empty() {
+                        State::final_state(s.id.clone())
+                    } else {
+                        State::atomic(s.id.clone())
+                    };
 
-                state.transitions = outgoing
-                    .into_iter()
-                    .flat_map(|t| {
-                        let mut transitions = vec![match &t.guard {
-                            None => Transition::new(t.event.clone(), t.to.clone()),
-                            Some(g) => {
-                                Transition::new(t.event.clone(), t.to.clone()).with_guard(g.clone())
+                    state.transitions = outgoing
+                        .into_iter()
+                        .flat_map(|t| {
+                            let mut transitions = vec![match &t.guard {
+                                None => Transition::new(t.event.clone(), t.to.clone()),
+                                Some(g) => Transition::new(t.event.clone(), t.to.clone())
+                                    .with_guard(g.clone()),
+                            }];
+                            if let Some(else_to) = &t.else_to {
+                                transitions.push(Transition::new(t.event.clone(), else_to.clone()));
                             }
-                        }];
-                        if let Some(else_to) = &t.else_to {
                             transitions
-                                .push(Transition::new(t.event.clone(), else_to.clone()));
-                        }
-                        transitions
-                    })
-                    .collect();
+                        })
+                        .collect();
 
-                state
-            })
-            .collect();
+                    state
+                })
+                .collect();
 
         scxml::model::Statechart::new(initial, states).with_name(self.name.clone())
     }
@@ -399,9 +397,19 @@ mod tests {
             .iter()
             .filter(|t| t.event.as_deref() == Some("FAIL"))
             .collect();
-        assert_eq!(fail_transitions.len(), 2, "guard + else should both be present");
-        assert!(fail_transitions[0].guard.is_some(), "guarded arm comes first");
-        assert!(fail_transitions[1].guard.is_none(), "bare fallback comes second");
+        assert_eq!(
+            fail_transitions.len(),
+            2,
+            "guard + else should both be present"
+        );
+        assert!(
+            fail_transitions[0].guard.is_some(),
+            "guarded arm comes first"
+        );
+        assert!(
+            fail_transitions[1].guard.is_none(),
+            "bare fallback comes second"
+        );
         for t in &fail_transitions {
             assert_eq!(t.targets, vec!["NeedsReview".to_string()]);
         }

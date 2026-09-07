@@ -22,12 +22,18 @@ use ledgerr_llm::{LlmClient, LlmConfig};
 #[cfg(feature = "xero")]
 use xero_service::XeroService;
 
-pub mod beankeeper_import;
 pub mod batch_executor;
+pub mod beankeeper_import;
 use crate::batch_executor::BatchExecutor;
+pub mod au_rd;
 pub mod calendar_tool;
+pub mod capital_loss;
 pub mod contract;
+pub mod coverage;
+pub mod crypto;
 pub mod events;
+pub mod fbar;
+pub mod feie;
 pub mod focus_tool;
 pub mod hsm;
 pub mod mcp_adapter;
@@ -39,22 +45,13 @@ pub mod provider;
 #[cfg(feature = "b00t")]
 pub mod providers;
 pub mod reconciliation;
+pub mod schedule_e;
 pub mod schema;
 pub mod shape_tool;
-pub mod au_rd;
-pub mod coverage;
-pub mod crypto;
-pub mod capital_loss;
-pub mod feie;
-pub mod schedule_e;
-pub mod fbar;
 pub mod tax_assist;
 pub mod us_rdc;
 pub mod xero_service;
 pub use calendar_tool::{list_calendar_events, CalendarEventRow, ListCalendarEventsRequest};
-pub use coverage::{
-    AccountPeriodCoverage, CoverageReport, CoverageRequest, Discontinuity,
-};
 pub use contract::{
     AmountRange, ApplyMappingBulkRequest, ApplyMappingBulkResponse, BatchClassifyRequest,
     BatchClassifyResponse, BatchItemResult, BatchItemStatus, BatchMode, BatchResolveFlagsRequest,
@@ -63,10 +60,16 @@ pub use contract::{
     QueueStatus, SimilarityMatchType, SortDirection, SortField, SortSpec, TransactionFilters,
     TransactionRow as TransactionRowResponse,
 };
+pub use coverage::{AccountPeriodCoverage, CoverageReport, CoverageRequest, Discontinuity};
 pub use events::{
     AppendEventResult, EventHistoryFilter, EventHistoryResponse, InMemoryLifecycleEventStore,
     LifecycleEvent, LifecycleEventStore, ReplayProjection,
 };
+pub use fbar::{
+    compute_fbar, DailyBalance, FbarDetermination, FbarInput, ForeignAccountInput,
+    ForeignAccountYear,
+};
+pub use feie::{FeieInput, FeieOutcome, ForeignResidenceTest};
 pub use hsm::{
     HsmMachine, HsmResumeRequest, HsmResumeResponse, HsmStatusRequest, HsmStatusResponse,
     HsmTransitionRequest, HsmTransitionResponse,
@@ -85,15 +88,10 @@ pub use reconciliation::{
 };
 pub use schema::{CustomKind, KindInfo, SchemaKinds, SchemaStore};
 pub use shape_tool::{get_document_shape, GetDocumentShapeRequest};
-pub use feie::{FeieInput, FeieOutcome, ForeignResidenceTest};
 pub use tax_assist::{
     TaxAmbiguityRecord, TaxAmbiguityReviewRequest, TaxAmbiguityReviewResponse, TaxAssistRequest,
     TaxAssistResponse, TaxAssistSummary, TaxEvidenceChainRequest, TaxEvidenceChainResponse,
     TaxEvidenceCurrentState, TaxEvidenceEvent, TaxEvidenceRow, TaxEvidenceSource,
-};
-pub use fbar::{
-    compute_fbar, DailyBalance, FbarDetermination, FbarInput, ForeignAccountInput,
-    ForeignAccountYear,
 };
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccountSummary {

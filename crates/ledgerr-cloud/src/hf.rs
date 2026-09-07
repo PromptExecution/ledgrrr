@@ -36,7 +36,10 @@ impl HfProvider {
     /// non-`CANCELED`/`ERROR` job's duration (column 5) at `a100_large_rate`
     /// cake/hour. Not part of [`BudgetProvider`] — see module docs.
     pub async fn estimate_spend_cake(&self) -> Result<Decimal, ProviderError> {
-        let output = Command::new("hf").args(["jobs", "ps", "--all"]).output().await?;
+        let output = Command::new("hf")
+            .args(["jobs", "ps", "--all"])
+            .output()
+            .await?;
         if !output.status.success() {
             return Err(ProviderError::Parse(format!(
                 "hf jobs ps --all failed: {}",
@@ -166,7 +169,10 @@ mod tests {
             parse_duration_to_hours("23m").expect("parses"),
             Decimal::from(23 * 60) / Decimal::from(3600)
         );
-        assert_eq!(parse_duration_to_hours("2h").expect("parses"), Decimal::from(2));
+        assert_eq!(
+            parse_duration_to_hours("2h").expect("parses"),
+            Decimal::from(2)
+        );
     }
 
     #[test]

@@ -155,6 +155,9 @@ mod tests {
         log.append(ActionKind::HolonLinked, "agent-1", 2, payload);
         assert_eq!(log.len(), 2);
         let kinds: Vec<_> = log.iter().map(|r| r.action_kind).collect();
-        assert_eq!(kinds, vec![ActionKind::HolonCreated, ActionKind::HolonLinked]);
+        assert_eq!(
+            kinds,
+            vec![ActionKind::HolonCreated, ActionKind::HolonLinked]
+        );
     }
 }

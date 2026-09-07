@@ -24,8 +24,8 @@
 //! - gRPC via tonic + Apache Arrow DataFrames (DataFusion compatible)
 
 use chrono::{DateTime, Utc};
-use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -167,7 +167,9 @@ impl CostAndUsageRow {
             self.x_variant.as_deref().unwrap_or("-"),
             self.billed_cost,
             self.effective_cost,
-            self.consumed_quantity.map(|q| format!("{q:.2}")).unwrap_or_else(|| "0".into()),
+            self.consumed_quantity
+                .map(|q| format!("{q:.2}"))
+                .unwrap_or_else(|| "0".into()),
         )
     }
 }
@@ -242,7 +244,10 @@ impl PersonalityProfile {
         traits.insert("extraversion".into(), dec!(0.30));
         traits.insert("agreeableness".into(), dec!(0.50));
         traits.insert("neuroticism".into(), dec!(0.20));
-        Self { label: "analyst".into(), traits }
+        Self {
+            label: "analyst".into(),
+            traits,
+        }
     }
 
     pub fn explorer() -> Self {
@@ -252,7 +257,10 @@ impl PersonalityProfile {
         traits.insert("extraversion".into(), dec!(0.70));
         traits.insert("agreeableness".into(), dec!(0.60));
         traits.insert("neuroticism".into(), dec!(0.35));
-        Self { label: "explorer".into(), traits }
+        Self {
+            label: "explorer".into(),
+            traits,
+        }
     }
 
     pub fn guardian() -> Self {
@@ -262,7 +270,10 @@ impl PersonalityProfile {
         traits.insert("extraversion".into(), dec!(0.40));
         traits.insert("agreeableness".into(), dec!(0.75));
         traits.insert("neuroticism".into(), dec!(0.50));
-        Self { label: "guardian".into(), traits }
+        Self {
+            label: "guardian".into(),
+            traits,
+        }
     }
 
     pub fn all() -> Vec<Self> {
@@ -347,34 +358,112 @@ pub mod arrow_serde {
         let batch = RecordBatch::try_new(
             schema,
             vec![
-                Arc::new(StringArray::from(rows.iter().map(|r| r.billing_account_id.as_str()).collect::<Vec<_>>())) as ArrayRef,
-                Arc::new(StringArray::from(rows.iter().map(|r| r.billing_account_name.as_deref()).collect::<Vec<Option<&str>>>())),
-                Arc::new(StringArray::from(rows.iter().map(|r| r.billing_currency.as_str()).collect::<Vec<_>>())),
-                Arc::new(TimestampNanosecondArray::from(rows.iter().map(|r| r.billing_period_start.timestamp_nanos_opt()).collect::<Vec<_>>())),
-                Arc::new(TimestampNanosecondArray::from(rows.iter().map(|r| r.billing_period_end.timestamp_nanos_opt()).collect::<Vec<_>>())),
-                Arc::new(TimestampNanosecondArray::from(rows.iter().map(|r| r.charge_period_start.timestamp_nanos_opt()).collect::<Vec<_>>())),
-                Arc::new(TimestampNanosecondArray::from(rows.iter().map(|r| r.charge_period_end.timestamp_nanos_opt()).collect::<Vec<_>>())),
-                Arc::new(StringArray::from(rows.iter().map(|r| format!("{:?}", r.charge_category)).collect::<Vec<_>>())),
-                Arc::new(StringArray::from(rows.iter().map(|r| format!("{:?}", r.charge_frequency)).collect::<Vec<_>>())),
+                Arc::new(StringArray::from(
+                    rows.iter()
+                        .map(|r| r.billing_account_id.as_str())
+                        .collect::<Vec<_>>(),
+                )) as ArrayRef,
+                Arc::new(StringArray::from(
+                    rows.iter()
+                        .map(|r| r.billing_account_name.as_deref())
+                        .collect::<Vec<Option<&str>>>(),
+                )),
+                Arc::new(StringArray::from(
+                    rows.iter()
+                        .map(|r| r.billing_currency.as_str())
+                        .collect::<Vec<_>>(),
+                )),
+                Arc::new(TimestampNanosecondArray::from(
+                    rows.iter()
+                        .map(|r| r.billing_period_start.timestamp_nanos_opt())
+                        .collect::<Vec<_>>(),
+                )),
+                Arc::new(TimestampNanosecondArray::from(
+                    rows.iter()
+                        .map(|r| r.billing_period_end.timestamp_nanos_opt())
+                        .collect::<Vec<_>>(),
+                )),
+                Arc::new(TimestampNanosecondArray::from(
+                    rows.iter()
+                        .map(|r| r.charge_period_start.timestamp_nanos_opt())
+                        .collect::<Vec<_>>(),
+                )),
+                Arc::new(TimestampNanosecondArray::from(
+                    rows.iter()
+                        .map(|r| r.charge_period_end.timestamp_nanos_opt())
+                        .collect::<Vec<_>>(),
+                )),
+                Arc::new(StringArray::from(
+                    rows.iter()
+                        .map(|r| format!("{:?}", r.charge_category))
+                        .collect::<Vec<_>>(),
+                )),
+                Arc::new(StringArray::from(
+                    rows.iter()
+                        .map(|r| format!("{:?}", r.charge_frequency))
+                        .collect::<Vec<_>>(),
+                )),
                 Arc::new(
-                    Decimal128Array::from(rows.iter().map(|r| decimal_to_i128(&r.billed_cost)).collect::<Vec<_>>())
-                        .with_precision_and_scale(DECIMAL_PRECISION, DECIMAL_SCALE)
-                        .expect("BilledCost Decimal128 precision/scale is valid"),
+                    Decimal128Array::from(
+                        rows.iter()
+                            .map(|r| decimal_to_i128(&r.billed_cost))
+                            .collect::<Vec<_>>(),
+                    )
+                    .with_precision_and_scale(DECIMAL_PRECISION, DECIMAL_SCALE)
+                    .expect("BilledCost Decimal128 precision/scale is valid"),
                 ),
                 Arc::new(
-                    Decimal128Array::from(rows.iter().map(|r| decimal_to_i128(&r.effective_cost)).collect::<Vec<_>>())
-                        .with_precision_and_scale(DECIMAL_PRECISION, DECIMAL_SCALE)
-                        .expect("EffectiveCost Decimal128 precision/scale is valid"),
+                    Decimal128Array::from(
+                        rows.iter()
+                            .map(|r| decimal_to_i128(&r.effective_cost))
+                            .collect::<Vec<_>>(),
+                    )
+                    .with_precision_and_scale(DECIMAL_PRECISION, DECIMAL_SCALE)
+                    .expect("EffectiveCost Decimal128 precision/scale is valid"),
                 ),
-                Arc::new(StringArray::from(rows.iter().map(|r| r.service_provider_name.as_str()).collect::<Vec<_>>())),
-                Arc::new(StringArray::from(rows.iter().map(|r| r.service_name.as_str()).collect::<Vec<_>>())),
-                Arc::new(StringArray::from(rows.iter().map(|r| r.sku_id.as_str()).collect::<Vec<_>>())),
-                Arc::new(StringArray::from(rows.iter().map(|r| r.x_experiment_id.as_deref()).collect::<Vec<Option<&str>>>())),
-                Arc::new(StringArray::from(rows.iter().map(|r| r.x_variant.as_deref()).collect::<Vec<Option<&str>>>())),
-                Arc::new(StringArray::from(rows.iter().map(|r| r.x_personality.as_deref()).collect::<Vec<Option<&str>>>())),
-                Arc::new(Float64Array::from(rows.iter().map(|r| r.x_experiment_score.and_then(|s| s.to_f64())).collect::<Vec<Option<f64>>>())),
-                Arc::new(StringArray::from(rows.iter().map(|r| r.x_agent_id.as_deref()).collect::<Vec<Option<&str>>>())),
-                Arc::new(StringArray::from(rows.iter().map(|r| r.x_reasoning_review.as_deref()).collect::<Vec<Option<&str>>>())),
+                Arc::new(StringArray::from(
+                    rows.iter()
+                        .map(|r| r.service_provider_name.as_str())
+                        .collect::<Vec<_>>(),
+                )),
+                Arc::new(StringArray::from(
+                    rows.iter()
+                        .map(|r| r.service_name.as_str())
+                        .collect::<Vec<_>>(),
+                )),
+                Arc::new(StringArray::from(
+                    rows.iter().map(|r| r.sku_id.as_str()).collect::<Vec<_>>(),
+                )),
+                Arc::new(StringArray::from(
+                    rows.iter()
+                        .map(|r| r.x_experiment_id.as_deref())
+                        .collect::<Vec<Option<&str>>>(),
+                )),
+                Arc::new(StringArray::from(
+                    rows.iter()
+                        .map(|r| r.x_variant.as_deref())
+                        .collect::<Vec<Option<&str>>>(),
+                )),
+                Arc::new(StringArray::from(
+                    rows.iter()
+                        .map(|r| r.x_personality.as_deref())
+                        .collect::<Vec<Option<&str>>>(),
+                )),
+                Arc::new(Float64Array::from(
+                    rows.iter()
+                        .map(|r| r.x_experiment_score.and_then(|s| s.to_f64()))
+                        .collect::<Vec<Option<f64>>>(),
+                )),
+                Arc::new(StringArray::from(
+                    rows.iter()
+                        .map(|r| r.x_agent_id.as_deref())
+                        .collect::<Vec<Option<&str>>>(),
+                )),
+                Arc::new(StringArray::from(
+                    rows.iter()
+                        .map(|r| r.x_reasoning_review.as_deref())
+                        .collect::<Vec<Option<&str>>>(),
+                )),
             ],
         )
         .expect("FOCUS core CostAndUsage Arrow RecordBatch construction failed");
@@ -420,8 +509,14 @@ pub fn compute_focus_delta(
 
     let mut dimension_deltas = HashMap::new();
     for (dim, _) in dimension_scores_control.iter() {
-        let c = dimension_scores_control.get(dim).copied().unwrap_or(Decimal::ZERO);
-        let t = dimension_scores_treatment.get(dim).copied().unwrap_or(Decimal::ZERO);
+        let c = dimension_scores_control
+            .get(dim)
+            .copied()
+            .unwrap_or(Decimal::ZERO);
+        let t = dimension_scores_treatment
+            .get(dim)
+            .copied()
+            .unwrap_or(Decimal::ZERO);
         let delta = match dim.as_str() {
             "risk" | "cost" | "time" => c - t,
             _ => t - c,
@@ -429,9 +524,19 @@ pub fn compute_focus_delta(
         dimension_deltas.insert(dim.clone(), delta);
     }
 
-    let c_roi = dimension_scores_control.get("roi").copied().unwrap_or(Decimal::ZERO);
-    let t_roi = dimension_scores_treatment.get("roi").copied().unwrap_or(Decimal::ZERO);
-    let recommendation = if t_roi > c_roi { "treatment" } else { "control" };
+    let c_roi = dimension_scores_control
+        .get("roi")
+        .copied()
+        .unwrap_or(Decimal::ZERO);
+    let t_roi = dimension_scores_treatment
+        .get("roi")
+        .copied()
+        .unwrap_or(Decimal::ZERO);
+    let recommendation = if t_roi > c_roi {
+        "treatment"
+    } else {
+        "control"
+    };
 
     FocusDelta {
         experiment_id: experiment_id.to_string(),
@@ -610,7 +715,10 @@ mod tests {
     #[test]
     fn test_focus_arrow_record_batch() {
         use arrow_serde::*;
-        let rows = vec![sample_row("exp-001", "control", 100.0), sample_row("exp-001", "treatment", 150.0)];
+        let rows = vec![
+            sample_row("exp-001", "control", 100.0),
+            sample_row("exp-001", "treatment", 150.0),
+        ];
         let batch = core_rows_to_batch(&rows);
         assert_eq!(batch.num_rows(), 2);
         assert_eq!(batch.num_columns(), 20);

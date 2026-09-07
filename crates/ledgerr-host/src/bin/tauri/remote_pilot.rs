@@ -128,7 +128,10 @@ fn route(raw: &[u8], state: &Arc<RemotePilotState>) -> String {
     };
     let body = &raw[header_end + 4..];
     let Ok(request) = serde_json::from_slice::<Value>(body) else {
-        let _ = std::fs::write(std::env::temp_dir().join("host-tauri-remote-pilot-badrequest.txt"), raw);
+        let _ = std::fs::write(
+            std::env::temp_dir().join("host-tauri-remote-pilot-badrequest.txt"),
+            raw,
+        );
         return json_response(400, &json!({"error": "invalid json body"}));
     };
     let method = request.get("method").and_then(Value::as_str).unwrap_or("");
@@ -141,16 +144,23 @@ fn route(raw: &[u8], state: &Arc<RemotePilotState>) -> String {
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string();
-            let arguments = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
+            let arguments = params
+                .get("arguments")
+                .cloned()
+                .unwrap_or_else(|| json!({}));
             let start = Instant::now();
             let result = dispatch(&name, &arguments, state);
             let elapsed_ms = start.elapsed().as_millis();
-            state.command_log.lock().unwrap().push(RemoteCommandLogEntry {
-                tool: name,
-                arguments: arguments.clone(),
-                result: result.clone(),
-                elapsed_ms,
-            });
+            state
+                .command_log
+                .lock()
+                .unwrap()
+                .push(RemoteCommandLogEntry {
+                    tool: name,
+                    arguments: arguments.clone(),
+                    result: result.clone(),
+                    elapsed_ms,
+                });
             json_response(200, &json!({"content": result}))
         }
         other => json_response(400, &json!({"error": format!("unknown method: {other}")})),
@@ -190,21 +200,30 @@ fn tool_descriptors() -> Value {
 fn dispatch(name: &str, args: &Value, state: &Arc<RemotePilotState>) -> Value {
     match name {
         "remote_evaluate_js" => {
-            let expression = args.get("expression").and_then(Value::as_str).unwrap_or_default();
+            let expression = args
+                .get("expression")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             match cdp_evaluate(expression) {
                 Ok(value) => json!({"ok": true, "value": value}),
                 Err(error) => json!({"ok": false, "error": error}),
             }
         }
         "remote_screenshot" => {
-            let path = args.get("path").and_then(Value::as_str).unwrap_or("screenshot.png");
+            let path = args
+                .get("path")
+                .and_then(Value::as_str)
+                .unwrap_or("screenshot.png");
             match cdp_screenshot(path) {
                 Ok(bytes) => json!({"ok": true, "path": path, "bytes": bytes}),
                 Err(error) => json!({"ok": false, "error": error}),
             }
         }
         "remote_show_panel" => {
-            let panel = args.get("panel").and_then(Value::as_str).unwrap_or_default();
+            let panel = args
+                .get("panel")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             match PANEL_IDS.iter().position(|p| *p == panel) {
                 Some(index) => {
                     let expression = format!(
@@ -215,7 +234,9 @@ fn dispatch(name: &str, args: &Value, state: &Arc<RemotePilotState>) -> Value {
                         Err(error) => json!({"ok": false, "error": error}),
                     }
                 }
-                None => json!({"ok": false, "error": format!("unknown panel: {panel}; valid: {PANEL_IDS:?}")}),
+                None => {
+                    json!({"ok": false, "error": format!("unknown panel: {panel}; valid: {PANEL_IDS:?}")})
+                }
             }
         }
         "remote_get_logs" => {
@@ -326,7 +347,11 @@ async fn cdp_roundtrip(ws_url: String, request: Value) -> Result<Value, String> 
 /// neither type implements Serialize — plus every remote-pilot command
 /// received) to a timestamped file under the OS temp dir and returns its
 /// path. Called when `--timeout` fires.
-pub fn dump_session_log(state: &RemotePilotState, history_debug: &str, review_log_debug: &str) -> PathBuf {
+pub fn dump_session_log(
+    state: &RemotePilotState,
+    history_debug: &str,
+    review_log_debug: &str,
+) -> PathBuf {
     let pid = std::process::id();
     let path = std::env::temp_dir().join(format!("host-tauri-session-dump-{pid}.json"));
     let commands = state.command_log.lock().unwrap();
@@ -336,7 +361,10 @@ pub fn dump_session_log(state: &RemotePilotState, history_debug: &str, review_lo
         "review_log_debug": review_log_debug,
         "remote_commands": &*commands,
     });
-    let _ = std::fs::write(&path, serde_json::to_string_pretty(&dump).unwrap_or_default());
+    let _ = std::fs::write(
+        &path,
+        serde_json::to_string_pretty(&dump).unwrap_or_default(),
+    );
     path
 }
 
@@ -464,13 +492,20 @@ mod tests {
         let state = Arc::new(RemotePilotState::default());
         let result = dispatch("not_a_real_tool", &json!({}), &state);
         assert_eq!(result["ok"], json!(false));
-        assert!(result["error"].as_str().unwrap().contains("not_a_real_tool"));
+        assert!(result["error"]
+            .as_str()
+            .unwrap()
+            .contains("not_a_real_tool"));
     }
 
     #[test]
     fn dispatch_remote_show_panel_rejects_unknown_panel() {
         let state = Arc::new(RemotePilotState::default());
-        let result = dispatch("remote_show_panel", &json!({"panel": "nonexistent"}), &state);
+        let result = dispatch(
+            "remote_show_panel",
+            &json!({"panel": "nonexistent"}),
+            &state,
+        );
         assert_eq!(result["ok"], json!(false));
         assert!(result["error"].as_str().unwrap().contains("unknown panel"));
     }
@@ -497,11 +532,15 @@ mod tests {
         let state = Arc::new(RemotePilotState::default());
         let _ = route(&http_request(r#"{"method":"tools/list"}"#), &state);
         let _ = route(
-            &http_request(r#"{"method":"tools/call","params":{"name":"remote_remaining_timeout","arguments":{}}}"#),
+            &http_request(
+                r#"{"method":"tools/call","params":{"name":"remote_remaining_timeout","arguments":{}}}"#,
+            ),
             &state,
         );
         let logs_response = route(
-            &http_request(r#"{"method":"tools/call","params":{"name":"remote_get_logs","arguments":{}}}"#),
+            &http_request(
+                r#"{"method":"tools/call","params":{"name":"remote_get_logs","arguments":{}}}"#,
+            ),
             &state,
         );
         assert!(logs_response.contains("remote_remaining_timeout"));
@@ -518,17 +557,24 @@ mod tests {
     #[test]
     fn dump_session_log_writes_expected_fields() {
         let state = RemotePilotState::default();
-        state.command_log.lock().unwrap().push(RemoteCommandLogEntry {
-            tool: "remote_get_logs".to_string(),
-            arguments: json!({}),
-            result: json!({"ok": true}),
-            elapsed_ms: 5,
-        });
+        state
+            .command_log
+            .lock()
+            .unwrap()
+            .push(RemoteCommandLogEntry {
+                tool: "remote_get_logs".to_string(),
+                arguments: json!({}),
+                result: json!({"ok": true}),
+                elapsed_ms: 5,
+            });
         let path = dump_session_log(&state, "[]", "ReviewLog { entries: [] }");
         let contents = std::fs::read_to_string(&path).expect("dump file should exist");
         let _ = std::fs::remove_file(&path);
         let parsed: Value = serde_json::from_str(&contents).unwrap();
         assert_eq!(parsed["chat_history_debug"], json!("[]"));
-        assert_eq!(parsed["remote_commands"][0]["tool"], json!("remote_get_logs"));
+        assert_eq!(
+            parsed["remote_commands"][0]["tool"],
+            json!("remote_get_logs")
+        );
     }
 }

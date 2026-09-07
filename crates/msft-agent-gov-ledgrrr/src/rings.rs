@@ -13,10 +13,7 @@ use agentmesh::{Ring, RingEnforcer};
 
 /// Tools that always require operator approval (Ring::Admin escalation path).
 /// Maps to `CommitGate::PendingOperator` in ledger-core.
-pub const APPROVAL_REQUIRED_TOOLS: &[&str] = &[
-    "ledgerr_reconciliation",
-    "ledgerr_workflow",
-];
+pub const APPROVAL_REQUIRED_TOOLS: &[&str] = &["ledgerr_reconciliation", "ledgerr_workflow"];
 
 /// Top-level tool families that sit outside the AGT ring model entirely
 /// (not part of `PUBLISHED_TOOL_NAMES` / any ring's action-pattern list
@@ -169,9 +166,9 @@ pub fn ring_from_env_str(s: &str) -> Option<Ring> {
 pub fn ring_for_trust(score: u32) -> Ring {
     match score {
         900..=1000 => Ring::Admin,
-        500..=899  => Ring::Standard,
-        300..=499  => Ring::Restricted,
-        _          => Ring::Sandboxed,
+        500..=899 => Ring::Standard,
+        300..=499 => Ring::Restricted,
+        _ => Ring::Sandboxed,
     }
 }
 

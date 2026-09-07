@@ -130,7 +130,11 @@ fn test_02_full_lifecycle() {
     let kinds: Vec<ActionKind> = ctrl.log().iter().map(|r| r.action_kind).collect();
     assert_eq!(
         kinds,
-        vec![ActionKind::StepAuthorized, ActionKind::StepAuthorized, ActionKind::StepAuthorized]
+        vec![
+            ActionKind::StepAuthorized,
+            ActionKind::StepAuthorized,
+            ActionKind::StepAuthorized
+        ]
     );
 }
 
@@ -179,7 +183,10 @@ fn test_04_fork_merge() {
     assert_eq!(r_d_by_alice.step_id, "D");
     assert_eq!(r_d_by_bob.step_id, "D");
     // Same step, different authorizers → different hashes
-    assert_ne!(r_d_by_alice.authorization_hash, r_d_by_bob.authorization_hash);
+    assert_ne!(
+        r_d_by_alice.authorization_hash,
+        r_d_by_bob.authorization_hash
+    );
 
     // Total log: A(×2) + B + C + D(×2) = 6 entries
     assert_eq!(ctrl.log().len(), 6);
@@ -581,9 +588,17 @@ fn test_33_dedup_identical_nodes() {
         z_layer: None,
         semantic_type: None,
     };
-    let r = TypeRelationship::new("dedup::MyType", "dedup::Other", TypeRelationshipKind::References);
+    let r = TypeRelationship::new(
+        "dedup::MyType",
+        "dedup::Other",
+        TypeRelationshipKind::References,
+    );
     // Duplicate relationship too
-    let r_dup = TypeRelationship::new("dedup::MyType", "dedup::Other", TypeRelationshipKind::References);
+    let r_dup = TypeRelationship::new(
+        "dedup::MyType",
+        "dedup::Other",
+        TypeRelationshipKind::References,
+    );
 
     let g = TypeRelationshipGraph::new(vec![n1, n2], vec![r, r_dup]);
     assert_eq!(g.nodes.len(), 2); // Raw storage, no dedup
@@ -673,7 +688,13 @@ fn test_38_process_to_holon_to_cytoscape_to_render_html() {
     let holons: Vec<Holon> = ctrl
         .steps()
         .iter()
-        .map(|s| Holon::root(s.step_id.clone(), s.description.clone(), HolonKind::ProcessNode))
+        .map(|s| {
+            Holon::root(
+                s.step_id.clone(),
+                s.description.clone(),
+                HolonKind::ProcessNode,
+            )
+        })
         .collect();
 
     // 3. Convert to CytoscapeGraph
@@ -751,22 +772,10 @@ fn test_39_branching_visualization() {
 
     // Verify both paths are present: A→B→D and A→C→D
     let edge_ids: Vec<&str> = g.edges.iter().map(|e| e.data.id.as_str()).collect();
-    assert!(
-        edge_ids.contains(&"A__contains__B"),
-        "missing A→B edge"
-    );
-    assert!(
-        edge_ids.contains(&"A__contains__C"),
-        "missing A→C edge"
-    );
-    assert!(
-        edge_ids.contains(&"B__contains__D"),
-        "missing B→D edge"
-    );
-    assert!(
-        edge_ids.contains(&"C__contains__D"),
-        "missing C→D edge"
-    );
+    assert!(edge_ids.contains(&"A__contains__B"), "missing A→B edge");
+    assert!(edge_ids.contains(&"A__contains__C"), "missing A→C edge");
+    assert!(edge_ids.contains(&"B__contains__D"), "missing B→D edge");
+    assert!(edge_ids.contains(&"C__contains__D"), "missing C→D edge");
 }
 
 #[test]
@@ -825,9 +834,18 @@ fn test_41_holon_error_display() {
             HolonError::DuplicateStep("bar".into()),
             "step already registered: bar",
         ),
-        (HolonError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "no file")), "io error:"),
-        (HolonError::Json(serde_json::from_str::<CytoscapeGraph>("invalid").unwrap_err()), "json error:"),
-        (HolonError::Render("template fail".into()), "render error: template fail"),
+        (
+            HolonError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "no file")),
+            "io error:",
+        ),
+        (
+            HolonError::Json(serde_json::from_str::<CytoscapeGraph>("invalid").unwrap_err()),
+            "json error:",
+        ),
+        (
+            HolonError::Render("template fail".into()),
+            "render error: template fail",
+        ),
     ];
 
     for (error, expected_prefix) in &cases {

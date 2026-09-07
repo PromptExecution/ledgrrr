@@ -49,14 +49,17 @@ fn route_request(raw: &[u8], store: &SettingsStore) -> String {
     let request_line = headers.lines().next().unwrap_or_default();
     let body = &raw[header_end + 4..];
 
-    if request_line.starts_with("GET /settings ") || request_line.starts_with("GET /settings HTTP") {
+    if request_line.starts_with("GET /settings ") || request_line.starts_with("GET /settings HTTP")
+    {
         return match store.load() {
             Ok(settings) => json_response(200, &settings),
             Err(error) => json_response(500, &serde_json::json!({ "error": error.to_string() })),
         };
     }
 
-    if request_line.starts_with("POST /settings ") || request_line.starts_with("POST /settings HTTP") {
+    if request_line.starts_with("POST /settings ")
+        || request_line.starts_with("POST /settings HTTP")
+    {
         let settings: AppSettings = match serde_json::from_slice(body) {
             Ok(settings) => settings,
             Err(error) => {

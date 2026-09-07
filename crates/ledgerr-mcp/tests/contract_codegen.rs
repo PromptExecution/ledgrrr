@@ -212,10 +212,10 @@ fn all_tool_schemas_are_claude_api_compatible_no_root_composition_keywords() {
             "schema for {tool} must have an 'action' property (action discriminator)"
         );
         assert_eq!(
-            schema.get("required").and_then(|r| r.as_array()).map(|a| {
-                a.iter()
-                    .any(|v| v.as_str() == Some("action"))
-            }),
+            schema
+                .get("required")
+                .and_then(|r| r.as_array())
+                .map(|a| { a.iter().any(|v| v.as_str() == Some("action")) }),
             Some(true),
             "schema for {tool} must require the 'action' field"
         );
@@ -240,5 +240,3 @@ fn workflow_contract_allows_unknown_plugin_subcommand_for_postel_boundary_behavi
         other => panic!("unexpected variant: {other:?}"),
     }
 }
-
-

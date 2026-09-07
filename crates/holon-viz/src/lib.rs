@@ -17,17 +17,19 @@
 
 pub mod controller;
 pub mod cytoscape;
+pub mod domain;
 pub mod emitter;
+pub mod gen;
 pub mod holon;
 pub mod log;
 pub mod observer;
 pub mod renderer;
-pub mod domain;
-pub mod gen;
 pub mod type_graph;
 
 pub use controller::{ProcessController, ProcessStep, TransitionReceipt};
-pub use cytoscape::{CytoscapeEdge, CytoscapeEdgeData, CytoscapeGraph, CytoscapeNode, CytoscapeNodeData};
+pub use cytoscape::{
+    CytoscapeEdge, CytoscapeEdgeData, CytoscapeGraph, CytoscapeNode, CytoscapeNodeData,
+};
 pub use emitter::{Owl2Emitter, SysmlV2Emitter};
 pub use holon::{Holon, HolonKind};
 pub use log::{ActionKind, ActionRecord, ImmutableActionLog};

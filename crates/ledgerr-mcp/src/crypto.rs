@@ -3,9 +3,12 @@ use rust_decimal::Decimal;
 use serde_json::{json, Value};
 
 use ledger_core::crypto::{
-    Chain, CostBasisMethod, CryptoTx, CryptoWallet, CryptoCostBasisRules, TaxJurisdiction, TxType,
+    Chain, CostBasisMethod, CryptoCostBasisRules, CryptoTx, CryptoWallet, TaxJurisdiction, TxType,
 };
-use ufo_types::{iso::{Currency, Lei}, satisfies::Satisfies};
+use ufo_types::{
+    iso::{Currency, Lei},
+    satisfies::Satisfies,
+};
 
 pub fn handle_crypto_cost_basis_check(
     lei: &str,
@@ -26,13 +29,16 @@ pub fn handle_crypto_cost_basis_check(
         Err(e) => return json!({ "error": e.to_string() }),
     };
     let gross = match Decimal::from_str_exact(gross_proceeds) {
-        Ok(d) => d, Err(e) => return json!({ "error": format!("gross_proceeds: {e}") }),
+        Ok(d) => d,
+        Err(e) => return json!({ "error": format!("gross_proceeds: {e}") }),
     };
     let cost = match Decimal::from_str_exact(cost_basis) {
-        Ok(d) => d, Err(e) => return json!({ "error": format!("cost_basis: {e}") }),
+        Ok(d) => d,
+        Err(e) => return json!({ "error": format!("cost_basis: {e}") }),
     };
     let tx_date = match NaiveDate::parse_from_str(date, "%Y-%m-%d") {
-        Ok(d) => d, Err(e) => return json!({ "error": format!("date: {e}") }),
+        Ok(d) => d,
+        Err(e) => return json!({ "error": format!("date: {e}") }),
     };
     let acq_date = acquisition_date.and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
 

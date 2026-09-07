@@ -100,7 +100,10 @@ pub fn accept_capability_offer(
             Ok(Ring::Standard)
         }
         Ring::Standard => {
-            tracing::info!(agent_id, "CapabilityBridge: write cap — registering at Standard");
+            tracing::info!(
+                agent_id,
+                "CapabilityBridge: write cap — registering at Standard"
+            );
             gw.register_agent(agent_id);
             Ok(Ring::Standard)
         }
@@ -114,7 +117,10 @@ pub fn accept_capability_offer(
         }
         Ring::Sandboxed => {
             // ring_for_offer never returns Sandboxed; this arm is exhaustiveness-only.
-            tracing::warn!(agent_id, "CapabilityBridge: unexpected Sandboxed ring derived — not registering");
+            tracing::warn!(
+                agent_id,
+                "CapabilityBridge: unexpected Sandboxed ring derived — not registering"
+            );
             Ok(Ring::Sandboxed)
         }
     }
@@ -151,12 +157,16 @@ mod tests {
         let offer = make_offer("ledgerr_reconciliation.commit");
         let ring = ring_for_offer(&offer);
         // ring_for_offer signals Admin *intent* ...
-        assert_eq!(ring, Ring::Admin, "commit cap should derive Ring::Admin intent");
+        assert_eq!(
+            ring,
+            Ring::Admin,
+            "commit cap should derive Ring::Admin intent"
+        );
 
         // ... but accept_capability_offer must NOT auto-assign Admin.
         let gw = make_gateway();
-        let assigned = accept_capability_offer(&gw, &offer)
-            .expect("accept must not error on a valid offer");
+        let assigned =
+            accept_capability_offer(&gw, &offer).expect("accept must not error on a valid offer");
         assert_eq!(
             assigned,
             Ring::Standard,
@@ -224,8 +234,7 @@ mod tests {
         let gw = make_gateway();
         // "openai.completions.read" → ring_for_offer returns Restricted.
         let offer = make_offer("openai.completions.read");
-        let ring = accept_capability_offer(&gw, &offer)
-            .expect("read-only offer must not error");
+        let ring = accept_capability_offer(&gw, &offer).expect("read-only offer must not error");
         assert_eq!(
             ring,
             Ring::Restricted,

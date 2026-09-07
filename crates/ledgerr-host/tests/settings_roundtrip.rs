@@ -107,11 +107,7 @@ fn legacy_v1_settings_without_chat_block_uses_default_chat() {
         "app_settings": inner.to_string()
     });
 
-    std::fs::write(
-        &path,
-        serde_json::to_vec_pretty(&outer).unwrap(),
-    )
-    .unwrap();
+    std::fs::write(&path, serde_json::to_vec_pretty(&outer).unwrap()).unwrap();
 
     let store = test_store(path);
     let settings = store.load().unwrap();
