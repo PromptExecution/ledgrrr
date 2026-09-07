@@ -38,7 +38,7 @@ ledger-attest = { path = "../ledger-attest" }
 async-nats = { version = "0.45", features = ["service"], optional = true }
 futures-util = { version = "0.3", optional = true }
 ledgerr-focus = { workspace = true }
-ledgerr-gcp-billing = { path = "../ledgerr-gcp-billing" }
+ledgerr-gcp-billing = { path = "../ledgerr-gcp-billing", optional = true }
 
 # filesystem metadata — xattr on Linux; sidecar fallback is pure std
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -53,6 +53,7 @@ nats-service = ["dep:async-nats", "dep:futures-util"]
 # 🤓 statechart: W3C SCXML export for WorkflowToml, alongside to_mermaid/to_rhai/to_rust_enum
 # (_b00t_#1177 P7)
 statechart = ["dep:scxml"]
+gcp-billing = ["dep:ledgerr-gcp-billing"]
 
 [dependencies.msft-agent-gov-ledgrrr]
 path = "../msft-agent-gov-ledgrrr"
