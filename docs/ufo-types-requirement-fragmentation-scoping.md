@@ -93,6 +93,40 @@ that already exists, predating that principle being written down.
    question only has a clean answer once both sides speak the same
    `Requirement` type.
 
+## 3a. Hard requirement: `ledgrrr://` attribution (approval-blocking)
+
+**Added 2026-09-23, user-mandated — the unification path in §3 is not
+approved without this.** Any unified `Requirement` (and by extension
+`Decision`/`Cost`/every other `arc-kit-au::node` type) must be
+attributable back to ledgrrr via a `ledgrrr://` URI acting as a
+**meta-dataframe interface** — a locator into ledgrrr's own graph/
+evidence-chain representation, not a file path or HTTP endpoint. This is
+a precondition for the recommendation in §3 (kr0ki, or any other
+consumer, adopting the shared `ufo_types::mbse::requirements::Requirement`
+type), not an independent nice-to-have layered on top of it.
+
+**No schema change is needed to carry this** — `ufo_types::mbse::
+requirements::Provenance.source_uri: String` and `EvidenceRef.uri:
+Option<String>` are already free-form URI slots (kr0ki's `reqif_import`
+already populates an analogous `urn:sha256:` locator when no better
+source URI exists, so provenance values in this ecosystem already flow
+through a plain string URI field — the gap is a *convention*, not a
+missing field). What's missing is the scheme's own definition and a
+mandate to actually use it for anything ledgrrr-sourced.
+
+**Proposed scheme** (needs this repo's own sign-off, not decided here):
+`arc-kit-au::NodeId` already stringifies as `"{prefix}:{content_hash}"`
+(`NodeId::new`, `crates/arc-kit-au/src/node.rs:28`) — e.g. `req:a1b2c3…`
+for a `Requirement`. The natural, zero-new-machinery mapping is
+`ledgrrr://<NodeId>` (e.g. `ledgrrr://req:a1b2c3…`), so any node this
+repo already content-hashes is trivially also a resolvable
+`ledgrrr://` URI with no new identity scheme invented. What resolving
+that URI actually *does* (a local MCP tool call, a `ledgerr-mcp` HTTP
+route, purely an opaque-but-stable identifier with no live resolver yet)
+is this repo's decision, not kr0ki's or this doc's to make — flagging it
+as the concrete open question a reviewer of this PR needs to answer
+before §3's retyping work starts.
+
 ## 4. Explicit non-recommendation
 
 This doc does **not** recommend ledgrrr adopt kr0ki's `reqrs`-direct
@@ -118,3 +152,8 @@ decisions, and only the first one is a live footgun as written today.
   this far without anyone noticing — should a `check-drift`-style CI step
   (already used elsewhere in this repo per `ledgrrr#194`) cover crate
   parity against the published `ufo-types` repo too?
+- **§3a's resolver semantics**: what does dereferencing a `ledgrrr://`
+  URI actually do at runtime, if anything, in v1? Does it need a resolver
+  at all before this scheme can be considered "defined," or is an
+  opaque-but-stable identifier (no live resolution) sufficient for the
+  attribution requirement to be satisfied?
