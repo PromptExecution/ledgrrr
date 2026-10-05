@@ -113,3 +113,6 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+mod store;
+pub use store::Store;
