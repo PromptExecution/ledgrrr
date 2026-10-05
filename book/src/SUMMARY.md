@@ -1,5 +1,7 @@
 # Summary
 
+- [Durable Revision I/O](revision-io.md)
+
 - [Introduction](./intro.md)
 
 # Operator Capabilities

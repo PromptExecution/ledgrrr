@@ -4,6 +4,7 @@
 //! passed here must come from that host's authenticated principal, never from an
 //! untrusted request's actor field. This library does not contact providers or
 //! publish graphs and cannot fence a provider that accepts unconditional writes.
+#![doc = include_str!("../../../book/src/revision-io.md")]
 #![forbid(unsafe_code)]
 
 use serde::{Deserialize, Serialize};
@@ -69,6 +70,7 @@ pub struct StoredOperation {
     pub dispatch_evidence: Option<String>,
     pub actual_revision: Option<RevisionId>,
     pub indexing_work: Option<ArtifactDigest>,
+    pub commit_evidence: Option<CommitEvidence>,
 }
 
 /// Evidence independently obtained by an authenticated provider adapter.
@@ -115,4 +117,4 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 mod store;
-pub use store::Store;
+pub use store::{IndexPublisher, Store};

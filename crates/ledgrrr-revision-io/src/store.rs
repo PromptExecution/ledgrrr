@@ -126,8 +126,10 @@ fn load_operation(
     {
         return Err(Error::Corrupt("operation columns disagree".into()));
     }
-    let raw = artifact(c, project, &value.raw_envelope)?;
-    let canonical = artifact(c, project, &value.canonical_envelope)?;
+    let raw =
+        artifact(c, project, &value.raw_envelope).map_err(|e| Error::Corrupt(e.to_string()))?;
+    let canonical = artifact(c, project, &value.canonical_envelope)
+        .map_err(|e| Error::Corrupt(e.to_string()))?;
     let bundle = PortableBundle::from_bytes(&raw).map_err(|e| Error::Corrupt(e.to_string()))?;
     if bundle.to_bytes()? != canonical
         || bundle.bundle_digest()? != receipt.proposal_digest
@@ -144,7 +146,58 @@ fn load_operation(
     if binding.model_dialect != bundle.manifest.context.model_dialect {
         return Err(Error::Corrupt("model dialect".into()));
     }
+    let expected_parent = match &receipt.expected_head {
+        ExpectedHead::Empty => None,
+        ExpectedHead::Revision(r) => Some(r),
+    };
+    if bundle.manifest.context.parent.as_ref() != expected_parent {
+        return Err(Error::Corrupt(
+            "expected head differs from proposal parent".into(),
+        ));
+    }
     validate_state(&value)?;
+    if let Some(token) = &value.dispatch {
+        let (fence, active): (u64, Option<String>) = c.query_row(
+            "SELECT fence,active_operation FROM branches WHERE project=?1 AND branch=?2",
+            params![project.as_str(), receipt.branch.as_str()],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        if fence < token.fence
+            || (matches!(
+                receipt.status,
+                SyncStatus::Pending | SyncStatus::Ambiguous { .. }
+            ) && (fence != token.fence || active.as_deref() != Some(operation.as_str())))
+        {
+            return Err(Error::Corrupt("dispatch reservation identity".into()));
+        }
+    }
+    if let Some(e) = &value.commit_evidence {
+        if e.binding != binding
+            || Some(&e.token) != value.dispatch.as_ref()
+            || e.expected_head != receipt.expected_head
+            || e.proposal_digest != receipt.proposal_digest
+            || Some(&e.actual_revision) != value.actual_revision.as_ref()
+        {
+            return Err(Error::Corrupt("commit evidence identity".into()));
+        }
+        let expected_work = ArtifactDigest::of(&canonical_bytes(&(
+            "ledgrrr:index-work:1",
+            &receipt.project,
+            &receipt.operation,
+            &e.actual_revision,
+            &receipt.proposal_digest,
+        ))?);
+        if value.indexing_work.as_ref() != Some(&expected_work) {
+            return Err(Error::Corrupt("indexing work identity".into()));
+        }
+    } else if value.actual_revision.is_some() {
+        return Err(Error::Corrupt("missing commit evidence".into()));
+    }
+    if let SyncStatus::Indexed { checkpoint } = &receipt.status {
+        if checkpoint.dialect != binding.model_dialect {
+            return Err(Error::Corrupt("checkpoint dialect".into()));
+        }
+    }
     Ok(value)
 }
 fn validate_state(value: &StoredOperation) -> Result<()> {
@@ -162,7 +215,10 @@ fn validate_state(value: &StoredOperation) -> Result<()> {
     }
     match &value.receipt.status {
         SyncStatus::Pending | SyncStatus::Unavailable { .. } | SyncStatus::Conflict { .. } => {
-            if value.actual_revision.is_some() || value.indexing_work.is_some() {
+            if value.actual_revision.is_some()
+                || value.indexing_work.is_some()
+                || value.commit_evidence.is_some()
+            {
                 return Err(Error::Corrupt("uncommitted revision".into()));
             }
         }
@@ -196,6 +252,39 @@ fn validate_state(value: &StoredOperation) -> Result<()> {
 }
 
 impl Store {
+    pub fn project_binding(
+        &mut self,
+        actor: &ActorId,
+        project: &ProjectId,
+    ) -> Result<ProjectBinding> {
+        let tx = self.connection.transaction()?;
+        authorize(&tx, actor, project, "read")?;
+        let binding = project_binding(&tx, project)?;
+        tx.commit()?;
+        Ok(binding)
+    }
+
+    pub fn remote_branch(
+        &mut self,
+        actor: &ActorId,
+        project: &ProjectId,
+        branch: &BranchId,
+    ) -> Result<String> {
+        let tx = self.connection.transaction()?;
+        authorize(&tx, actor, project, "read")?;
+        let handle: String = tx
+            .query_row(
+                "SELECT remote_branch FROM branches WHERE project=?1 AND branch=?2",
+                params![project.as_str(), branch.as_str()],
+                |r| r.get(0),
+            )
+            .optional()?
+            .ok_or(Error::NotFound)?;
+        valid_text(&handle).map_err(|e| Error::Corrupt(e.to_string()))?;
+        tx.commit()?;
+        Ok(handle)
+    }
+
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         if path.as_ref() == Path::new(":memory:") {
             return Err(Error::Invalid("on-disk local database required".into()));
@@ -437,6 +526,7 @@ impl Store {
             dispatch_evidence: None,
             actual_revision: None,
             indexing_work: None,
+            commit_evidence: None,
         };
         tx.execute("INSERT INTO operations(project,operation,branch,actor,expected_head,proposal_digest,generation,record) VALUES (?1,?2,?3,?4,?5,?6,0,?7)",params![intake.project.as_str(),intake.operation.as_str(),intake.branch.as_str(),actor.as_str(),canonical_bytes(&intake.expected_head)?,value.receipt.proposal_digest.as_str(),canonical_bytes(&value)?])?;
         tx.commit()?;
@@ -500,5 +590,279 @@ impl Store {
             .collect::<Result<_>>()?;
         tx.commit()?;
         Ok(values)
+    }
+}
+
+fn update_operation(c: &Connection, value: &mut StoredOperation) -> Result<()> {
+    validate_state(value)?;
+    let prior = value.generation;
+    value.generation = value.generation.checked_add(1).ok_or(Error::Stale)?;
+    let changed=c.execute("UPDATE operations SET generation=?1,record=?2 WHERE project=?3 AND operation=?4 AND generation=?5",params![value.generation,canonical_bytes(value)?,value.receipt.project.as_str(),value.receipt.operation.as_str(),prior])?;
+    if changed != 1 {
+        return Err(Error::Stale);
+    }
+    Ok(())
+}
+fn check_token(c: &Connection, value: &StoredOperation, token: &DispatchToken) -> Result<()> {
+    if value.dispatch.as_ref() != Some(token) {
+        return Err(Error::Stale);
+    }
+    let (fence, active): (u64, Option<String>) = c.query_row(
+        "SELECT fence,active_operation FROM branches WHERE project=?1 AND branch=?2",
+        params![token.project.as_str(), token.branch.as_str()],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+    if fence != token.fence || active.as_deref() != Some(token.operation.as_str()) {
+        return Err(Error::Stale);
+    }
+    Ok(())
+}
+impl Store {
+    /// Call before a provider request. A second invocation never authorizes
+    /// sending that request again, even for an identical operation or worker.
+    pub fn start_dispatch(
+        &mut self,
+        actor: &ActorId,
+        project: &ProjectId,
+        operation: &OperationId,
+        generation: u64,
+        observation: &str,
+    ) -> Result<StoredOperation> {
+        valid_text(observation)?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        authorize(&tx, actor, project, "administer")?;
+        let mut value = load_operation(&tx, project, operation)?;
+        let (fence, active): (u64, Option<String>) = tx.query_row(
+            "SELECT fence,active_operation FROM branches WHERE project=?1 AND branch=?2",
+            params![project.as_str(), value.receipt.branch.as_str()],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        if let Some(active) = active {
+            load_operation(&tx, project, &OperationId::new(active)?)
+                .map_err(|e| Error::Corrupt(e.to_string()))?;
+            return Err(Error::BranchBlocked);
+        }
+        let unresolved:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM operations WHERE project=?1 AND branch=?2 AND json_extract(record,'$.dispatch') IS NOT NULL AND json_extract(record,'$.receipt.status.kind') IN ('pending','ambiguous'))",params![project.as_str(),value.receipt.branch.as_str()],|r|r.get(0))?;
+        if unresolved {
+            return Err(Error::Corrupt("missing branch reservation".into()));
+        }
+        if value.dispatch.is_some() {
+            return Err(Error::BranchBlocked);
+        }
+        if value.generation != generation {
+            return Err(Error::Stale);
+        }
+        if value.receipt.status != SyncStatus::Pending {
+            return Err(Error::Transition);
+        }
+        let fence = fence.checked_add(1).ok_or(Error::Stale)?;
+        value.dispatch = Some(DispatchToken {
+            project: project.clone(),
+            branch: value.receipt.branch.clone(),
+            operation: operation.clone(),
+            fence,
+        });
+        value.dispatch_evidence = Some(observation.to_owned());
+        tx.execute(
+            "UPDATE branches SET fence=?1,active_operation=?2 WHERE project=?3 AND branch=?4",
+            params![
+                fence,
+                operation.as_str(),
+                project.as_str(),
+                value.receipt.branch.as_str()
+            ],
+        )?;
+        update_operation(&tx, &mut value)?;
+        tx.commit()?;
+        Ok(value)
+    }
+    pub fn mark_ambiguous(
+        &mut self,
+        actor: &ActorId,
+        token: &DispatchToken,
+        generation: u64,
+        reason: &str,
+    ) -> Result<StoredOperation> {
+        valid_text(reason)?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        authorize(&tx, actor, &token.project, "administer")?;
+        let mut value = load_operation(&tx, &token.project, &token.operation)?;
+        check_token(&tx, &value, token)?;
+        let target = SyncStatus::Ambiguous {
+            reason: reason.into(),
+        };
+        if value.receipt.status == target && generation.checked_add(1) == Some(value.generation) {
+            tx.commit()?;
+            return Ok(value);
+        }
+        if value.generation != generation {
+            return Err(Error::Stale);
+        }
+        if value.receipt.status != SyncStatus::Pending {
+            return Err(Error::Transition);
+        }
+        value.receipt.status = target;
+        update_operation(&tx, &mut value)?;
+        tx.commit()?;
+        Ok(value)
+    }
+    /// Accept evidence only from the trusted authenticated provider worker. An
+    /// ambiguous request is resolved by this exact observed identity, never by
+    /// assuming a lease expiry means a remote create did not happen.
+    pub fn record_commit(
+        &mut self,
+        actor: &ActorId,
+        generation: u64,
+        evidence: &CommitEvidence,
+    ) -> Result<StoredOperation> {
+        valid_text(&evidence.observation)?;
+        let token = &evidence.token;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        authorize(&tx, actor, &token.project, "administer")?;
+        let mut value = load_operation(&tx, &token.project, &token.operation)?;
+        if value.commit_evidence.as_ref() == Some(evidence)
+            && generation.checked_add(1) == Some(value.generation)
+        {
+            tx.commit()?;
+            return Ok(value);
+        }
+        if value.generation != generation {
+            return Err(Error::Stale);
+        }
+        check_token(&tx, &value, token)?;
+        if !matches!(
+            value.receipt.status,
+            SyncStatus::Pending | SyncStatus::Ambiguous { .. }
+        ) {
+            return Err(Error::Transition);
+        }
+        if evidence.binding != project_binding(&tx, &token.project)?
+            || evidence.expected_head != value.receipt.expected_head
+            || evidence.proposal_digest != value.receipt.proposal_digest
+        {
+            return Err(Error::IdentityConflict);
+        }
+        value.actual_revision = Some(evidence.actual_revision.clone());
+        value.indexing_work = Some(ArtifactDigest::of(&canonical_bytes(&(
+            "ledgrrr:index-work:1",
+            &value.receipt.project,
+            &value.receipt.operation,
+            &evidence.actual_revision,
+            &value.receipt.proposal_digest,
+        ))?));
+        value.commit_evidence = Some(evidence.clone());
+        value.receipt.status = SyncStatus::ModelCommitted {
+            revision: evidence.actual_revision.clone(),
+        };
+        update_operation(&tx, &mut value)?;
+        tx.execute("UPDATE branches SET active_operation=NULL WHERE project=?1 AND branch=?2 AND fence=?3 AND active_operation=?4",params![token.project.as_str(),token.branch.as_str(),token.fence,token.operation.as_str()])?;
+        tx.commit()?;
+        Ok(value)
+    }
+    /// Safe only before dispatch. After sending a request its outcome must be
+    /// reconciled, not relabelled unavailable/conflicting to release a branch.
+    pub fn reject_before_dispatch(
+        &mut self,
+        actor: &ActorId,
+        project: &ProjectId,
+        operation: &OperationId,
+        generation: u64,
+        status: SyncStatus,
+    ) -> Result<StoredOperation> {
+        match &status {
+            SyncStatus::Conflict { paths } if !paths.is_empty() && paths.len() <= 256 => {
+                for p in paths {
+                    valid_text(p)?;
+                }
+            }
+            SyncStatus::Unavailable { reason } => valid_text(reason)?,
+            _ => return Err(Error::Transition),
+        }
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        authorize(&tx, actor, project, "administer")?;
+        let mut value = load_operation(&tx, project, operation)?;
+        if value.receipt.status == status && generation.checked_add(1) == Some(value.generation) {
+            tx.commit()?;
+            return Ok(value);
+        }
+        if value.generation != generation {
+            return Err(Error::Stale);
+        }
+        if value.dispatch.is_some() || value.receipt.status != SyncStatus::Pending {
+            return Err(Error::Transition);
+        }
+        value.receipt.status = status;
+        update_operation(&tx, &mut value)?;
+        tx.commit()?;
+        Ok(value)
+    }
+    /// Only the host's authenticated administrator may obtain this capability.
+    /// Keep it inside the trusted graph publisher; do not expose it as a request
+    /// receipt-update API. Identity checks cannot prove graph completeness.
+    pub fn publisher<'a>(
+        &'a mut self,
+        actor: &ActorId,
+        project: &ProjectId,
+    ) -> Result<IndexPublisher<'a>> {
+        authorize(&self.connection, actor, project, "administer")?;
+        Ok(IndexPublisher {
+            store: self,
+            actor: actor.clone(),
+            project: project.clone(),
+        })
+    }
+}
+
+pub struct IndexPublisher<'a> {
+    store: &'a mut Store,
+    actor: ActorId,
+    project: ProjectId,
+}
+impl IndexPublisher<'_> {
+    /// Records trusted publication evidence for this immutable operation only.
+    /// It does not advance any branch pointer or publish/query an external graph.
+    pub fn record_index(
+        &mut self,
+        operation: &OperationId,
+        generation: u64,
+        checkpoint: &IndexCheckpoint,
+    ) -> Result<StoredOperation> {
+        let tx = self
+            .store
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        authorize(&tx, &self.actor, &self.project, "administer")?;
+        let mut value = load_operation(&tx, &self.project, operation)?;
+        if checkpoint.project != self.project
+            || value.actual_revision.as_ref() != Some(&checkpoint.revision)
+            || project_binding(&tx, &self.project)?.model_dialect != checkpoint.dialect
+        {
+            return Err(Error::Transition);
+        }
+        let target = SyncStatus::Indexed {
+            checkpoint: checkpoint.clone(),
+        };
+        if value.receipt.status == target && generation.checked_add(1) == Some(value.generation) {
+            tx.commit()?;
+            return Ok(value);
+        }
+        if value.generation != generation {
+            return Err(Error::Stale);
+        }
+        if !matches!(value.receipt.status, SyncStatus::ModelCommitted { .. }) {
+            return Err(Error::Transition);
+        }
+        value.receipt.status = target;
+        update_operation(&tx, &mut value)?;
+        tx.commit()?;
+        Ok(value)
     }
 }

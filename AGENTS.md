@@ -725,3 +725,11 @@ The `hive` surface declares `"pattern": "parallel-subagents", "isolation": "work
 OpenMetadata should be treated as a remote governed MCP/provider surface, not forked first. Use the reusable `HttpMcpProvider` transport for `{OMURL}/mcp` JSON-RPC over HTTP with bearer auth, then wrap OpenMetadata as `OpenMetadataProvider` with `openmetadata__*` tool prefixes so provider tools cannot collide with ledgrrr's published catalog.
 
 Represent OpenMetadata catalog objects through `ledgerr_ontology` custom kinds first (`openmetadata_service`, `openmetadata_database`, `openmetadata_database_schema`, `openmetadata_table`, `openmetadata_column`, `openmetadata_tag`, `openmetadata_glossary_term`, `openmetadata_owner`) instead of expanding core `ArtifactKind` prematurely. Keep OpenMetadata entity identity stable: hash `source_system`, `entity_type`, and `fully_qualified_name`; do not include volatile hrefs, display labels, timestamps, or bearer-derived data in deterministic identity/provenance.
+
+### Revision I/O owner (2026-10-05)
+
+- `ledgrrr-revision-io` owns provider-neutral durable proposal artifacts/intents/receipts; run `just revision-io-test` and `just revision-io-check`. See `book/src/revision-io.md` for the authenticated host boundary and executable API example.
+- All canonical `ufo-types` consumers share the workspace git pin. Keep revision wire types upstream; enable the `revision` feature only on its consumer and preserve the visualization parser's dev-only restriction.
+- SQLite ownership requires local storage, WAL/FULL, foreign keys and immediate parameterized transactions. Unsupported/corrupt records fail closed; never reset or invent migrations. Artifact hashes grant no access.
+- Persist dispatch evidence before remote requests. Restart or local lease expiry cannot authorize resending an unresolved unconditional provider request. Ambiguous work blocks the branch until matching independently observed remote evidence; storage fences alone do not constrain provider mutation routes.
+- Indexed receipts require the trusted publisher capability and exact revision evidence. Receipt validation does not establish graph completeness or advance branch pointers; real provider/index/UI release gates remain separate.

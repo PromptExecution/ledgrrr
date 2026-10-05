@@ -339,5 +339,17 @@
       "name": "source_bytes",
       "mutation": "source_bytes"
     }
+  ],
+  "commit_evidence_mutations": [
+    "fence",
+    "project",
+    "digest",
+    "head",
+    "binding"
+  ],
+  "checkpoint_mutations": [
+    "project",
+    "revision",
+    "dialect"
   ]
 }
