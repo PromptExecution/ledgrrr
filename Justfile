@@ -101,6 +101,14 @@ test:
     cargo build -p ledgerr-mcp --bin mcp-outcome-test
     ./target/debug/mcp-outcome-test
 
+# Test the provider-neutral durable revision owner.
+revision-io-test:
+    cargo test -p ledgrrr-revision-io
+
+# Check the revision owner and its tests with warnings denied.
+revision-io-check:
+    cargo clippy -p ledgrrr-revision-io --all-targets -- -D warnings
+
 # ─── Tauri build (Windows host) ─────────────────────────────────────────────────
 
 # One composable Windows package entry point. Supply `Build` for artifacts or

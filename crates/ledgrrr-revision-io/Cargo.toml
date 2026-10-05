@@ -1,0 +1,19 @@
+[package]
+name = "ledgrrr-revision-io"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Provider-neutral durable revision artifacts, intents, receipts and recovery"
+
+[dependencies]
+ufo-types = { workspace = true, features = ["revision"] }
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
