@@ -4,8 +4,8 @@ milestone: v1.2
 milestone_name: Claude Connector Interop
 status: planning
 stopped_at: Roadmap created for phases 19-21
-last_updated: "2026-03-29T21:42:28.000Z"
-last_activity: 2026-03-30
+last_updated: "2026-10-05T14:15:45.000Z"
+last_activity: 2026-10-05
 progress:
   total_phases: 3
   completed_phases: 0
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 Phase: 19 - Connector Capability Profile Contract
 Plan: Not started
 Status: Roadmap approved baseline ready for planning
-Last activity: 2026-03-30 — v1.2 roadmap created with phases 19-21
+Last activity: 2026-10-05 — Completed quick task 261005-j1m: provider-neutral durable revision I/O storage (full SysML discovery plan remains active)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -82,6 +82,12 @@ Progress: [░░░░░░░░░░] 0%
 ### Blockers/Concerns
 
 - None recorded.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Status | Directory |
+|---|---|---|---|---|---|
+| 261005-j1m | Provider-neutral durable revision I/O storage | 2026-10-05 | 50a9560 | Storage milestone verified; full SysML gates pending | [261005-j1m](./quick/261005-j1m-establish-the-provider-neutral-revision-/) |
 
 ## Session Continuity
 
