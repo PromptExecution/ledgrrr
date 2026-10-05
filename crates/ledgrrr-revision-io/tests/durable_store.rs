@@ -271,3 +271,278 @@ fn future_and_unrelated_schema_fail_closed() {
         "retain"
     );
 }
+
+fn evidence(value: &StoredOperation) -> CommitEvidence {
+    CommitEvidence {
+        token: value.dispatch.clone().unwrap(),
+        binding: binding(),
+        expected_head: value.receipt.expected_head.clone(),
+        proposal_digest: value.receipt.proposal_digest.clone(),
+        actual_revision: RevisionId::new("actual-provider-42").unwrap(),
+        observation: "GET actual revision and verified immutable proposal identity".into(),
+    }
+}
+fn checkpoint() -> IndexCheckpoint {
+    IndexCheckpoint {
+        project: project(),
+        revision: RevisionId::new("actual-provider-42").unwrap(),
+        dialect: "SysML-v2".into(),
+        graph_digest: ArtifactDigest::of(b"complete staged graph"),
+    }
+}
+#[test]
+fn dispatch_ambiguity_blocks_restart_and_competing_connections() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.db");
+    let mut s = setup(&path);
+    let one = s
+        .intake(
+            &actor("proposer"),
+            &intake("one"),
+            &bundle().to_bytes().unwrap(),
+        )
+        .unwrap();
+    let two = s
+        .intake(
+            &actor("proposer"),
+            &intake("two"),
+            &bundle().to_bytes().unwrap(),
+        )
+        .unwrap();
+    assert!(matches!(
+        s.start_dispatch(
+            &actor("proposer"),
+            &project(),
+            &one.receipt.operation,
+            0,
+            "request prepared"
+        ),
+        Err(Error::Denied)
+    ));
+    let dispatched = s
+        .start_dispatch(
+            &actor("owner"),
+            &project(),
+            &one.receipt.operation,
+            0,
+            "durable request identity: one",
+        )
+        .unwrap();
+    let token = dispatched.dispatch.clone().unwrap();
+    assert!(matches!(
+        s.start_dispatch(
+            &actor("owner"),
+            &project(),
+            &two.receipt.operation,
+            0,
+            "two"
+        ),
+        Err(Error::BranchBlocked)
+    ));
+    let ambiguous = s
+        .mark_ambiguous(
+            &actor("owner"),
+            &token,
+            dispatched.generation,
+            "connection lost after send",
+        )
+        .unwrap();
+    drop(s);
+    let mut s = Store::open(&path).unwrap();
+    assert_eq!(
+        s.operation(&actor("reader"), &project(), &one.receipt.operation)
+            .unwrap(),
+        ambiguous
+    );
+    assert!(matches!(
+        s.start_dispatch(
+            &actor("owner"),
+            &project(),
+            &one.receipt.operation,
+            ambiguous.generation,
+            "resend"
+        ),
+        Err(Error::BranchBlocked)
+    ));
+    assert!(matches!(
+        s.start_dispatch(
+            &actor("owner"),
+            &project(),
+            &two.receipt.operation,
+            0,
+            "two"
+        ),
+        Err(Error::BranchBlocked)
+    ));
+    let e = evidence(&ambiguous);
+    let committed = s
+        .record_commit(&actor("owner"), ambiguous.generation, &e)
+        .unwrap();
+    assert_eq!(committed.actual_revision.as_ref(), Some(&e.actual_revision));
+    assert!(committed.indexing_work.is_some());
+    assert_eq!(
+        s.record_commit(&actor("owner"), ambiguous.generation, &e)
+            .unwrap(),
+        committed
+    );
+    let later = s
+        .start_dispatch(
+            &actor("owner"),
+            &project(),
+            &two.receipt.operation,
+            0,
+            "two",
+        )
+        .unwrap();
+    assert!(later.dispatch.unwrap().fence > token.fence);
+    assert_eq!(
+        s.recovery(&actor("reader"), &project(), None, 1)
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(matches!(
+        s.recovery(&actor("denied"), &project(), None, 1),
+        Err(Error::Denied)
+    ));
+}
+#[test]
+fn transition_and_checkpoint_preconditions() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut s = setup(&dir.path().join("store.db"));
+    let op = intake("transitions");
+    let pending = s
+        .intake(&actor("proposer"), &op, &bundle().to_bytes().unwrap())
+        .unwrap();
+    assert!(matches!(
+        s.publisher(&actor("proposer"), &project()),
+        Err(Error::Denied)
+    ));
+    assert!(matches!(
+        s.publisher(&actor("owner"), &project())
+            .unwrap()
+            .record_index(&op.operation, 0, &checkpoint()),
+        Err(Error::Transition)
+    ));
+    assert!(matches!(
+        s.start_dispatch(&actor("owner"), &project(), &op.operation, 99, "dispatch"),
+        Err(Error::Stale)
+    ));
+    let dispatched = s
+        .start_dispatch(
+            &actor("owner"),
+            &project(),
+            &op.operation,
+            pending.generation,
+            "dispatch",
+        )
+        .unwrap();
+    let good = evidence(&dispatched);
+    for mutation in ["fence", "project", "digest", "head", "binding"] {
+        let mut bad = good.clone();
+        match mutation {
+            "fence" => bad.token.fence += 1,
+            "project" => bad.token.project = ProjectId::new("other").unwrap(),
+            "digest" => bad.proposal_digest = ArtifactDigest::of(b"other"),
+            "head" => bad.expected_head = ExpectedHead::Revision(RevisionId::new("wrong").unwrap()),
+            "binding" => bad.binding.remote_project = "wrong".into(),
+            _ => unreachable!(),
+        }
+        assert!(
+            s.record_commit(&actor("owner"), dispatched.generation, &bad)
+                .is_err(),
+            "{mutation}"
+        );
+    }
+    let committed = s
+        .record_commit(&actor("owner"), dispatched.generation, &good)
+        .unwrap();
+    for mutation in ["project", "revision", "dialect"] {
+        let mut bad = checkpoint();
+        match mutation {
+            "project" => bad.project = ProjectId::new("wrong").unwrap(),
+            "revision" => bad.revision = RevisionId::new("wrong").unwrap(),
+            "dialect" => bad.dialect = "wrong".into(),
+            _ => unreachable!(),
+        };
+        assert!(s
+            .publisher(&actor("owner"), &project())
+            .unwrap()
+            .record_index(&op.operation, committed.generation, &bad)
+            .is_err());
+    }
+    assert!(matches!(
+        s.publisher(&actor("owner"), &project())
+            .unwrap()
+            .record_index(&op.operation, 0, &checkpoint()),
+        Err(Error::Stale)
+    ));
+    let indexed = s
+        .publisher(&actor("owner"), &project())
+        .unwrap()
+        .record_index(&op.operation, committed.generation, &checkpoint())
+        .unwrap();
+    assert_eq!(
+        s.publisher(&actor("owner"), &project())
+            .unwrap()
+            .record_index(&op.operation, committed.generation, &checkpoint())
+            .unwrap(),
+        indexed
+    );
+    let mut bad = checkpoint();
+    bad.graph_digest = ArtifactDigest::of(b"different");
+    assert!(s
+        .publisher(&actor("owner"), &project())
+        .unwrap()
+        .record_index(&op.operation, indexed.generation, &bad)
+        .is_err());
+}
+#[test]
+fn persisted_corruption_and_failed_sql_intake_are_not_success() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.db");
+    let mut s = setup(&path);
+    let op = intake("corruption");
+    let v = s
+        .intake(&actor("proposer"), &op, &bundle().to_bytes().unwrap())
+        .unwrap();
+    drop(s);
+    let c = rusqlite::Connection::open(&path).unwrap();
+    c.execute(
+        "UPDATE artifacts SET bytes=?1 WHERE digest=?2",
+        rusqlite::params![b"tampered".as_slice(), v.raw_envelope.as_str()],
+    )
+    .unwrap();
+    drop(c);
+    let mut s = Store::open(&path).unwrap();
+    assert!(matches!(
+        s.operation(&actor("reader"), &project(), &op.operation),
+        Err(Error::Corrupt(_))
+    ));
+    drop(s);
+    let path = dir.path().join("rollback.db");
+    let mut s = setup(&path);
+    let c = rusqlite::Connection::open(&path).unwrap();
+    c.execute_batch("CREATE TRIGGER fail_operation BEFORE INSERT ON operations BEGIN SELECT RAISE(ABORT,'test interruption before commit'); END;").unwrap();
+    drop(c);
+    assert!(s
+        .intake(
+            &actor("proposer"),
+            &intake("rollback"),
+            &bundle().to_bytes().unwrap()
+        )
+        .is_err());
+    drop(s);
+    let c = rusqlite::Connection::open(&path).unwrap();
+    assert_eq!(
+        c.query_row("SELECT COUNT(*) FROM artifacts", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        c.query_row("SELECT COUNT(*) FROM operations", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+}
