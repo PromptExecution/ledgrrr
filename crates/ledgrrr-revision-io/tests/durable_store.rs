@@ -654,8 +654,15 @@ fn no_global_hash_access_and_status_rejection_before_dispatch_only() {
         .intake(&actor("proposer"), &op, &bundle().to_bytes().unwrap())
         .unwrap();
     let other = ProjectId::new("project-other").unwrap();
-    s.bootstrap_project(&actor("owner"), &other, &ProjectBinding { remote_project: "other-remote".into(), ..binding() })
-        .unwrap();
+    s.bootstrap_project(
+        &actor("owner"),
+        &other,
+        &ProjectBinding {
+            remote_project: "other-remote".into(),
+            ..binding()
+        },
+    )
+    .unwrap();
     assert!(matches!(
         s.artifact(&actor("owner"), &other, &v.raw_envelope),
         Err(Error::NotFound)
@@ -870,8 +877,267 @@ fn physical_project_alias_is_rejected_across_dialects_and_connections() {
     let mut s = Store::open(&path).unwrap();
     let mut alias = binding();
     alias.model_dialect = "KerML".into();
-    assert!(matches!(s.bootstrap_project(&actor("owner"), &ProjectId::new("alias").unwrap(), &alias), Err(Error::IdentityConflict)));
+    assert!(matches!(
+        s.bootstrap_project(&actor("owner"), &ProjectId::new("alias").unwrap(), &alias),
+        Err(Error::IdentityConflict)
+    ));
     drop(s);
     let mut s = Store::open(path).unwrap();
-    assert!(matches!(s.bootstrap_project(&actor("owner"), &ProjectId::new("alias-reopened").unwrap(), &binding()), Err(Error::IdentityConflict)));
+    assert!(matches!(
+        s.bootstrap_project(
+            &actor("owner"),
+            &ProjectId::new("alias-reopened").unwrap(),
+            &binding()
+        ),
+        Err(Error::IdentityConflict)
+    ));
+}
+
+#[test]
+fn independent_physical_bootstrap_race_and_preserving_v1_upgrade() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("race.db");
+    drop(Store::open(&path).unwrap());
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+    let handles: Vec<_> = fixture()["physical_alias_cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|case| {
+            let path = path.clone();
+            let gate = barrier.clone();
+            let case = case.clone();
+            std::thread::spawn(move || {
+                let mut s = Store::open(path).unwrap();
+                gate.wait();
+                let mut b = binding();
+                b.model_dialect = case["dialect"].as_str().unwrap().into();
+                s.bootstrap_project(
+                    &actor("owner"),
+                    &ProjectId::new(case["project"].as_str().unwrap()).unwrap(),
+                    &b,
+                )
+            })
+        })
+        .collect();
+    let outcomes: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+    assert_eq!(outcomes.iter().filter(|r| r.is_ok()).count(), 1);
+    assert_eq!(
+        outcomes
+            .iter()
+            .filter(|r| matches!(r, Err(Error::IdentityConflict)))
+            .count(),
+        1
+    );
+    let path = dir.path().join("upgrade.db");
+    let mut s = setup(&path);
+    let original = s
+        .intake(
+            &actor("proposer"),
+            &intake("upgrade"),
+            &bundle().to_bytes().unwrap(),
+        )
+        .unwrap();
+    let sent = s
+        .start_dispatch(
+            &actor("owner"),
+            &project(),
+            &original.receipt.operation,
+            0,
+            "legacy dispatch",
+        )
+        .unwrap();
+    let ambiguous = s
+        .mark_ambiguous(
+            &actor("owner"),
+            sent.dispatch.as_ref().unwrap(),
+            sent.generation,
+            "lost response",
+        )
+        .unwrap();
+    drop(s);
+    // Reproduce exact known v1 schema while preserving all application rows.
+    let c = rusqlite::Connection::open(&path).unwrap();
+    c.execute_batch("DROP TABLE physical_projects; PRAGMA user_version=1;")
+        .unwrap();
+    c.execute(
+        "UPDATE metadata SET schema_digest=?1",
+        [ArtifactDigest::of(include_bytes!("../src/schema-v1.sql")).as_str()],
+    )
+    .unwrap();
+    let mut legacy = ambiguous.clone();
+    legacy.send_authorized = false;
+    c.execute(
+        "UPDATE operations SET record=?1",
+        [ufo_types::revision::canonical_bytes(&legacy).unwrap()],
+    )
+    .unwrap();
+    drop(c);
+    let mut s = Store::open(&path).unwrap();
+    assert_eq!(
+        s.operation(&actor("owner"), &project(), &original.receipt.operation)
+            .unwrap(),
+        ambiguous
+    );
+    assert_eq!(
+        s.artifact(&actor("owner"), &project(), &original.raw_envelope)
+            .unwrap(),
+        bundle().to_bytes().unwrap()
+    );
+    drop(s);
+    Store::open(&path).unwrap();
+}
+
+#[test]
+fn rebased_preparation_preserves_intake_and_single_send_authorization() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("prepared.db");
+    let mut s = setup(&path);
+    let original = s
+        .intake(
+            &actor("proposer"),
+            &intake("rebase"),
+            &bundle().to_bytes().unwrap(),
+        )
+        .unwrap();
+    let reserved = s
+        .reserve(
+            &actor("owner"),
+            &project(),
+            &original.receipt.operation,
+            0,
+            "reservation before network read",
+        )
+        .unwrap();
+    assert!(!reserved.send_authorized);
+    let mut candidate = bundle();
+    candidate.manifest.context.parent = Some(RevisionId::new("actual-head").unwrap());
+    candidate.model.elements.get_mut("REQ-2").unwrap().name = "revalidated merge".into();
+    candidate.manifest.semantic_digest = candidate.model.semantic_digest().unwrap();
+    let prepared = s
+        .prepare(
+            &actor("owner"),
+            reserved.dispatch.as_ref().unwrap(),
+            reserved.generation,
+            &candidate.to_bytes().unwrap(),
+            ArtifactDigest::of(b"projection"),
+            ArtifactDigest::of(b"identity-map"),
+        )
+        .unwrap();
+    assert_eq!(prepared.receipt, original.receipt);
+    assert_eq!(prepared.raw_envelope, original.raw_envelope);
+    assert_ne!(
+        prepared.prepared.as_ref().unwrap().candidate_digest,
+        original.receipt.proposal_digest
+    );
+    let sent = s
+        .authorize_send(
+            &actor("owner"),
+            prepared.dispatch.as_ref().unwrap(),
+            prepared.generation,
+            true,
+        )
+        .unwrap();
+    assert!(s
+        .authorize_send(
+            &actor("owner"),
+            sent.dispatch.as_ref().unwrap(),
+            sent.generation,
+            true
+        )
+        .is_err());
+    drop(s);
+    let mut s = Store::open(&path).unwrap();
+    assert_eq!(
+        s.operation(&actor("owner"), &project(), &original.receipt.operation)
+            .unwrap(),
+        sent
+    );
+    let committed = s
+        .record_commit(&actor("owner"), sent.generation, &evidence(&sent))
+        .unwrap();
+    assert_eq!(
+        committed.prepared.as_ref().unwrap().parent,
+        ExpectedHead::Revision(RevisionId::new("actual-head").unwrap())
+    );
+    drop(s);
+    Store::open(path).unwrap();
+}
+
+#[test]
+fn duplicate_legacy_migration_fails_atomically_and_noop_never_sends() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("duplicate.db");
+    drop(setup(&path));
+    let c = rusqlite::Connection::open(&path).unwrap();
+    c.execute_batch("DROP TABLE physical_projects; PRAGMA user_version=1;")
+        .unwrap();
+    c.execute(
+        "UPDATE metadata SET schema_digest=?1",
+        [ArtifactDigest::of(include_bytes!("../src/schema-v1.sql")).as_str()],
+    )
+    .unwrap();
+    c.execute(
+        "INSERT INTO projects VALUES ('duplicate',?1,'owner')",
+        [ufo_types::revision::canonical_bytes(&binding()).unwrap()],
+    )
+    .unwrap();
+    drop(c);
+    assert!(matches!(Store::open(&path), Err(Error::IdentityConflict)));
+    let c = rusqlite::Connection::open(&path).unwrap();
+    assert_eq!(
+        c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        c.query_row("SELECT COUNT(*) FROM projects", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        2
+    );
+    drop(c);
+    let path = dir.path().join("noop.db");
+    let mut s = setup(&path);
+    let v = s
+        .intake(
+            &actor("proposer"),
+            &intake("noop"),
+            &bundle().to_bytes().unwrap(),
+        )
+        .unwrap();
+    let v = s
+        .reserve(
+            &actor("owner"),
+            &project(),
+            &v.receipt.operation,
+            v.generation,
+            "observe full native and envelope",
+        )
+        .unwrap();
+    let v = s
+        .prepare(
+            &actor("owner"),
+            v.dispatch.as_ref().unwrap(),
+            v.generation,
+            &bundle().to_bytes().unwrap(),
+            ArtifactDigest::of(b"projection"),
+            ArtifactDigest::of(b"identity-map"),
+        )
+        .unwrap();
+    let observed = s
+        .record_observed(&actor("owner"), v.generation, &evidence(&v))
+        .unwrap();
+    assert!(observed.observed_existing);
+    assert!(!observed.send_authorized);
+    assert!(matches!(
+        observed.receipt.status,
+        SyncStatus::ModelCommitted { .. }
+    ));
+    drop(s);
+    let mut s = Store::open(path).unwrap();
+    assert_eq!(
+        s.operation(&actor("owner"), &project(), &observed.receipt.operation)
+            .unwrap(),
+        observed
+    );
 }

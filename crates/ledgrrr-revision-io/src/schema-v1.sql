@@ -14,5 +14,3 @@ CREATE TABLE operations (project TEXT NOT NULL, operation TEXT NOT NULL, branch 
  generation INTEGER NOT NULL CHECK(generation>=0), record BLOB NOT NULL,
  PRIMARY KEY(project,operation), FOREIGN KEY(project,branch) REFERENCES branches(project,branch)) STRICT;
 CREATE INDEX recovery_order ON operations(project,branch,operation);
-CREATE TABLE physical_projects (provider TEXT NOT NULL, remote_project TEXT NOT NULL,
- project TEXT NOT NULL UNIQUE REFERENCES projects(project), PRIMARY KEY(provider,remote_project)) STRICT;

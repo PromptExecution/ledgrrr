@@ -131,3 +131,25 @@ milestone does not pass the complete SysML plan's seven end-to-end gates.
 
 - [Ontology & Type Mesh](./ontology-type-mesh.md)
 - [MCP Surface](./mcp-surface.md)
+
+## Native promotion preparation
+
+Schema version 2 explicitly upgrades the known version 1 schema in one SQLite
+transaction. Artifacts, receipts and identity columns stay intact; legacy
+unresolved dispatches remain authorized and blocking. Duplicate physical
+`(provider, remote_project)` mappings reject the upgrade without resetting data
+(issue [#250](https://github.com/PromptExecution/ledgrrr/issues/250)). Dialect is
+excluded from physical identity. Provider handles are canonical lowercase host
+configuration identities; the host must map each physical origin to one handle.
+One owner database owns a physical provider topology; SQLite is not distributed
+authority across independently configured databases.
+
+New adapters call `reserve` before remote head reads, `prepare` to persist the
+immutable accepted candidate, then `authorize_send` exactly once. Preparation
+stores full candidate/artifact bytes, actual parent, native projection and identity
+map digests separately from original intake. A repeat authorization never grants
+a second send. Never-authorized reservations can use `cancel_reserved`; authorized
+or ambiguous work never expires. `record_observed` atomically binds a fully
+verified existing revision without authorizing a request. Index work binds the
+accepted candidate digest and actual server revision. `start_dispatch` remains
+a compatibility operation for trusted older adapters and grants one send.

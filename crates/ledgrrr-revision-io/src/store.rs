@@ -5,6 +5,7 @@ use std::{path::Path, time::Duration};
 use ufo_types::revision::canonical_bytes;
 
 const SCHEMA: &str = include_str!("schema.sql");
+const SCHEMA_V1: &str = include_str!("schema-v1.sql");
 const APP_ID: i64 = 0x4c525649;
 const MAX_ENVELOPE: usize = 32 * 1024 * 1024;
 
@@ -31,6 +32,15 @@ fn valid_text(value: &str) -> Result<()> {
 }
 fn validate_binding(binding: &ProjectBinding) -> Result<()> {
     valid_text(&binding.provider)?;
+    if !binding
+        .provider
+        .bytes()
+        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'-' | b'_' | b'.'))
+    {
+        return Err(Error::Invalid(
+            "provider must be a canonical configured lowercase handle".into(),
+        ));
+    }
     valid_text(&binding.remote_project)?;
     valid_text(&binding.model_dialect)
 }
@@ -155,6 +165,26 @@ fn load_operation(
             "expected head differs from proposal parent".into(),
         ));
     }
+    if let Some(p) = &value.prepared {
+        let candidate = PortableBundle::from_bytes(&artifact(c, project, &p.envelope)?)?;
+        let parent = candidate
+            .manifest
+            .context
+            .parent
+            .clone()
+            .map_or(ExpectedHead::Empty, ExpectedHead::Revision);
+        if candidate.bundle_digest() != Ok(p.candidate_digest.clone())
+            || parent != p.parent
+            || candidate.manifest.context.project != *project
+        {
+            return Err(Error::Corrupt("prepared identity".into()));
+        }
+        for (digest, bytes) in &candidate.blobs {
+            if artifact(c, project, digest)? != *bytes {
+                return Err(Error::Corrupt("prepared source bytes".into()));
+            }
+        }
+    }
     validate_state(&value)?;
     if let Some(token) = &value.dispatch {
         let (fence, active): (u64, Option<String>) = c.query_row(
@@ -185,7 +215,10 @@ fn load_operation(
             &receipt.project,
             &receipt.operation,
             &e.actual_revision,
-            &receipt.proposal_digest,
+            value
+                .prepared
+                .as_ref()
+                .map_or(&receipt.proposal_digest, |p| &p.candidate_digest),
         ))?);
         if value.indexing_work.as_ref() != Some(&expected_work) {
             return Err(Error::Corrupt("indexing work identity".into()));
@@ -304,13 +337,13 @@ impl Store {
                 [ArtifactDigest::of(SCHEMA.as_bytes()).as_str()],
             )?;
             tx.pragma_update(None, "application_id", APP_ID)?;
-            tx.pragma_update(None, "user_version", 1)?;
+            tx.pragma_update(None, "user_version", 2)?;
         } else {
-            if app != APP_ID || version != 1 {
+            if app != APP_ID || !matches!(version, 1 | 2) {
                 return Err(Error::Schema);
             }
             let expected = Connection::open_in_memory()?;
-            expected.execute_batch(SCHEMA)?;
+            expected.execute_batch(if version == 1 { SCHEMA_V1 } else { SCHEMA })?;
             if shape != schema_shape(&expected)? {
                 return Err(Error::Schema);
             }
@@ -319,8 +352,87 @@ impl Store {
                 [],
                 |r| r.get(0),
             )?;
-            if digest != ArtifactDigest::of(SCHEMA.as_bytes()).as_str() {
+            if digest
+                != ArtifactDigest::of(if version == 1 {
+                    SCHEMA_V1.as_bytes()
+                } else {
+                    SCHEMA.as_bytes()
+                })
+                .as_str()
+            {
                 return Err(Error::Schema);
+            }
+            if version == 1 {
+                // Ordered atomic migration: reject collisions before changing any data.
+                let bindings = {
+                    let mut q =
+                        tx.prepare("SELECT project,binding FROM projects ORDER BY project")?;
+                    let rows = q
+                        .query_map([], |r| {
+                            Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?))
+                        })?
+                        .collect::<std::result::Result<Vec<_>, _>>()?;
+                    rows
+                };
+                let mut seen = std::collections::BTreeSet::new();
+                for (_, raw) in &bindings {
+                    let b: ProjectBinding = decode(raw)?;
+                    validate_binding(&b)?;
+                    if !seen.insert((b.provider, b.remote_project)) {
+                        return Err(Error::IdentityConflict);
+                    }
+                }
+                tx.execute_batch(SCHEMA.strip_prefix(SCHEMA_V1).ok_or(Error::Schema)?)?;
+                for (project, raw) in bindings {
+                    let b: ProjectBinding = decode(&raw)?;
+                    tx.execute(
+                        "INSERT INTO physical_projects VALUES (?1,?2,?3)",
+                        params![b.provider, b.remote_project, project],
+                    )?;
+                }
+                let records = {
+                    let mut q = tx.prepare("SELECT project,operation,record FROM operations")?;
+                    let rows = q
+                        .query_map([], |r| {
+                            Ok((
+                                r.get::<_, String>(0)?,
+                                r.get::<_, String>(1)?,
+                                r.get::<_, Vec<u8>>(2)?,
+                            ))
+                        })?
+                        .collect::<std::result::Result<Vec<_>, _>>()?;
+                    rows
+                };
+                for (project, operation, raw) in records {
+                    let mut value: StoredOperation = decode(&raw)?;
+                    // v1 dispatch always meant send permission: unresolved legacy work stays fenced.
+                    if value.dispatch.is_some() {
+                        value.send_authorized = true;
+                    }
+                    tx.execute(
+                        "UPDATE operations SET record=?1 WHERE project=?2 AND operation=?3",
+                        params![canonical_bytes(&value)?, project, operation],
+                    )?;
+                }
+                tx.execute(
+                    "UPDATE metadata SET schema_digest=?1",
+                    [ArtifactDigest::of(SCHEMA.as_bytes()).as_str()],
+                )?;
+                tx.pragma_update(None, "user_version", 2)?;
+            }
+        }
+        // Validate physical mappings even on reopen; raw DB writers are trusted but corruption fails closed.
+        {
+            let mut q = tx.prepare("SELECT project FROM projects ORDER BY project")?;
+            let ids = q
+                .query_map([], |r| r.get::<_, String>(0))?
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            for id in ids {
+                let b = project_binding(&tx, &ProjectId::new(&id)?)?;
+                let physical:Option<String>=tx.query_row("SELECT project FROM physical_projects WHERE provider=?1 AND remote_project=?2",params![b.provider,b.remote_project],|r|r.get(0)).optional()?;
+                if physical.as_deref() != Some(id.as_str()) {
+                    return Err(Error::Corrupt("physical project binding".into()));
+                }
             }
         }
         tx.commit()?;
@@ -371,9 +483,17 @@ impl Store {
                 return Err(Error::IdentityConflict);
             }
         } else {
+            let occupied:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM physical_projects WHERE provider=?1 AND remote_project=?2)",params![binding.provider,binding.remote_project],|r|r.get(0))?;
+            if occupied {
+                return Err(Error::IdentityConflict);
+            }
             tx.execute(
                 "INSERT INTO projects(project,binding,bootstrap_owner) VALUES (?1,?2,?3)",
                 params![project.as_str(), canonical_bytes(binding)?, owner.as_str()],
+            )?;
+            tx.execute(
+                "INSERT INTO physical_projects VALUES (?1,?2,?3)",
+                params![binding.provider, binding.remote_project, project.as_str()],
             )?;
             tx.execute(
                 "INSERT INTO grants(project,actor,read,propose,administer) VALUES (?1,?2,1,1,1)",
@@ -527,6 +647,9 @@ impl Store {
             actual_revision: None,
             indexing_work: None,
             commit_evidence: None,
+            prepared: None,
+            send_authorized: false,
+            observed_existing: false,
         };
         tx.execute("INSERT INTO operations(project,operation,branch,actor,expected_head,proposal_digest,generation,record) VALUES (?1,?2,?3,?4,?5,?6,0,?7)",params![intake.project.as_str(),intake.operation.as_str(),intake.branch.as_str(),actor.as_str(),canonical_bytes(&intake.expected_head)?,value.receipt.proposal_digest.as_str(),canonical_bytes(&value)?])?;
         tx.commit()?;
@@ -628,6 +751,23 @@ impl Store {
         generation: u64,
         observation: &str,
     ) -> Result<StoredOperation> {
+        let value = self.reserve(actor, project, operation, generation, observation)?;
+        self.authorize_send(
+            actor,
+            value.dispatch.as_ref().ok_or(Error::Transition)?,
+            value.generation,
+            false,
+        )
+    }
+
+    pub fn reserve(
+        &mut self,
+        actor: &ActorId,
+        project: &ProjectId,
+        operation: &OperationId,
+        generation: u64,
+        observation: &str,
+    ) -> Result<StoredOperation> {
         valid_text(observation)?;
         let tx = self
             .connection
@@ -678,6 +818,132 @@ impl Store {
         tx.commit()?;
         Ok(value)
     }
+    /// Persist validated candidate and blobs while retaining the original intake.
+    pub fn prepare(
+        &mut self,
+        actor: &ActorId,
+        token: &DispatchToken,
+        generation: u64,
+        bytes: &[u8],
+        projection_digest: ArtifactDigest,
+        identity_digest: ArtifactDigest,
+    ) -> Result<StoredOperation> {
+        let candidate = PortableBundle::from_bytes(bytes)?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        authorize(&tx, actor, &token.project, "administer")?;
+        let mut value = load_operation(&tx, &token.project, &token.operation)?;
+        check_token(&tx, &value, token)?;
+        if value.generation != generation {
+            return Err(Error::Stale);
+        }
+        if value.send_authorized
+            || value.prepared.is_some()
+            || value.receipt.status != SyncStatus::Pending
+        {
+            return Err(Error::Transition);
+        }
+        if candidate.manifest.context.project != token.project
+            || candidate.manifest.context.model_dialect
+                != project_binding(&tx, &token.project)?.model_dialect
+        {
+            return Err(Error::IdentityConflict);
+        }
+        let parent = candidate
+            .manifest
+            .context
+            .parent
+            .clone()
+            .map_or(ExpectedHead::Empty, ExpectedHead::Revision);
+        let envelope = save_artifact(&tx, &token.project, &candidate.to_bytes()?)?;
+        for bytes in candidate.blobs.values() {
+            save_artifact(&tx, &token.project, bytes)?;
+        }
+        value.prepared = Some(PreparedCandidate {
+            envelope,
+            candidate_digest: candidate.bundle_digest()?,
+            parent,
+            projection_digest,
+            identity_digest,
+        });
+        update_operation(&tx, &mut value)?;
+        tx.commit()?;
+        Ok(value)
+    }
+
+    /// Exactly one durable send authorization. Repeated calls never grant another send.
+    pub fn authorize_send(
+        &mut self,
+        actor: &ActorId,
+        token: &DispatchToken,
+        generation: u64,
+        require_prepared: bool,
+    ) -> Result<StoredOperation> {
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        authorize(&tx, actor, &token.project, "administer")?;
+        let mut value = load_operation(&tx, &token.project, &token.operation)?;
+        check_token(&tx, &value, token)?;
+        if value.generation != generation {
+            return Err(Error::Stale);
+        }
+        if value.send_authorized
+            || value.receipt.status != SyncStatus::Pending
+            || (require_prepared && value.prepared.is_none())
+        {
+            return Err(Error::Transition);
+        }
+        value.send_authorized = true;
+        update_operation(&tx, &mut value)?;
+        tx.commit()?;
+        Ok(value)
+    }
+
+    /// A reserved but never authorized operation can safely release its branch.
+    pub fn cancel_reserved(
+        &mut self,
+        actor: &ActorId,
+        token: &DispatchToken,
+        generation: u64,
+        status: SyncStatus,
+    ) -> Result<StoredOperation> {
+        if !matches!(
+            status,
+            SyncStatus::Conflict { .. } | SyncStatus::Unavailable { .. }
+        ) {
+            return Err(Error::Transition);
+        }
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        authorize(&tx, actor, &token.project, "administer")?;
+        let mut value = load_operation(&tx, &token.project, &token.operation)?;
+        check_token(&tx, &value, token)?;
+        if value.generation != generation {
+            return Err(Error::Stale);
+        }
+        if value.send_authorized || value.receipt.status != SyncStatus::Pending {
+            return Err(Error::Transition);
+        }
+        value.receipt.status = status;
+        update_operation(&tx, &mut value)?;
+        tx.execute("UPDATE branches SET active_operation=NULL WHERE project=?1 AND branch=?2 AND fence=?3 AND active_operation=?4",params![token.project.as_str(),token.branch.as_str(),token.fence,token.operation.as_str()])?;
+        tx.commit()?;
+        Ok(value)
+    }
+
+    /// Bind a fully verified existing revision, without authorizing a remote request.
+    pub fn record_observed(
+        &mut self,
+        actor: &ActorId,
+        generation: u64,
+        evidence: &CommitEvidence,
+    ) -> Result<StoredOperation> {
+        self.record_commit_inner(actor, generation, evidence, true)
+    }
+
     pub fn mark_ambiguous(
         &mut self,
         actor: &ActorId,
@@ -719,6 +985,15 @@ impl Store {
         generation: u64,
         evidence: &CommitEvidence,
     ) -> Result<StoredOperation> {
+        self.record_commit_inner(actor, generation, evidence, false)
+    }
+    fn record_commit_inner(
+        &mut self,
+        actor: &ActorId,
+        generation: u64,
+        evidence: &CommitEvidence,
+        observed: bool,
+    ) -> Result<StoredOperation> {
         valid_text(&evidence.observation)?;
         let token = &evidence.token;
         let tx = self
@@ -748,13 +1023,25 @@ impl Store {
         {
             return Err(Error::IdentityConflict);
         }
+        if observed {
+            if value.send_authorized || value.prepared.is_none() {
+                return Err(Error::Transition);
+            }
+            value.observed_existing = true;
+        }
+        if !value.send_authorized && !value.observed_existing {
+            return Err(Error::Transition);
+        }
         value.actual_revision = Some(evidence.actual_revision.clone());
         value.indexing_work = Some(ArtifactDigest::of(&canonical_bytes(&(
             "ledgrrr:index-work:1",
             &value.receipt.project,
             &value.receipt.operation,
             &evidence.actual_revision,
-            &value.receipt.proposal_digest,
+            value
+                .prepared
+                .as_ref()
+                .map_or(&value.receipt.proposal_digest, |p| &p.candidate_digest),
         ))?));
         value.commit_evidence = Some(evidence.clone());
         value.receipt.status = SyncStatus::ModelCommitted {

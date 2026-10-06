@@ -71,6 +71,27 @@ pub struct StoredOperation {
     pub actual_revision: Option<RevisionId>,
     pub indexing_work: Option<ArtifactDigest>,
     pub commit_evidence: Option<CommitEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prepared: Option<PreparedCandidate>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub send_authorized: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub observed_existing: bool,
+}
+
+fn is_false(v: &bool) -> bool {
+    !*v
+}
+
+/// Immutable operational preparation; intake receipt identity stays unchanged.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PreparedCandidate {
+    pub envelope: ArtifactDigest,
+    pub candidate_digest: ArtifactDigest,
+    pub parent: ExpectedHead,
+    pub projection_digest: ArtifactDigest,
+    pub identity_digest: ArtifactDigest,
 }
 
 /// Evidence independently obtained by an authenticated provider adapter.

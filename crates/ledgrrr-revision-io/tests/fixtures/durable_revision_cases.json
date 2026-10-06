@@ -351,5 +351,15 @@
     "project",
     "revision",
     "dialect"
+  ],
+  "physical_alias_cases": [
+    {
+      "project": "alias-race-a",
+      "dialect": "SysML-v2"
+    },
+    {
+      "project": "alias-race-b",
+      "dialect": "KerML"
+    }
   ]
 }
