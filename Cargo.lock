@@ -5258,6 +5258,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "ledgrrr-sysml-adapter"
+version = "1.10.0"
+dependencies = [
+ "blake3",
+ "ledgrrr-revision-io",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "ufo-types",
+]
+
+[[package]]
 name = "lexical-core"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"

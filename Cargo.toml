@@ -2,6 +2,7 @@
 members = [
   "crates/ledger-core",
   "crates/ledgrrr-revision-io",
+  "crates/ledgrrr-sysml-adapter",
   "crates/ledger-attest",
   "crates/ledgerr-focus",
   "crates/ledgrrr-settings",

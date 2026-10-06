@@ -1,0 +1,351 @@
+{
+  "context": {
+    "project": "project-1",
+    "revision": "commit-1",
+    "parent": null,
+    "model_dialect": "SysML-v2",
+    "library_revisions": {
+      "ScalarValues": "git:library-1"
+    },
+    "source_revisions": {
+      "repo": "git:source-1"
+    },
+    "toolchain": {
+      "compiler": "rustc-1.98.0",
+      "parser": "sysml-v2-parser-0.54.0"
+    }
+  },
+  "model": {
+    "elements": {
+      "REQ-日本語": {
+        "id": "REQ-日本語",
+        "kind": "requirement_usage",
+        "name": "Control the actuator",
+        "properties": {},
+        "anchors": [],
+        "extensions": {
+          "reqif": {
+            "original_id": "REQ-日本語",
+            "unknown": {
+              "z": [
+                1,
+                false
+              ],
+              "a": "original"
+            }
+          }
+        }
+      },
+      "REQ-2": {
+        "id": "REQ-2",
+        "kind": "requirement_definition",
+        "name": "Return to idle",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "controller": {
+        "id": "controller",
+        "kind": "part_usage",
+        "name": "Controller",
+        "properties": {
+          "matrix": {
+            "type_ref": {
+              "kind": "list",
+              "value": {
+                "kind": "list",
+                "value": {
+                  "kind": "natural"
+                }
+              }
+            },
+            "multiplicity": {
+              "lower": 1,
+              "upper": 1
+            },
+            "values": [
+              {
+                "kind": "list",
+                "value": [
+                  {
+                    "kind": "list",
+                    "value": [
+                      {
+                        "kind": "natural",
+                        "value": 1
+                      },
+                      {
+                        "kind": "natural",
+                        "value": 2
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "observed": {
+            "type_ref": {
+              "kind": "timestamp"
+            },
+            "multiplicity": {
+              "lower": 1,
+              "upper": 1
+            },
+            "values": [
+              {
+                "kind": "timestamp",
+                "value": "2026-10-05T07:00:00+00:00"
+              }
+            ]
+          },
+          "label": {
+            "type_ref": {
+              "kind": "string"
+            },
+            "multiplicity": {
+              "lower": 0,
+              "upper": 1
+            },
+            "values": null
+          }
+        },
+        "anchors": [
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "rust_span": {
+                "file": "src/controller.rs",
+                "line": 1,
+                "col": 1
+              }
+            },
+            "source_revision": "git:source-1"
+          }
+        ],
+        "extensions": {}
+      },
+      "test": {
+        "id": "test",
+        "kind": "verification_case_usage",
+        "name": "Controller test",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "platform": {
+        "id": "platform",
+        "kind": "part_usage",
+        "name": "Platform",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      }
+    },
+    "relations": {
+      "satisfy-1": {
+        "id": "satisfy-1",
+        "relation": {
+          "satisfy": {
+            "requirement": "REQ-日本語",
+            "subject": "controller"
+          }
+        },
+        "authority": "authored",
+        "anchors": [],
+        "rule": null,
+        "extensions": {}
+      },
+      "verify-1": {
+        "id": "verify-1",
+        "relation": {
+          "verify": {
+            "requirement": "REQ-日本語",
+            "by": "test"
+          }
+        },
+        "authority": "authored",
+        "anchors": [],
+        "rule": null,
+        "extensions": {}
+      },
+      "cycle-a": {
+        "id": "cycle-a",
+        "relation": {
+          "dependency": {
+            "client": "REQ-日本語",
+            "supplier": "REQ-2"
+          }
+        },
+        "authority": "authored",
+        "anchors": [],
+        "rule": null,
+        "extensions": {}
+      },
+      "cycle-b": {
+        "id": "cycle-b",
+        "relation": {
+          "dependency": {
+            "client": "REQ-2",
+            "supplier": "REQ-日本語"
+          }
+        },
+        "authority": "authored",
+        "anchors": [],
+        "rule": null,
+        "extensions": {}
+      },
+      "allocate": {
+        "id": "allocate",
+        "relation": {
+          "allocation": {
+            "source": "controller",
+            "target": "platform"
+          }
+        },
+        "authority": "authored",
+        "anchors": [],
+        "rule": null,
+        "extensions": {}
+      }
+    }
+  },
+  "artifacts": {
+    "src/controller.rs": [
+      239,
+      187,
+      191,
+      112,
+      117,
+      98,
+      32,
+      102,
+      110,
+      32,
+      99,
+      111,
+      110,
+      116,
+      114,
+      111,
+      108,
+      40,
+      41,
+      32,
+      123,
+      125,
+      13,
+      10
+    ],
+    "model/vehicle.sysml": [
+      114,
+      101,
+      113,
+      117,
+      105,
+      114,
+      101,
+      109,
+      101,
+      110,
+      116,
+      32,
+      60,
+      39,
+      82,
+      69,
+      81,
+      45,
+      230,
+      151,
+      165,
+      230,
+      156,
+      172,
+      232,
+      170,
+      158,
+      39,
+      62,
+      32,
+      99,
+      111,
+      110,
+      116,
+      114,
+      111,
+      108,
+      59,
+      13,
+      10
+    ],
+    "attachments/evidence.bin": [
+      0,
+      255,
+      10,
+      13
+    ]
+  },
+  "actors": {
+    "owner": "owner",
+    "proposer": "proposer",
+    "reader": "reader",
+    "denied": "denied"
+  },
+  "binding": {
+    "provider": "reference",
+    "remote_project": "remote-project-1",
+    "model_dialect": "SysML-v2"
+  },
+  "intake_cases": [
+    {
+      "name": "actor",
+      "mutation": "actor"
+    },
+    {
+      "name": "branch",
+      "mutation": "branch"
+    },
+    {
+      "name": "expected_head",
+      "mutation": "expected_head"
+    },
+    {
+      "name": "extension",
+      "mutation": "extension"
+    },
+    {
+      "name": "source_bytes",
+      "mutation": "source_bytes"
+    }
+  ],
+  "commit_evidence_mutations": [
+    "fence",
+    "project",
+    "digest",
+    "head",
+    "binding"
+  ],
+  "checkpoint_mutations": [
+    "project",
+    "revision",
+    "dialect"
+  ],
+  "editors": [
+    {
+      "name": "A",
+      "element": "REQ-日本語",
+      "name_after": "A change"
+    },
+    {
+      "name": "B",
+      "element": "REQ-2",
+      "name_after": "B change"
+    }
+  ],
+  "unsupported": [
+    "action_definition",
+    "state_usage",
+    "domain_derivation"
+  ]
+}
