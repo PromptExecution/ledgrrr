@@ -1,0 +1,9 @@
+{
+  "base": {},
+  "edit_a": {"element":"REQ-日本語","name":"Editor A actuator"},
+  "edit_b": {"element":"REQ-2","name":"Editor B idle"},
+  "conflict_a": {"element":"REQ-日本語","name":"Conflicting A"},
+  "conflict_b": {"element":"REQ-日本語","name":"Conflicting B"},
+  "empty": {"empty":true},
+  "unsupported_action": {"remove_relations":["type-controller"],"element":"controller","kind":"action_definition"}
+}

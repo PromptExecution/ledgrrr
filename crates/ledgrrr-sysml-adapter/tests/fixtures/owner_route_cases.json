@@ -1,0 +1,72 @@
+{
+  "credential": {
+    "token": "test-only-owner-credential-00000000000000000000000",
+    "actor": "editor"
+  },
+  "native_mutations": [
+    {
+      "method": "POST",
+      "path": "/projects"
+    },
+    {
+      "method": "PUT",
+      "path": "/projects/p"
+    },
+    {
+      "method": "DELETE",
+      "path": "/projects/p"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/p/branches"
+    },
+    {
+      "method": "DELETE",
+      "path": "/projects/p/branches/b"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/p/tags"
+    },
+    {
+      "method": "DELETE",
+      "path": "/projects/p/tags/t"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/p/commits"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/p/commits/named"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/p/queries"
+    },
+    {
+      "method": "DELETE",
+      "path": "/projects/p/queries/q"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/p/query-results"
+    }
+  ],
+  "alternate_prefixes": [
+    "",
+    "/api",
+    "/v1",
+    "/native"
+  ],
+  "intake_forbidden": [
+    "actor",
+    "backend_origin",
+    "publisher",
+    "bootstrap"
+  ],
+  "owner_credential": {
+    "token": "test-only-privileged-owner-00000000000000000000000",
+    "actor": "owner"
+  }
+}

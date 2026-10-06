@@ -77,6 +77,8 @@ pub struct StoredOperation {
     pub send_authorized: bool,
     #[serde(default, skip_serializing_if = "is_false")]
     pub observed_existing: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conflict_evidence: Option<ArtifactDigest>,
 }
 
 fn is_false(v: &bool) -> bool {

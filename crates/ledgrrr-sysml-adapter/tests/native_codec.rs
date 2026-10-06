@@ -47,13 +47,13 @@ fn real_reference_shapes_and_non_default_semantics() {
         .iter()
         .find(|e| e.kind == "RequirementUsage")
         .unwrap();
-    assert!(req.requirement_definition.is_none());
+    assert!(req.requirement_definition.is_some());
     let verify = p
         .elements
         .iter()
         .find(|e| e.kind == "VerificationCaseUsage")
         .unwrap();
-    assert!(verify.verification_case_definition.is_none());
+    assert!(verify.verification_case_definition.is_some());
     assert_eq!(verify.verified_requirement.len(), 1);
     let satisfy = p
         .elements
@@ -92,6 +92,7 @@ fn unsupported_behavior_derivation_endpoints_and_duplicate_keys_fail() {
     for kind in [ElementKind::ActionDefinition, ElementKind::StateUsage] {
         let mut changed = b.clone();
         changed.model.elements.get_mut("controller").unwrap().kind = kind;
+        changed.model.relations.remove("type-controller");
         changed.manifest.semantic_digest = changed.model.semantic_digest().unwrap();
         assert!(matches!(
             emit(&changed, &marker()),
@@ -491,10 +492,91 @@ fn true_feature_typing_projects_usage_specific_definition_links() {
             .iter()
             .filter(|e| e.kind == "FeatureTyping")
             .count(),
-        2
+        3
     );
     assert_eq!(
         hydrate(&projection.elements, &b.to_bytes().unwrap(), &marker()).unwrap(),
         b
     );
+}
+
+#[test]
+fn envelope_reference_checks_actual_artifact_bytes_and_reports_native_field_paths() {
+    let b = fixture();
+    let p = emit(&b, &marker()).unwrap();
+    let mut bytes = b.to_bytes().unwrap();
+    bytes.push(b' ');
+    assert!(hydrate(&p.elements, &bytes, &marker()).is_err());
+    let mut changed = p.elements;
+    let id = changed[0].id.clone();
+    changed[0]
+        .fields
+        .insert("unknown-native-semantics".into(), true.into());
+    let error = hydrate(&changed, &b.to_bytes().unwrap(), &marker()).unwrap_err();
+    if let ledgrrr_sysml_adapter::native::Error::Fidelity(report) = error {
+        assert!(report
+            .issues
+            .iter()
+            .any(|i| i.path == format!("native/{id}/unknown-native-semantics")));
+    } else {
+        panic!("expected typed native field failure");
+    }
+}
+
+#[test]
+fn feature_typing_cardinality_pair_compatibility_and_native_links_are_checked() {
+    use ufo_types::Relation;
+    let b = fixture();
+    let mut incompatible = b.clone();
+    incompatible
+        .model
+        .relations
+        .get_mut("type-req")
+        .unwrap()
+        .relation = Relation::FeatureTyping {
+        feature: "REQ-日本語".into(),
+        type_: "verification-definition".into(),
+    };
+    incompatible.manifest.semantic_digest = incompatible.model.semantic_digest().unwrap();
+    assert!(matches!(
+        emit(&incompatible, &marker()),
+        Err(ledgrrr_sysml_adapter::native::Error::Fidelity(_))
+    ));
+    let mut duplicate = b.clone();
+    let mut typing = duplicate.model.relations["type-req"].clone();
+    typing.id = "duplicate-typing".into();
+    duplicate
+        .model
+        .relations
+        .insert("duplicate-typing".into(), typing);
+    duplicate.manifest.semantic_digest = duplicate.model.semantic_digest().unwrap();
+    assert!(emit(&duplicate, &marker()).is_err());
+    let projection = emit(&b, &marker()).unwrap();
+    let part = projection
+        .elements
+        .iter()
+        .find(|e| e.id == projection.identity_map["controller"])
+        .unwrap();
+    assert!(part.fields["partDefinition"].is_array());
+    for kind in [
+        "SatisfyRequirementUsage",
+        "AllocationUsage",
+        "VerificationCaseUsage",
+        "FeatureTyping",
+    ] {
+        let mut changed = projection.elements.clone();
+        let e = changed.iter_mut().find(|e| e.kind == kind).unwrap();
+        match kind {
+            "SatisfyRequirementUsage" => {
+                e.satisfied_requirement.as_mut().unwrap().id = "wrong".into()
+            }
+            "AllocationUsage" => e.target_feature.clear(),
+            "VerificationCaseUsage" => e.verified_requirement.clear(),
+            _ => {
+                e.fields
+                    .insert("typedFeature".into(), serde_json::json!({"@id":"wrong"}));
+            }
+        }
+        assert!(hydrate(&changed, &b.to_bytes().unwrap(), &marker()).is_err());
+    }
 }

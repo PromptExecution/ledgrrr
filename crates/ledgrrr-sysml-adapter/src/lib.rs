@@ -2,3 +2,6 @@
 #![forbid(unsafe_code)]
 pub mod native;
 pub mod client;
+
+pub mod promotion;
+pub mod server;

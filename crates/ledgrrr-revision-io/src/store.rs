@@ -185,6 +185,13 @@ fn load_operation(
             }
         }
     }
+    if let Some(digest) = &value.conflict_evidence {
+        let conflicts: Vec<ufo_types::revision::Conflict> = decode(&artifact(c, project, digest)?)?;
+        if !matches!(&receipt.status,SyncStatus::Conflict{paths} if *paths==conflicts.iter().map(|c|c.path.clone()).collect::<Vec<_>>())
+        {
+            return Err(Error::Corrupt("conflict evidence identity".into()));
+        }
+    }
     validate_state(&value)?;
     if let Some(token) = &value.dispatch {
         let (fence, active): (u64, Option<String>) = c.query_row(
@@ -650,6 +657,7 @@ impl Store {
             prepared: None,
             send_authorized: false,
             observed_existing: false,
+            conflict_evidence: None,
         };
         tx.execute("INSERT INTO operations(project,operation,branch,actor,expected_head,proposal_digest,generation,record) VALUES (?1,?2,?3,?4,?5,?6,0,?7)",params![intake.project.as_str(),intake.operation.as_str(),intake.branch.as_str(),actor.as_str(),canonical_bytes(&intake.expected_head)?,value.receipt.proposal_digest.as_str(),canonical_bytes(&value)?])?;
         tx.commit()?;
@@ -909,6 +917,31 @@ impl Store {
         generation: u64,
         status: SyncStatus,
     ) -> Result<StoredOperation> {
+        self.cancel_reserved_inner(actor, token, generation, status, None)
+    }
+    pub fn cancel_with_conflicts(
+        &mut self,
+        actor: &ActorId,
+        token: &DispatchToken,
+        generation: u64,
+        conflicts: &[ufo_types::revision::Conflict],
+    ) -> Result<StoredOperation> {
+        if conflicts.is_empty() || conflicts.len() > 256 {
+            return Err(Error::Invalid("bounded nonempty conflicts required".into()));
+        }
+        let status = SyncStatus::Conflict {
+            paths: conflicts.iter().map(|c| c.path.clone()).collect(),
+        };
+        self.cancel_reserved_inner(actor, token, generation, status, Some(conflicts))
+    }
+    fn cancel_reserved_inner(
+        &mut self,
+        actor: &ActorId,
+        token: &DispatchToken,
+        generation: u64,
+        status: SyncStatus,
+        conflicts: Option<&[ufo_types::revision::Conflict]>,
+    ) -> Result<StoredOperation> {
         if !matches!(
             status,
             SyncStatus::Conflict { .. } | SyncStatus::Unavailable { .. }
@@ -926,6 +959,13 @@ impl Store {
         }
         if value.send_authorized || value.receipt.status != SyncStatus::Pending {
             return Err(Error::Transition);
+        }
+        if let Some(conflicts) = conflicts {
+            value.conflict_evidence = Some(save_artifact(
+                &tx,
+                &token.project,
+                &canonical_bytes(&conflicts)?,
+            )?);
         }
         value.receipt.status = status;
         update_operation(&tx, &mut value)?;

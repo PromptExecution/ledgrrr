@@ -1141,3 +1141,63 @@ fn duplicate_legacy_migration_fails_atomically_and_noop_never_sends() {
         observed
     );
 }
+
+#[test]
+fn upstream_typed_conflicts_are_digest_bound_and_survive_reopen() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("typed-conflict.db");
+    let mut s = setup(&path);
+    let f = fixture();
+    let case = &f["merge_conflict_case"];
+    let id = case["element"].as_str().unwrap();
+    let base = bundle().model;
+    let mut ours = base.clone();
+    let mut theirs = base.clone();
+    ours.elements.get_mut(id).unwrap().name = case["ours"].as_str().unwrap().into();
+    theirs.elements.get_mut(id).unwrap().name = case["theirs"].as_str().unwrap().into();
+    let ufo_types::revision::MergeOutcome::Conflicted { conflicts } =
+        ufo_types::revision::merge_models(&base, &ours, &theirs).unwrap()
+    else {
+        panic!("fixture must conflict")
+    };
+    let v = s
+        .intake(
+            &actor("proposer"),
+            &intake("typed-conflict"),
+            &bundle().to_bytes().unwrap(),
+        )
+        .unwrap();
+    let reserved = s
+        .reserve(
+            &actor("owner"),
+            &project(),
+            &v.receipt.operation,
+            v.generation,
+            "reserve before merge",
+        )
+        .unwrap();
+    let rejected = s
+        .cancel_with_conflicts(
+            &actor("owner"),
+            reserved.dispatch.as_ref().unwrap(),
+            reserved.generation,
+            &conflicts,
+        )
+        .unwrap();
+    assert!(!rejected.send_authorized);
+    drop(s);
+    let mut s = Store::open(path).unwrap();
+    let reopened = s
+        .operation(&actor("reader"), &project(), &v.receipt.operation)
+        .unwrap();
+    assert_eq!(reopened, rejected);
+    let bytes = s
+        .artifact(
+            &actor("reader"),
+            &project(),
+            reopened.conflict_evidence.as_ref().unwrap(),
+        )
+        .unwrap();
+    let actual: Vec<ufo_types::revision::Conflict> = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(actual, conflicts);
+}

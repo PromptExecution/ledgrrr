@@ -40,7 +40,7 @@ edition = "2021"
 license = "MIT"
 
 [workspace.dependencies]
-ufo-types = { git = "https://github.com/promptexecution/ufo-types", rev = "e900190e4be8b3380c9f4a44be0c85dda4f14b47" }
+ufo-types = { git = "https://github.com/promptexecution/ufo-types", rev = "ba12e5e2baa79dbfaf330a6b634ac6e3ae1e5ea1" }
 rusqlite = { version = "=0.33.0", features = ["bundled"] }
 rust_xlsxwriter = "0.94.0"
 serde = { version = "1", features = ["derive"] }

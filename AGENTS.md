@@ -733,3 +733,9 @@ Represent OpenMetadata catalog objects through `ledgerr_ontology` custom kinds f
 - SQLite ownership requires local storage, WAL/FULL, foreign keys and immediate parameterized transactions. Unsupported/corrupt records fail closed; never reset or invent migrations. Artifact hashes grant no access.
 - Persist dispatch evidence before remote requests. Restart or local lease expiry cannot authorize resending an unresolved unconditional provider request. Ambiguous work blocks the branch until matching independently observed remote evidence; storage fences alone do not constrain provider mutation routes.
 - Indexed receipts require the trusted publisher capability and exact revision evidence. Receipt validation does not establish graph completeness or advance branch pointers; real provider/index/UI release gates remain separate.
+
+### Private SysML owner runtime
+
+- Use `just sysml-revision-test`, `just sysml-revision-check`, `just sysml-owner-up` and `just sysml-owner-live`; inspect every gate in `/tmp/sysml-owner-c9d-live-report.json`. Unknown infrastructure is nonzero, never skipped success.
+- Keep `pex-sysml-owner-c9d` separate from retained `pex-sysml-reference`; never restart the baseline because its schema uses destructive `create-drop`. Native HTTP must bind pod-local loopback with no host publication; prove host and unrelated-container isolation.
+- Host credentials/configuration stay outside Git; actors and grants come from host config. One physical backend has one durable owner DB. Native CAS is unavailable; ambiguity cannot expire into permission to resend. Graph/UI and unsupported native library/behavior gates remain separate.

@@ -140,6 +140,7 @@ pub fn capability_table() -> Vec<Capability> {
             false,
             "generic specialization is not FeatureTyping",
         ),
+        ("feature_typing", true, "one compatible usage-to-definition typing; real native singleton/array definition fields"),
         ("subsetting", false, "unverified"),
         ("redefinition", false, "unverified"),
         ("connection", false, "library/end semantics unverified"),
@@ -238,6 +239,12 @@ pub fn provider_uuid(namespace: &str, opaque: &str) -> String {
 }
 pub fn emit(bundle: &PortableBundle, marker: &OperationMarker) -> Result<Projection> {
     bundle.validate()?;
+    if marker.project != bundle.manifest.context.project.as_str() {
+        return Err(loss(
+            "marker/project",
+            "operation marker does not bind the bundle's owner project",
+        ));
+    }
     for value in [&marker.project, &marker.branch, &marker.operation] {
         if value.trim().is_empty() || value.chars().any(char::is_control) {
             return Err(Error::Protocol("invalid operation marker".into()));
@@ -261,6 +268,7 @@ pub fn emit(bundle: &PortableBundle, marker: &OperationMarker) -> Result<Project
             ));
         }
     }
+    let mut typed_features = BTreeSet::new();
     for (id, r) in &bundle.model.relations {
         let allowed = match &r.relation {
             Relation::Verify { requirement, by } => {
@@ -281,6 +289,11 @@ pub fn emit(bundle: &PortableBundle, marker: &OperationMarker) -> Result<Project
             Relation::FeatureMembership { owner, member } => {
                 bundle.model.elements[owner.as_str()].kind == ElementKind::Package
                     && native_feature(bundle.model.elements[member.as_str()].kind)
+            }
+            Relation::FeatureTyping { feature, type_ } => {
+                let compatible = bundle.model.elements[feature.as_str()].kind.definition_of()
+                    == Some(bundle.model.elements[type_.as_str()].kind);
+                compatible && typed_features.insert(feature.as_str())
             }
             Relation::Specialization { .. } => false,
             Relation::Dependency { .. } => true,
@@ -362,6 +375,28 @@ pub fn emit(bundle: &PortableBundle, marker: &OperationMarker) -> Result<Project
                 row.fields
                     .insert("memberElement".into(), json!(native_ref(member)));
             }
+            Relation::FeatureTyping { feature, type_ } => {
+                row.fields
+                    .insert("typedFeature".into(), json!(native_ref(feature)));
+                row.fields.insert("type".into(), json!(native_ref(type_)));
+                let usage = rows
+                    .get_mut(feature.as_str())
+                    .ok_or_else(|| loss(id, "missing typed usage"))?;
+                match bundle.model.elements[feature.as_str()].kind {
+                    ElementKind::RequirementUsage => {
+                        usage.requirement_definition = Some(native_ref(type_))
+                    }
+                    ElementKind::VerificationCaseUsage => {
+                        usage.verification_case_definition = Some(native_ref(type_))
+                    }
+                    ElementKind::PartUsage => {
+                        usage
+                            .fields
+                            .insert("partDefinition".into(), json!([native_ref(type_)]));
+                    }
+                    _ => return Err(loss(id, "unsupported native typed usage")),
+                }
+            }
             _ => return Err(loss(id, "unsupported relation")),
         }
         relation_rows.push(row);
@@ -425,6 +460,12 @@ pub fn hydrate(
 ) -> Result<PortableBundle> {
     let bundle = PortableBundle::from_bytes(envelope_bytes)?;
     let expected = emit(&bundle, marker)?;
+    if ArtifactDigest::of(envelope_bytes) != expected.envelope_digest {
+        return Err(loss(
+            "envelope",
+            "envelope bytes do not match their canonical native digest",
+        ));
+    }
     let reference = marker_from_elements(elements)?;
     if reference.marker != *marker || reference.envelope != expected.envelope_digest {
         return Err(loss("anchor", "operation/envelope mismatch"));
@@ -444,10 +485,59 @@ pub fn hydrate(
     }
     actual.sort_by(|a, b| a.id.cmp(&b.id));
     if actual != expected.elements {
-        return Err(loss(
-            "native",
-            "complete native projection differs from owner envelope",
-        ));
+        let expected_rows: BTreeMap<_, _> = expected
+            .elements
+            .iter()
+            .map(|e| (e.id.as_str(), e))
+            .collect();
+        let actual_rows: BTreeMap<_, _> = actual.iter().map(|e| (e.id.as_str(), e)).collect();
+        let mut issues = Vec::new();
+        for (id, row) in &expected_rows {
+            let Some(observed) = actual_rows.get(id) else {
+                issues.push(FidelityIssue {
+                    path: format!("native/{id}"),
+                    kind: FidelityKind::Dropped,
+                    reason: "missing managed native identity".into(),
+                });
+                continue;
+            };
+            if row != observed {
+                let expected_value = serde_json::to_value(row)?;
+                let observed_value = serde_json::to_value(observed)?;
+                if let (Some(expected), Some(observed)) =
+                    (expected_value.as_object(), observed_value.as_object())
+                {
+                    let keys: BTreeSet<_> = expected.keys().chain(observed.keys()).collect();
+                    for key in keys {
+                        if expected.get(key) != observed.get(key) {
+                            let kind = if !observed.contains_key(key) {
+                                FidelityKind::Dropped
+                            } else if !expected.contains_key(key) {
+                                FidelityKind::Unsupported
+                            } else {
+                                FidelityKind::Unresolved
+                            };
+                            issues.push(FidelityIssue {
+                                path: format!("native/{id}/{key}"),
+                                kind,
+                                reason: "native field differs from the accepted owner projection"
+                                    .into(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        for id in actual_rows.keys() {
+            if !expected_rows.contains_key(id) {
+                issues.push(FidelityIssue {
+                    path: format!("native/{id}"),
+                    kind: FidelityKind::Unresolved,
+                    reason: "unmanaged native identity has no owner envelope representation".into(),
+                });
+            }
+        }
+        return Err(Error::Fidelity(FidelityReport { issues }));
     }
     Ok(bundle)
 }

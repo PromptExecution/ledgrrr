@@ -148,6 +148,14 @@
         "properties": {},
         "anchors": [],
         "extensions": {}
+      },
+      "controller-definition": {
+        "id": "controller-definition",
+        "kind": "part_definition",
+        "name": "Controller Part",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
       }
     },
     "relations": {
@@ -221,6 +229,45 @@
           "allocation": {
             "source": "controller",
             "target": "platform"
+          }
+        },
+        "authority": "authored",
+        "anchors": [],
+        "rule": null,
+        "extensions": {}
+      },
+      "type-req": {
+        "id": "type-req",
+        "relation": {
+          "feature_typing": {
+            "feature": "REQ-日本語",
+            "type": "REQ-2"
+          }
+        },
+        "authority": "authored",
+        "anchors": [],
+        "rule": null,
+        "extensions": {}
+      },
+      "type-verification": {
+        "id": "type-verification",
+        "relation": {
+          "feature_typing": {
+            "feature": "test",
+            "type": "verification-definition"
+          }
+        },
+        "authority": "authored",
+        "anchors": [],
+        "rule": null,
+        "extensions": {}
+      },
+      "type-controller": {
+        "id": "type-controller",
+        "relation": {
+          "feature_typing": {
+            "feature": "controller",
+            "type": "controller-definition"
           }
         },
         "authority": "authored",
@@ -1422,8 +1469,8 @@
     }
   },
   "pending_typing": {
-    "type-req": {
-      "id": "type-req",
+    "unsupported-type-req": {
+      "id": "unsupported-type-req",
       "relation": {
         "specialization": {
           "specific": "REQ-日本語",
@@ -1435,8 +1482,8 @@
       "rule": null,
       "extensions": {}
     },
-    "type-verification": {
-      "id": "type-verification",
+    "unsupported-type-verification": {
+      "id": "unsupported-type-verification",
       "relation": {
         "specialization": {
           "specific": "test",

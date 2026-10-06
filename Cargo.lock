@@ -5261,6 +5261,7 @@ dependencies = [
 name = "ledgrrr-sysml-adapter"
 version = "1.10.0"
 dependencies = [
+ "axum",
  "blake3",
  "ledgrrr-revision-io",
  "reqwest 0.12.28",
@@ -10897,7 +10898,7 @@ dependencies = [
 [[package]]
 name = "ufo-types"
 version = "0.16.0"
-source = "git+https://github.com/promptexecution/ufo-types?rev=e900190e4be8b3380c9f4a44be0c85dda4f14b47#e900190e4be8b3380c9f4a44be0c85dda4f14b47"
+source = "git+https://github.com/promptexecution/ufo-types?rev=ba12e5e2baa79dbfaf330a6b634ac6e3ae1e5ea1#ba12e5e2baa79dbfaf330a6b634ac6e3ae1e5ea1"
 dependencies = [
  "anyhow",
  "bigdecimal",
