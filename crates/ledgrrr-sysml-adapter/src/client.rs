@@ -111,6 +111,7 @@ impl NativeClient {
             path.clear();
             for id in segments {
                 if id.trim().is_empty()
+                    || id.len() > 1024
                     || id.chars().any(char::is_control)
                     || id.contains(['/', '\\', '?', '#', '%'])
                     || matches!(*id, "." | "..")
@@ -264,7 +265,11 @@ impl NativeClient {
                 let id = row["@id"]
                     .as_str()
                     .ok_or_else(|| Error::Protocol("missing inventory identity".into()))?;
-                if id.trim().is_empty() || !ids.insert(id.to_owned()) {
+                if id.trim().is_empty()
+                    || id.len() > 1024
+                    || id.chars().any(char::is_control)
+                    || !ids.insert(id.to_owned())
+                {
                     return Err(Error::Protocol("duplicate/empty inventory identity".into()));
                 }
                 if ids.len() > self.bounds.max_ids {
@@ -395,7 +400,30 @@ impl NativeClient {
         }
         Ok(result)
     }
-    #[allow(dead_code)] // Used only by the owner promotion worker, never an external API.
+    /// Create a fresh disposable project and return its server-assigned ID.
+    /// Intended for probes and integration tests; not part of the durable owner protocol.
+    pub async fn post_project(&self, name: &str) -> Result<String> {
+        if name.trim().is_empty() || name.len() > 256 {
+            return Err(Error::Protocol("invalid project name".into()));
+        }
+        let url = self.url(&["projects"])?;
+        let body = json!({"@type": "Project", "name": name});
+        let (value, _) = self
+            .response(
+                self.http
+                    .post(url)
+                    .header(reqwest::header::CONTENT_TYPE, "application/json")
+                    .json(&body),
+                &mut Budget::new(&self.bounds),
+            )
+            .await?;
+        value["@id"]
+            .as_str()
+            .filter(|id| !id.trim().is_empty() && id.len() <= 1024 && !id.chars().any(char::is_control))
+            .map(str::to_owned)
+            .ok_or_else(|| Error::Protocol("missing project @id in response".into()))
+    }
+
     pub(crate) async fn create_commit(
         &self,
         project: &str,
@@ -404,6 +432,19 @@ impl NativeClient {
         elements: &[NativeElement],
         deleted: &[String],
     ) -> Result<NativeCommit> {
+        if elements.len().saturating_add(deleted.len()) > self.bounds.max_ids {
+            return Err(Error::Incomplete("commit identity bound reached".into()));
+        }
+        let mut ids = BTreeSet::new();
+        for id in elements.iter().map(|e| &e.id).chain(deleted.iter()) {
+            if id.trim().is_empty()
+                || id.len() > 1024
+                || id.chars().any(char::is_control)
+                || !ids.insert(id)
+            {
+                return Err(Error::Protocol("duplicate/invalid commit identity".into()));
+            }
+        }
         let mut url = self.url(&["projects", project, "commits"])?;
         url.query_pairs_mut().append_pair("branchId", branch);
         let mut changes:Vec<_>=elements.iter().map(|e|json!({"@type":"DataVersion","identity":{"@id":e.id,"@type":"DataIdentity"},"payload":e})).collect();
@@ -431,14 +472,14 @@ fn reference(v: &Value) -> Result<Option<String>> {
     }
     let id = v["@id"]
         .as_str()
-        .filter(|id| !id.trim().is_empty())
+        .filter(|id| !id.trim().is_empty() && id.len() <= 1024 && !id.chars().any(char::is_control))
         .ok_or_else(|| Error::Protocol("malformed reference".into()))?;
     Ok(Some(id.into()))
 }
 fn parse_commit(value: &Value) -> Result<NativeCommit> {
     let id = value["@id"]
         .as_str()
-        .filter(|id| !id.trim().is_empty())
+        .filter(|id| !id.trim().is_empty() && id.len() <= 1024 && !id.chars().any(char::is_control))
         .ok_or_else(|| Error::Protocol("missing commit id".into()))?
         .to_owned();
     if !value
