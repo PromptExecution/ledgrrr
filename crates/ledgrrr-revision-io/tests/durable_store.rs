@@ -654,7 +654,7 @@ fn no_global_hash_access_and_status_rejection_before_dispatch_only() {
         .intake(&actor("proposer"), &op, &bundle().to_bytes().unwrap())
         .unwrap();
     let other = ProjectId::new("project-other").unwrap();
-    s.bootstrap_project(&actor("owner"), &other, &binding())
+    s.bootstrap_project(&actor("owner"), &other, &ProjectBinding { remote_project: "other-remote".into(), ..binding() })
         .unwrap();
     assert!(matches!(
         s.artifact(&actor("owner"), &other, &v.raw_envelope),
@@ -860,4 +860,18 @@ fn real_process_interruption_before_and_after_commit() {
             );
         }
     }
+}
+
+#[test]
+fn physical_project_alias_is_rejected_across_dialects_and_connections() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("physical.db");
+    drop(setup(&path));
+    let mut s = Store::open(&path).unwrap();
+    let mut alias = binding();
+    alias.model_dialect = "KerML".into();
+    assert!(matches!(s.bootstrap_project(&actor("owner"), &ProjectId::new("alias").unwrap(), &alias), Err(Error::IdentityConflict)));
+    drop(s);
+    let mut s = Store::open(path).unwrap();
+    assert!(matches!(s.bootstrap_project(&actor("owner"), &ProjectId::new("alias-reopened").unwrap(), &binding()), Err(Error::IdentityConflict)));
 }
