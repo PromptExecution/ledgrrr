@@ -451,3 +451,50 @@ fn verified_machine_evidence_does_not_fabricate_native_behavior() {
         Err(ledgrrr_sysml_adapter::native::Error::Fidelity(_))
     ));
 }
+
+#[test]
+fn marker_binds_the_logical_owner_project() {
+    let b = fixture();
+    let mut wrong = marker();
+    wrong.project = "different-owner-project".into();
+    assert!(emit(&b, &wrong).is_err());
+    let p = emit(&b, &marker()).unwrap();
+    assert!(hydrate(&p.elements, &b.to_bytes().unwrap(), &wrong).is_err());
+}
+#[test]
+fn true_feature_typing_projects_usage_specific_definition_links() {
+    let mut b = fixture();
+    for (id, feature, definition) in [
+        ("type-req", "REQ-日本語", "REQ-2"),
+        ("type-verification", "test", "verification-definition"),
+    ] {
+        let relation=serde_json::from_value(serde_json::json!({"id":id,"relation":{"feature_typing":{"feature":feature,"type":definition}},"authority":"authored","anchors":[],"rule":null,"extensions":{}})).unwrap();
+        b.model.relations.insert(id.into(), relation);
+    }
+    b.manifest.semantic_digest = b.model.semantic_digest().unwrap();
+    let projection = emit(&b, &marker()).unwrap();
+    let req = projection
+        .elements
+        .iter()
+        .find(|e| e.kind == "RequirementUsage")
+        .unwrap();
+    assert!(req.requirement_definition.is_some());
+    let verify = projection
+        .elements
+        .iter()
+        .find(|e| e.kind == "VerificationCaseUsage")
+        .unwrap();
+    assert!(verify.verification_case_definition.is_some());
+    assert_eq!(
+        projection
+            .elements
+            .iter()
+            .filter(|e| e.kind == "FeatureTyping")
+            .count(),
+        2
+    );
+    assert_eq!(
+        hydrate(&projection.elements, &b.to_bytes().unwrap(), &marker()).unwrap(),
+        b
+    );
+}
