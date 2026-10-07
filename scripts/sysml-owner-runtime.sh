@@ -121,6 +121,18 @@ PYBIND
 owner_start() {
     validate_state_binding
     test -f "$STATE/config.json" || unknown 'run provider-up first'
+    # Trusted operator toggle enables deterministic receipt-before-index probes.
+    # Requests cannot select worker policy; normal startup retains its setting.
+    if test -n "${SYSML_INDEXING_ENABLED:-}"; then
+        python3 - "$STATE/config.json" "$SYSML_INDEXING_ENABLED" <<'PYINDEX'
+import json,pathlib,sys
+p=pathlib.Path(sys.argv[1]); value=sys.argv[2]
+assert value in ('true','false'), 'SYSML_INDEXING_ENABLED must be true or false'
+c=json.loads(p.read_text()); c['indexing_enabled']=value=='true'
+temporary=p.with_suffix('.json.next'); temporary.write_text(json.dumps(c,indent=2)+'\n')
+temporary.chmod(0o600); temporary.replace(p)
+PYINDEX
+    fi
     local binary=${SYSML_OWNER_BINARY:-${CARGO_TARGET_DIR:-/tmp/sysml-implementation/ledgrrr-target}/debug/revision-owner}
     test -x "$binary" || unknown 'owner binary is absent; run sysml-owner-build'
     cp "$binary" "$STATE/revision-owner.next"

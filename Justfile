@@ -791,6 +791,18 @@ sysml-revision-test:
 sysml-revision-check:
     cargo clippy -p ledgrrr-revision-io -p ledgrrr-sysml-adapter --all-targets --locked -- -D warnings
 
+# Durable accepted-revision projection, fenced publication and bounded queries.
+sysml-index-test:
+    cargo test -p ledgrrr-revision-io --test durable_index --locked
+    cargo test -p ledgrrr-sysml-adapter --test revision_projection --test revision_queries --test index_owner_routes --locked
+
+sysml-index-check:
+    cargo clippy -p ledgrrr-revision-io -p ledgrrr-sysml-adapter --all-targets --locked -- -D warnings
+
+# Requires the preserving private owner runtime; never resets provider state.
+sysml-index-live:
+    python3 scripts/sysml-index-live-probe.py --output /tmp/sysml-index-c9d-live-report.json
+
 sysml-owner-build:
     cargo build -p ledgrrr-sysml-adapter --bin revision-owner --locked
 
