@@ -74,7 +74,10 @@ fn fixture(args: &[String]) -> std::result::Result<(), Box<dyn std::error::Error
         bundle.model.elements.clear();
         bundle.model.relations.clear();
     }
-    if let Some(remove) = changes.get("remove_relations").and_then(serde_json::Value::as_array) {
+    if let Some(remove) = changes
+        .get("remove_relations")
+        .and_then(serde_json::Value::as_array)
+    {
         for r in remove {
             if let Some(rel_id) = r.as_str() {
                 bundle.model.relations.remove(rel_id);

@@ -419,7 +419,9 @@ impl NativeClient {
             .await?;
         value["@id"]
             .as_str()
-            .filter(|id| !id.trim().is_empty() && id.len() <= 1024 && !id.chars().any(char::is_control))
+            .filter(|id| {
+                !id.trim().is_empty() && id.len() <= 1024 && !id.chars().any(char::is_control)
+            })
             .map(str::to_owned)
             .ok_or_else(|| Error::Protocol("missing project @id in response".into()))
     }

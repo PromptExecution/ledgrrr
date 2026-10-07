@@ -421,6 +421,10 @@ impl Store {
                         params![canonical_bytes(&value)?, project, operation],
                     )?;
                 }
+                // Unit-test binary only: kill the actual migration after all row writes,
+                // before schema metadata/commit. No production environment hook exists.
+                #[cfg(test)]
+                migration_test_pause()?;
                 tx.execute(
                     "UPDATE metadata SET schema_digest=?1",
                     [ArtifactDigest::of(SCHEMA.as_bytes()).as_str()],
@@ -1191,5 +1195,167 @@ impl IndexPublisher<'_> {
         update_operation(&tx, &mut value)?;
         tx.commit()?;
         Ok(value)
+    }
+}
+
+#[cfg(test)]
+fn migration_test_pause() -> Result<()> {
+    if let Some(ready) = std::env::var_os("REVISION_MIGRATION_TEST_READY") {
+        std::fs::write(ready, b"migration rows written, transaction uncommitted")
+            .map_err(|e| Error::Invalid(e.to_string()))?;
+        loop {
+            std::thread::park();
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod migration_tests {
+    use super::*;
+    #[test]
+    fn migration_process_child() {
+        if let Some(path) = std::env::var_os("REVISION_MIGRATION_TEST_DATABASE") {
+            Store::open(path).unwrap();
+        }
+    }
+    #[test]
+    fn killed_actual_v1_upgrade_rolls_back_and_reopens_without_loss() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("migration.db");
+        let ready = directory.path().join("ready");
+        let f: serde_json::Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/durable_revision_cases.json"
+        ))
+        .unwrap();
+        let bundle = PortableBundle::dehydrate(
+            serde_json::from_value(f["model"].clone()).unwrap(),
+            serde_json::from_value(f["context"].clone()).unwrap(),
+            serde_json::from_value(f["artifacts"].clone()).unwrap(),
+        )
+        .unwrap();
+        let owner = ActorId::new("owner").unwrap();
+        let project = bundle.manifest.context.project.clone();
+        let branch = BranchId::new("main").unwrap();
+        let operation = OperationId::new("migration-crash").unwrap();
+        let binding: ProjectBinding = serde_json::from_value(f["binding"].clone()).unwrap();
+        let mut store = Store::open(&path).unwrap();
+        store.bootstrap_project(&owner, &project, &binding).unwrap();
+        store
+            .register_branch(&owner, &project, &branch, "remote-main")
+            .unwrap();
+        let intake = Intake {
+            project: project.clone(),
+            branch,
+            operation: operation.clone(),
+            expected_head: ExpectedHead::Empty,
+            binding,
+        };
+        let original = store
+            .intake(&owner, &intake, &bundle.to_bytes().unwrap())
+            .unwrap();
+        let sent = store
+            .start_dispatch(
+                &owner,
+                &project,
+                &operation,
+                original.generation,
+                "legacy request authorized",
+            )
+            .unwrap();
+        let ambiguous = store
+            .mark_ambiguous(
+                &owner,
+                sent.dispatch.as_ref().unwrap(),
+                sent.generation,
+                "legacy remote result unknown",
+            )
+            .unwrap();
+        drop(store);
+        let c = Connection::open(&path).unwrap();
+        c.execute_batch("DROP TABLE physical_projects; PRAGMA user_version=1;")
+            .unwrap();
+        c.execute(
+            "UPDATE metadata SET schema_digest=?1",
+            [ArtifactDigest::of(SCHEMA_V1.as_bytes()).as_str()],
+        )
+        .unwrap();
+        let mut legacy = ambiguous.clone();
+        legacy.send_authorized = false;
+        let legacy_bytes = canonical_bytes(&legacy).unwrap();
+        c.execute("UPDATE operations SET record=?1", [&legacy_bytes])
+            .unwrap();
+        let artifact_count: i64 = c
+            .query_row("SELECT COUNT(*) FROM artifacts", [], |r| r.get(0))
+            .unwrap();
+        drop(c);
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "store::migration_tests::migration_process_child",
+                "--nocapture",
+            ])
+            .env("REVISION_MIGRATION_TEST_DATABASE", &path)
+            .env("REVISION_MIGRATION_TEST_READY", &ready)
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let started = std::time::Instant::now();
+        while !ready.exists() && started.elapsed() < Duration::from_secs(10) {
+            assert!(child.try_wait().unwrap().is_none());
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        if !ready.exists() {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("actual migration handshake timed out");
+        }
+        child.kill().unwrap();
+        child.wait().unwrap();
+        let c = Connection::open(&path).unwrap();
+        assert_eq!(
+            c.pragma_query_value::<i64, _>(None, "user_version", |r| r.get(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(schema_shape(&c).unwrap(), {
+            let known = Connection::open_in_memory().unwrap();
+            known.execute_batch(SCHEMA_V1).unwrap();
+            schema_shape(&known).unwrap()
+        });
+        assert_eq!(
+            c.query_row::<Vec<u8>, _, _>("SELECT record FROM operations", [], |r| r.get(0))
+                .unwrap(),
+            legacy_bytes
+        );
+        assert_eq!(
+            c.query_row::<i64, _, _>("SELECT COUNT(*) FROM artifacts", [], |r| r.get(0))
+                .unwrap(),
+            artifact_count
+        );
+        drop(c);
+        let mut upgraded = Store::open(&path).unwrap();
+        assert_eq!(
+            upgraded.operation(&owner, &project, &operation).unwrap(),
+            ambiguous
+        );
+        assert_eq!(
+            upgraded
+                .artifact(&owner, &project, &original.raw_envelope)
+                .unwrap(),
+            bundle.to_bytes().unwrap()
+        );
+        assert!(matches!(
+            upgraded.start_dispatch(
+                &owner,
+                &project,
+                &operation,
+                ambiguous.generation,
+                "unsafe retry"
+            ),
+            Err(Error::BranchBlocked)
+        ));
+        drop(upgraded);
+        Store::open(path).unwrap();
     }
 }

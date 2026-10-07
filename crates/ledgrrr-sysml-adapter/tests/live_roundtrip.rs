@@ -86,8 +86,7 @@ async fn fetch_emit_fetch_semantic_digest_matches() {
     });
 
     assert_eq!(
-        original_digest,
-        rehydrated.manifest.semantic_digest,
+        original_digest, rehydrated.manifest.semantic_digest,
         "P2 FAIL: semantic digest changed after fetch→emit→server→fetch→hydrate\n\
          project={project_id} commit={commit_id}"
     );
@@ -115,10 +114,7 @@ async fn relation_references_survive_server_round_trip() {
     let envelope_bytes = bundle.to_bytes().expect("bundle bytes");
 
     let client = NativeClient::new(&base_url, Bounds::default()).unwrap();
-    let project_id = client
-        .post_project("pex-p2-relation-probe")
-        .await
-        .unwrap();
+    let project_id = client.post_project("pex-p2-relation-probe").await.unwrap();
 
     let change: Vec<serde_json::Value> = projection
         .elements
@@ -135,7 +131,10 @@ async fn relation_references_survive_server_round_trip() {
         .await
         .unwrap();
     let commit_id = commit["@id"].as_str().unwrap();
-    let fetched = client.snapshot(&project_id, commit_id, false).await.unwrap();
+    let fetched = client
+        .snapshot(&project_id, commit_id, false)
+        .await
+        .unwrap();
 
     // Verify typed reference fields survive per element kind.
     for e in &fetched {
