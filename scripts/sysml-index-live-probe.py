@@ -89,6 +89,12 @@ def main():
     REPORT['fixture_context'] = json.loads(fixture.read_text())['context']
     REPORT['pins'] = json.loads((STATE / 'pins.json').read_text())
     REPORT['canonical_contract'] = [p for p in tomllib.loads((ROOT / 'Cargo.lock').read_text())['package'] if p['name'] == 'ufo-types']
+    REPORT['implementation_commit'] = owner.run(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).stdout.decode().strip()
+    source_files = sorted([ROOT / 'Cargo.toml', ROOT / 'Cargo.lock'] +
+        [p for directory in ('crates/ledgrrr-revision-io', 'crates/ledgrrr-sysml-adapter')
+         for p in (ROOT / directory).rglob('*') if p.is_file()])
+    REPORT['implementation_source_files'] = {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
+                                              for p in source_files}
     binary = Path(os.environ.get('SYSML_OWNER_BINARY', '/tmp/sysml-implementation/ledgrrr-target/debug/revision-owner'))
     REPORT['binary_sha256'] = hashlib.sha256(binary.read_bytes()).hexdigest()
 
@@ -161,6 +167,9 @@ def main():
     gate('sealed-graph-remains-unpublished', status == 404 or
          (status == 200 and isinstance(unpublished, dict) and unpublished.get('outcome', {}).get('kind') == 'pending'),
          {'status': status, 'response': unpublished})
+    status, sealed_pending = exact(r0)
+    gate('sealed-query-cannot-expose-partial-graph', status == 200
+         and sealed_pending.get('outcome', {}).get('kind') == 'pending', sealed_pending)
     kill_restart('after-seal-before-publication')
     cli('publish', r0, token_file)
     first = completed('exact-first-revision', exact(r0), r0)
@@ -241,15 +250,23 @@ def main():
     gate('query-authentication-required', unauth[0] in (401, 403), {'status': unauth[0]})
     mismatch = query({'kind': 'exact', 'revision': rm}, overrides={'project': 'fresh-project'})
     gate('query-path-body-project-mismatch-refused', mismatch[0] in (400, 403, 422), {'status': mismatch[0]})
+    foreign_status, foreign = request('POST', '/v1/projects/fresh-project/branches/main/query', tokens['reader'],
+        {'project': 'fresh-project', 'branch': branch, 'selector': {'kind': 'exact', 'revision': rm},
+         'query': 'ASK {}', 'deadline_ms': 100})
+    gate('cross-project-revision-does-not-expose-graph', foreign_status in (403, 404) or
+         (foreign_status == 200 and foreign.get('outcome', {}).get('kind') == 'unavailable'
+          and 'graph' not in foreign.get('outcome', {})), foreign)
     forbidden = exact(rm, 'SELECT * WHERE { FILTER EXISTS { SERVICE <http://127.0.0.1:9/> { ?s ?p ?o } } }')
-    gate('recursive-service-refused', forbidden[0] in (400, 422) or forbidden[1].get('outcome', {}).get('kind') == 'unavailable', forbidden)
+    gate('recursive-service-refused', forbidden[0] in (400, 422) or
+         (forbidden[1].get('outcome', {}).get('kind') == 'unavailable'
+          and forbidden[1]['outcome'].get('reason') in ('invalid_query', 'unsupported_query')), forbidden)
 
     # Bound an actual evaluator before its first aggregate row, then prove capacity returns.
     values = ' '.join(str(n) for n in range(80))
     expensive = 'SELECT (COUNT(*) AS ?n) WHERE { ' + ' '.join(
         f'VALUES ?v{i} {{ {values} }}' for i in range(8)) + ' }'
     started = time.monotonic()
-    timeout = exact(rm, expensive, 10)
+    timeout = exact(rm, expensive, 250)
     elapsed = time.monotonic() - started
     gate('bounded-expensive-evaluation', elapsed < 5 and timeout[0] == 200
          and timeout[1].get('outcome', {}).get('reason') == 'deadline_exceeded', {'elapsed_seconds': elapsed, 'response': timeout})
