@@ -11,6 +11,7 @@ import sys
 import time
 import tomllib
 
+sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parent.parent
 spec = importlib.util.spec_from_file_location('owner_probe', ROOT / 'scripts/sysml-owner-live-probe.py')
 owner = importlib.util.module_from_spec(spec)
@@ -42,7 +43,10 @@ def gate(name, condition, evidence=None):
 
 
 def request(method, path, token=None, body=None):
-    return owner.http(method, path, token, body)
+    status, value = owner.http(method, path, token, body)
+    if isinstance(value, bytes):
+        value = {'raw_response_sha256': hashlib.sha256(value).hexdigest(), 'bytes': len(value)}
+    return status, value
 
 
 def config_update(update):
@@ -190,6 +194,13 @@ def main():
 
     # Preserve older exact queries while jobs finish in reverse order.
     ra, a, _ = accept('edit_a', r0, suffix='ordering-a')
+    stale = completed('explicit-older-query-during-pending-index', query({'kind': 'current', 'allow_older': True}), r0)
+    gate('older-result-declares-pending-model-head', stale['freshness'] == 'stale' and stale['model_revision'] == ra, stale)
+    started = time.monotonic()
+    status, waiting = query({'kind': 'current', 'allow_older': False}, deadline=100)
+    wait_elapsed = time.monotonic() - started
+    gate('read-your-write-deadline-remains-pending', status == 200 and waiting['outcome']['kind'] == 'pending'
+         and wait_elapsed < 5, {'elapsed_seconds': wait_elapsed, 'response': waiting})
     rb, b, _ = accept('edit_b', ra, suffix='ordering-b')
     older_token = run_id + '-older.json'
     cli('claim', ra, older_token)
@@ -201,6 +212,10 @@ def main():
     gate('historical-answer-explicitly-stale', older['freshness'] == 'stale' and older['model_revision'] == rb, older)
     completed('old-job-does-not-rewind-current', query({'kind': 'current', 'allow_older': False}), rb)
     completed('minimum-checkpoint-uses-proven-lineage', query({'kind': 'minimum', 'checkpoint': descriptor0['checkpoint'], 'allow_older': False}), rb)
+    forged = dict(descriptor0['checkpoint'], graph_digest='sha256:' + '0' * 64)
+    invalid_minimum = query({'kind': 'minimum', 'checkpoint': forged, 'allow_older': False})
+    gate('minimum-checkpoint-digest-is-authoritative', invalid_minimum[0] in (400, 422)
+         or invalid_minimum[1].get('outcome', {}).get('kind') == 'unavailable', invalid_minimum)
 
     # A stale proposal rebases: graph input must be its accepted candidate.
     rm, merged, _ = accept('edit_a', ra, suffix='rebased', actor='editor-b')
@@ -257,6 +272,17 @@ def main():
     deleted_rows = completed('deleted-all-has-no-old-requirements', exact(empty, UNVERIFIED), empty)['results']['rows']
     gate('tombstones-remove-prior-facts', deleted_rows == [], deleted_rows)
     completed('historical-graph-survives-deletion', exact(r0), r0)
+    owner.run(['bash', str(ROOT / 'scripts/sysml-owner-runtime.sh'), 'owner-restart'],
+              timeout=60, env=dict(os.environ, SYSML_INDEXING_ENABLED='true'))
+    background_revision, _, _ = accept('base', empty, suffix='background-worker')
+    expires = time.monotonic() + 20
+    last = None
+    while time.monotonic() < expires:
+        last = exact(background_revision, deadline=250)
+        if last[0] == 200 and last[1].get('outcome', {}).get('kind') == 'completed':
+            break
+        time.sleep(0.1)
+    completed('reachable-background-worker-publishes-accepted-revision', last, background_revision)
     REPORT['status'] = 'Satisfied'
 
 

@@ -62,3 +62,74 @@ activate them. Review every report gate rather than treating an HTTP 200 as proo
 Resolved derivation/library and broader native behavior, immutable graph publication,
 revision-scoped queries, browser integration and interactive UI inspection remain
 required full-plan work.
+
+## Revision index verification
+
+Use `just sysml-index-test` and `just sysml-index-check` for storage publication,
+projection and query checks. `just sysml-index-live` runs the real accepted-model
+probe and writes `/tmp/sysml-index-c9d-live-report.json`. A successful test process
+does not replace the live report: inspect every gate and its actual revision,
+candidate digest, graph descriptor and query response. Missing infrastructure is
+`Unknown` with exit 2; a contradicted invariant is `Violated` with exit 1.
+
+The index probe uses the preserving `pex-sysml-owner-c9d` runtime. It inspects
+existing container handles before restarting the owner, disables automatic
+indexing through trusted host configuration, and drives separate claim, seal and
+publication stages through the host-only `revision-owner index` command. It kills
+the actual owner after claiming work and after sealing an unpublished graph,
+then reopens the same database. Compiled-test-only storage tests cover interruption
+inside the atomic publication transaction. No HTTP request can select these
+administrative actions or supply graph artifacts/checkpoints for publication.
+
+`SYSML_INDEXING_ENABLED=false` on an owner restart updates only the task's private
+host configuration. The probe restores the reader grant and automatic indexing
+when it exits, including after partial failure. Provider data is never reset.
+Removing a projection for rebuild proof retains its accepted manifest and source
+blobs; rebuild must preserve the graph digest and native commit count.
+
+Authenticated revision queries use
+`POST /v1/projects/{project}/branches/{branch}/query`. The body includes the same
+project and branch, a canonical selector, SPARQL text and relative deadline:
+
+```json
+{
+  "project": "live-project",
+  "branch": "main",
+  "selector": {"kind": "current", "allow_older": false},
+  "query": "ASK {}",
+  "deadline_ms": 2000
+}
+```
+
+Exact selectors identify an actual accepted provider revision. Minimum selectors
+carry a previously returned checkpoint and require proven accepted ancestry;
+revision UUID ordering has no freshness meaning. A completed response includes
+actual model/index revisions, a graph descriptor and `fresh` or `stale` freshness.
+Pending and unavailable results contain no fabricated query answer. Historical
+exact answers can be stale relative to the branch while fully satisfying their
+requested revision. Project grants apply to graph/checkpoint access even when the
+caller already knows their digests.
+
+The versioned `urn:ledgrrr:revision:1:` projection preserves canonical model and
+evidence fields. Its convenience predicates include `element_kind`, `id`,
+`relation_kind`, named endpoint roles and `authority`; source coordinates hang
+from `evidence` nodes. For example, this query finds requirement definitions or
+usages without an authored Verify relation:
+
+```sparql
+PREFIX rev: <urn:ledgrrr:revision:1:>
+SELECT ?id WHERE {
+  ?requirement rev:element_kind ?kind ; rev:id ?id .
+  FILTER (?kind IN ("requirement_definition", "requirement_usage"))
+  FILTER NOT EXISTS {
+    ?relation rev:relation_kind "verify" ;
+      rev:requirement ?requirement ; rev:authority "authored" .
+  }
+}
+ORDER BY ?id
+```
+
+These graph facts retain their authority and accepted input identity. Projecting
+compiler or inferred evidence does not promote it to an authored native assertion.
+Owner graph publication remains distinct from full P4: kr0ki must consume the
+same authorized revision query contract before its discovery integration is proven.

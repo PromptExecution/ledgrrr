@@ -739,3 +739,10 @@ Represent OpenMetadata catalog objects through `ledgerr_ontology` custom kinds f
 - Use `just sysml-revision-test`, `just sysml-revision-check`, `just sysml-owner-up` and `just sysml-owner-live`; inspect every gate in `/tmp/sysml-owner-c9d-live-report.json`. Unknown infrastructure is nonzero, never skipped success.
 - Keep `pex-sysml-owner-c9d` separate from retained `pex-sysml-reference`; never restart the baseline because its schema uses destructive `create-drop`. Native HTTP must bind pod-local loopback with no host publication; prove host and unrelated-container isolation.
 - Host credentials/configuration stay outside Git; actors and grants come from host config. One physical backend has one durable owner DB. Native CAS is unavailable; ambiguity cannot expire into permission to resend. Graph/UI and unsupported native library/behavior gates remain separate.
+
+### Accepted revision index operations
+
+- Use `just sysml-index-test`, `just sysml-index-check` and `just sysml-index-live`; the live report is `/tmp/sysml-index-c9d-live-report.json`. Inspect actual accepted revisions, sealed descriptors, query freshness and rebuild digests before declaring owner index gates satisfied.
+- The live probe changes only the preserving private owner runtime, inspects live handles first, and restores reader grants/background indexing after failures. Keep retained `pex-sysml-reference` untouched. Host-only index CLI actions are administrative; never expose caller-supplied graph publication through HTTP.
+- Original intake and accepted merged candidate differ. Project `prepared.envelope` bound to the actual provider revision, retain immutable accepted manifests through projection loss, and require current worker fencing when sealing/publishing. An indexing-work digest or receipt-generation check alone is not proof of a complete graph.
+- Exact/minimum/current selectors and all query wire data belong upstream in `ufo-types`. Historical answers identify their actual revision and freshness; known graph hashes never bypass project grants. Owner publication evidence does not establish kr0ki read integration, native library/behavior semantics or UI gates.
