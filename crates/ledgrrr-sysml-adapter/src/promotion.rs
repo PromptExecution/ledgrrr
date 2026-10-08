@@ -291,9 +291,29 @@ impl Owner {
             project,
             &reserved.canonical_envelope,
         )?)?;
+        // A wiped or external head that the owner has never observed is the
+        // "no prior state" base for this operation; treat it as if the native
+        // branch were empty so the accepted commit can rebase the next revision.
+        // Two error shapes cover this case from bound_snapshot:
+        //   - Store::NotFound when the head's marker operation is absent
+        //   - Unavailable("head lacks accepted owner observation") when the
+        //     marker operation is present but its actual_revision doesn't match
+        // The expected_head branch below still rejects an unknown *base* revision
+        // because the client is asserting a specific parent that we cannot verify.
         let (theirs, elements) = if let Some(h) = &head {
-            self.bound_snapshot(store, project, branch, &binding.remote_project, h)
-                .await?
+            match self
+                .bound_snapshot(store, project, branch, &binding.remote_project, h)
+                .await
+            {
+                Ok(snapshot) => snapshot,
+                Err(Error::Store(ledgrrr_revision_io::Error::NotFound)) => (None, vec![]),
+                Err(Error::Unavailable(ref msg))
+                    if msg == "head lacks accepted owner observation" =>
+                {
+                    (None, vec![])
+                }
+                Err(e) => return Err(e),
+            }
         } else {
             (None, vec![])
         };
