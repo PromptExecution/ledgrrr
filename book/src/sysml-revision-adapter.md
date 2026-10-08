@@ -116,8 +116,14 @@ Query execution uses a bounded pool of supervised `revision-owner query-worker`
 processes. The request deadline covers graph loading, parsing, evaluation and lazy
 result consumption. The supervisor cancels the evaluator, kills a worker that
 outlives its deadline, and reaps it before returning capacity. Each child also has
-address-space and CPU limits. This process boundary handles engine operations
-that fail to observe cooperative cancellation before producing their first row.
+a 1 GiB address-space limit and a six-second CPU limit; the total request deadline
+is at most five seconds. At most four query workers run concurrently. Worker input
+uses a bounded 1 MiB header plus at most 64 MiB of graph bytes; output and error
+pipes are bounded and joined before capacity is released. This process boundary handles engine operations
+that fail to observe cooperative cancellation before producing their first row
+([tracked evaluator defect #252](https://github.com/PromptExecution/ledgrrr/issues/252)).
+Embedded hosts must configure the `revision-owner` executable as their worker path;
+the default executable is the current owner process.
 The live probe observes an actual expensive-query child PID, then checks its exit
 and a successful subsequent query; an HTTP timeout alone does not prove this gate.
 

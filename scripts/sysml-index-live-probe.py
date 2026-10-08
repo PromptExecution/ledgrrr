@@ -262,11 +262,19 @@ def main():
          or invalid_minimum[1].get('outcome', {}).get('kind') == 'unavailable', invalid_minimum)
 
     # A stale proposal rebases: graph input must be its accepted candidate.
-    rm, merged, _ = accept('edit_a', ra, suffix='rebased', actor='editor-b')
+    # r0 is the original base: edit_a changes a different requirement from
+    # the current edit_b head. Using ra would submit no semantic edit at all.
+    rm, merged, _ = accept('edit_a', r0, suffix='rebased', actor='editor-b')
     cli('run', rm)
     merged_graph = completed('merged-accepted-graph', exact(rm), rm)['graph']
     gate('merged-graph-not-original-proposal', merged_graph['accepted_candidate_digest'] == merged['prepared']['candidate_digest']
          and merged_graph['accepted_candidate_digest'] != merged['receipt']['proposal_digest'], merged)
+
+    status, merged_export = request('GET', f'/v1/projects/{project}/revisions/{rm}/bundle', tokens['reader'])
+    gate('rebased-candidate-retains-both-disjoint-edits', status == 200
+         and merged_export['model']['elements']['REQ-日本語']['name'] == 'Editor A actuator'
+         and merged_export['model']['elements']['REQ-2']['name'] == 'Editor B idle',
+         {'status': status, 'model': merged_export.get('model')})
 
     # Accepted manifests survive projection loss and reproduce exact graph bytes.
     model_count = count()
@@ -300,11 +308,14 @@ def main():
     values = ' '.join(str(n) for n in range(80))
     expensive = 'SELECT (COUNT(*) AS ?n) WHERE { ' + ' '.join(
         f'VALUES ?v{i} {{ {values} }}' for i in range(8)) + ' }'
-    def query_workers():
+    def owner_processes():
         result = owner.run(['podman', 'top', POD + '-owner', 'pid,args'])
         return {line.split(None, 1)[0]: line.split(None, 1)[1]
                 for line in result.stdout.decode().splitlines()[1:]
-                if 'query-worker' in line and len(line.split(None, 1)) == 2}
+                if len(line.split(None, 1)) == 2}
+
+    def query_workers():
+        return {pid: command for pid, command in owner_processes().items() if 'query-worker' in command}
 
     gate('no-worker-before-expensive-request', not query_workers())
     started = time.monotonic()
@@ -319,9 +330,10 @@ def main():
     gate('expensive-query-reached-evaluator-process', bool(observed), observed)
     gate('bounded-expensive-evaluation', elapsed < 5 and timeout[0] == 200
          and timeout[1].get('outcome', {}).get('reason') == 'deadline_exceeded', {'elapsed_seconds': elapsed, 'response': timeout})
-    remaining = query_workers()
-    gate('timed-out-query-worker-is-reaped', not remaining,
-         {'observed_worker_pids': sorted(observed), 'remaining_workers': remaining})
+    remaining = owner_processes()
+    gate('timed-out-query-worker-is-reaped', set(observed).isdisjoint(remaining)
+         and not any('query-worker' in command for command in remaining.values()),
+         {'observed_worker_pids': sorted(observed), 'remaining_processes': remaining})
     completed('capacity-after-evaluator-cancellation', exact(rm, deadline=2000), rm)
 
     # Grant revocation must invalidate access even after the graph was queried.
