@@ -412,6 +412,30 @@ impl Store {
         tx.commit()?;
         Ok(g)
     }
+    /// Returns true when a projection was published and then explicitly removed.
+    /// Distinct from a revision that was sealed but never published: sealed jobs
+    /// have `state='sealed'`; removed projections have `state='queued'` with a
+    /// non-NULL descriptor (set during the prior seal).
+    pub fn is_projection_removed(
+        &mut self,
+        actor: &ActorId,
+        p: &ProjectId,
+        r: &RevisionId,
+        schema: &str,
+    ) -> Result<bool> {
+        let tx = self.connection.transaction()?;
+        authorize(&tx, actor, p, "read")?;
+        let found: bool = tx
+            .query_row(
+                "SELECT 1 FROM index_jobs WHERE project=?1 AND revision=?2 AND projection_schema=?3 AND state='queued' AND descriptor IS NOT NULL",
+                params![p.as_str(), r.as_str(), schema],
+                |_| Ok(true),
+            )
+            .optional()?
+            .unwrap_or(false);
+        tx.commit()?;
+        Ok(found)
+    }
     pub fn index_state(
         &mut self,
         actor: &ActorId,

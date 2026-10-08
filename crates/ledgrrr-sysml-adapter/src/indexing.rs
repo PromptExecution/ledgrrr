@@ -193,7 +193,35 @@ impl Owner {
                 response.validate_for(request)?;
                 return Ok(response);
             }
-            let mut store = self.query_store(started, budget)?;
+            // query_store can fail with Invalid("expired store deadline") when the
+            // remaining budget is so small that open_bounded_read's progress handler
+            // fires before the connection setup completes. Treat that as a regular
+            // deadline expiry — return Pending rather than propagating an error.
+            let mut store = match self.query_store(started, budget) {
+                Ok(s) => s,
+                Err(_) if started.elapsed() >= budget => {
+                    let response = RevisionQueryResponse {
+                        project: request.project.clone(),
+                        branch: request.branch.clone(),
+                        outcome: RevisionQueryOutcome::Pending {
+                            model_revision: None,
+                            requested_revision: match &request.selector {
+                                RevisionQuerySelector::Exact { revision } => {
+                                    Some(revision.clone())
+                                }
+                                RevisionQuerySelector::Minimum { checkpoint, .. } => {
+                                    Some(checkpoint.revision.clone())
+                                }
+                                RevisionQuerySelector::Current { .. } => None,
+                            },
+                            available_graph: None,
+                        },
+                    };
+                    response.validate_for(request)?;
+                    return Ok(response);
+                }
+                Err(e) => return Err(e),
+            };
             let state_result = if matches!(request.selector, RevisionQuerySelector::Exact { .. }) {
                 store.index_state_identity(
                     actor,
@@ -240,6 +268,23 @@ impl Owner {
                         ));
                     }
                     selected = graph_read(&mut store, actor, &request.project, revision)?;
+                    // Distinguish "accepted but not yet indexed" (truly Pending) from
+                    // "previously published but artifact removed" (MissingArtifact).
+                    // state='queued' with descriptor set means remove_projection was called.
+                    if selected.is_none()
+                        && store.is_projection_removed(
+                            actor,
+                            &request.project,
+                            revision,
+                            PROJECTION_SCHEMA,
+                        )?
+                    {
+                        return Ok(unavailable(
+                            request,
+                            state.model_revision,
+                            QueryUnavailableReason::MissingArtifact,
+                        ));
+                    }
                 }
                 RevisionQuerySelector::Minimum {
                     checkpoint,
