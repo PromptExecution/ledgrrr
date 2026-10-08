@@ -145,6 +145,8 @@ impl Owner {
             &request.project,
             &request.branch,
         )?;
+        // Freshness always binds the independently observed model head, including
+        // historical exact reads whose selected artifact is resolved separately.
         let observed = tokio::time::timeout(
             budget.saturating_sub(started.elapsed()),
             self.observe_index_head_bounded(
