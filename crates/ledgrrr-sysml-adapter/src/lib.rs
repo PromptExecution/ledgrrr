@@ -5,3 +5,6 @@ pub mod native;
 
 pub mod promotion;
 pub mod server;
+pub mod projection;
+pub mod query;
+pub mod indexing;

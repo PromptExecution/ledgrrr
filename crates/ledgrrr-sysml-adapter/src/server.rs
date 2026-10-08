@@ -25,6 +25,7 @@ pub struct Host {
     pub owner: Owner,
     pub credentials: Vec<Credential>,
     pub permits: tokio::sync::Semaphore,
+    pub query_engine: crate::query::QueryEngine,
 }
 fn principal(host: &Host, headers: &HeaderMap) -> std::result::Result<ActorId, ApiError> {
     let token = headers
@@ -242,16 +243,24 @@ async fn head(
         .head(&binding.remote_project, &remote)
         .await
         .map_err(promotion::Error::from)?;
-    let freshness = if let Some(r) = &revision {
-        match host.owner.export(&actor, &p, r).await {
-            Ok(_) => "owner_observed",
-            Err(_) => "unavailable_or_external",
-        }
+    host.owner.observe_index_head(&p, &b).await?;
+    let state =
+        host.owner
+            .store()?
+            .index_state(&actor, &p, &b, crate::projection::PROJECTION_SCHEMA)?;
+    let indexed_revision = state
+        .available_graph
+        .as_ref()
+        .map(|g| &g.checkpoint.revision);
+    let freshness = if state.unavailable_reason.is_some() {
+        "unavailable"
+    } else if revision.as_deref() == indexed_revision.map(RevisionId::as_str) {
+        "fresh"
     } else {
-        "empty"
+        "pending"
     };
     Ok(Json(
-        serde_json::json!({"model_revision":revision,"indexed_revision":null,"freshness":freshness}),
+        serde_json::json!({"model_revision":revision,"indexed_revision":indexed_revision,"freshness":freshness,"graph":state.available_graph}),
     ))
 }
 pub fn router(host: Arc<Host>) -> Router {
@@ -267,9 +276,49 @@ pub fn router(host: Arc<Host>) -> Router {
         .route("/v1/projects/:p/artifacts/:d", get(artifact))
         .route("/v1/projects/:p/recovery", get(recovery))
         .route("/v1/projects/:p/branches/:b/head", get(head))
+        .route("/v1/projects/:p/branches/:b/query", post(query))
+        .route("/v1/projects/:p/revisions/:r/checkpoint", get(checkpoint))
         .layer(DefaultBodyLimit::max(32 * 1024 * 1024))
         .layer(axum::middleware::from_fn(deadline))
         .with_state(host)
+}
+
+async fn query(
+    State(host): State<Arc<Host>>,
+    Path((p, b)): Path<(String, String)>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Json<ufo_types::revision::RevisionQueryResponse>> {
+    let actor = principal(&host, &headers)?;
+    if body.len() > 128 * 1024 {
+        return Err(ApiError::Invalid);
+    }
+    let request: ufo_types::revision::RevisionQueryRequest =
+        serde_json::from_slice(&body).map_err(|_| ApiError::Invalid)?;
+    if request.project.as_str() != p || request.branch.as_str() != b || request.deadline_ms > 5000 {
+        return Err(ApiError::Invalid);
+    }
+    let _permit = host.permits.try_acquire().map_err(|_| ApiError::Busy)?;
+    Ok(Json(
+        host.owner
+            .revision_query(&actor, &request, &host.query_engine)
+            .await?,
+    ))
+}
+async fn checkpoint(
+    State(host): State<Arc<Host>>,
+    Path((p, r)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<ufo_types::revision::RevisionGraphDescriptor>> {
+    let actor = principal(&host, &headers)?;
+    let p = ProjectId::new(p)?;
+    let r = RevisionId::new(r)?;
+    let graph = host
+        .owner
+        .store()?
+        .graph(&actor, &p, &r, crate::projection::PROJECTION_SCHEMA)?
+        .ok_or(ledgrrr_revision_io::Error::NotFound)?;
+    Ok(Json(graph.0))
 }
 
 async fn deadline(request: axum::extract::Request, next: axum::middleware::Next) -> Response {

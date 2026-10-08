@@ -19,6 +19,11 @@ struct Config {
     owner_actor: ActorId,
     credentials: Vec<Credential>,
     projects: Vec<Project>,
+    #[serde(default = "enabled")]
+    indexing_enabled: bool,
+}
+fn enabled() -> bool {
+    true
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -101,8 +106,16 @@ fn fixture(args: &[String]) -> std::result::Result<(), Box<dyn std::error::Error
     std::fs::write(output, bundle.to_bytes()?)?;
     Ok(())
 }
-#[tokio::main]
-async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
+fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    if std::env::args().nth(1).as_deref() == Some("query-worker") {
+        return ledgrrr_sysml_adapter::query::worker_main().map_err(|e| invalid(&e).into());
+    }
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(run())
+}
+async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
     if args.first().map(String::as_str) == Some("fixture") {
         return fixture(&args);
@@ -153,6 +166,11 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         Err(e) => return Err(e.into()),
     }
     let mut store = Store::open(&config.store_path)?;
+    let index_targets = config
+        .projects
+        .iter()
+        .map(|p| (p.project.clone(), p.branch.clone()))
+        .collect::<Vec<_>>();
     for project in config.projects {
         if !canonical_uuid(&project.remote_project) || !canonical_uuid(&project.remote_branch) {
             return Err(invalid(
@@ -186,17 +204,148 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         }
     }
     drop(store);
+    let owner = Owner {
+        store_path: config.store_path,
+        actor: config.owner_actor,
+        client,
+    };
+    if args.first().map(String::as_str) == Some("index") {
+        return index_command(&args, &owner, &index_targets);
+    }
     let host = Arc::new(Host {
-        owner: Owner {
-            store_path: config.store_path,
-            actor: config.owner_actor,
-            client,
-        },
+        owner,
         credentials: config.credentials,
         permits: tokio::sync::Semaphore::new(16),
+        query_engine: ledgrrr_sysml_adapter::query::QueryEngine::new(Default::default())?,
     });
+    if config.indexing_enabled {
+        let worker = host.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_millis(200));
+            loop {
+                interval.tick().await;
+                for (project, branch) in &index_targets {
+                    if let Err(e) = worker.owner.observe_index_head(project, branch).await {
+                        eprintln!("index authority observation unavailable: {e}");
+                        continue;
+                    }
+                    let owner = worker.clone();
+                    let project = project.clone();
+                    match tokio::task::spawn_blocking(move || {
+                        owner.owner.index_once(&project, None)
+                    })
+                    .await
+                    {
+                        Ok(Ok(_)) => {}
+                        Ok(Err(e)) => eprintln!("index work unavailable: {e}"),
+                        Err(e) => eprintln!("index worker terminated: {e}"),
+                    }
+                }
+            }
+        });
+    }
     let listener = tokio::net::TcpListener::bind(config.bind).await?;
     axum::serve(listener, server::router(host)).await?;
+    Ok(())
+}
+
+fn index_command(
+    args: &[String],
+    owner: &Owner,
+    targets: &[(ProjectId, BranchId)],
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    use ledgrrr_sysml_adapter::projection::{self, PROJECTION_SCHEMA};
+    let project =
+        ProjectId::new(arg(args, "--project").ok_or_else(|| invalid("index needs --project"))?)?;
+    let revision = arg(args, "--revision").map(RevisionId::new).transpose()?;
+    let action = arg(args, "--action").unwrap_or_else(|| "run".into());
+    let mut store = owner.store()?;
+    match action.as_str() {
+        "run" | "rebuild" => {
+            if action == "rebuild" {
+                store.remove_projection(
+                    &owner.actor,
+                    &project,
+                    revision
+                        .as_ref()
+                        .ok_or_else(|| invalid("rebuild needs revision"))?,
+                    PROJECTION_SCHEMA,
+                )?;
+            }
+            let graph = owner.index_once(&project, revision.as_ref())?;
+            let graph = match graph {
+                Some(g) => Some(g),
+                None => match revision.as_ref() {
+                    Some(r) => store
+                        .graph(&owner.actor, &project, r, PROJECTION_SCHEMA)?
+                        .map(|g| g.0),
+                    None => None,
+                },
+            };
+            println!("{}", serde_json::to_string(&graph)?);
+        }
+        "claim" => {
+            let path =
+                arg(args, "--token-file").ok_or_else(|| invalid("claim needs token file"))?;
+            let work = store
+                .claim_index(
+                    &owner.actor,
+                    &project,
+                    revision.as_ref(),
+                    PROJECTION_SCHEMA,
+                    "trusted-index-cli",
+                    300_000,
+                )?
+                .ok_or_else(|| invalid("no claimable index job"))?;
+            std::fs::write(path, ufo_types::revision::canonical_bytes(&work.token)?)?;
+            println!("{}", serde_json::to_string(&work.token)?);
+        }
+        "seal" | "publish" => {
+            let path =
+                arg(args, "--token-file").ok_or_else(|| invalid("action needs token file"))?;
+            let token: IndexJobToken = serde_json::from_slice(&std::fs::read(path)?)?;
+            if token.project != project || revision.as_ref().is_some_and(|r| r != &token.revision) {
+                return Err(invalid("index token identity").into());
+            }
+            if action == "seal" {
+                let candidate = store.accepted_bundle(&owner.actor, &project, &token.revision)?;
+                let graph = projection::project_bundle(&candidate, &token.revision)?;
+                projection::validate_graph(&graph.descriptor, &graph.nquads)?;
+                store.seal_index(&owner.actor, &token, &graph.descriptor, &graph.nquads)?;
+                println!("{}", serde_json::to_string(&graph.descriptor)?);
+            } else {
+                println!(
+                    "{}",
+                    serde_json::to_string(&store.publish_index(&owner.actor, &token)?)?
+                );
+            }
+        }
+        "remove-projection" => store.remove_projection(
+            &owner.actor,
+            &project,
+            revision
+                .as_ref()
+                .ok_or_else(|| invalid("remove needs revision"))?,
+            PROJECTION_SCHEMA,
+        )?,
+        "status" => {
+            let branch = targets
+                .iter()
+                .find(|(p, _)| p == &project)
+                .map(|(_, b)| b)
+                .ok_or_else(|| invalid("unknown configured project"))?;
+            println!(
+                "{}",
+                serde_json::to_string(&store.index_state(
+                    &owner.actor,
+                    &project,
+                    branch,
+                    PROJECTION_SCHEMA
+                )?)?
+            );
+        }
+        _ => return Err(invalid("unknown index action").into()),
+    }
     Ok(())
 }
 

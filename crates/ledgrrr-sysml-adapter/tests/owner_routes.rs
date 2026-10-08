@@ -56,6 +56,9 @@ async fn authenticated_route_inventory_has_no_native_mutation_or_client_actor_co
         },
         credentials: vec![credential, owner_credential],
         permits: tokio::sync::Semaphore::new(1),
+        query_engine: ledgrrr_sysml_adapter::query::QueryEngine::new(Default::default())
+            .unwrap()
+            .with_worker_path(env!("CARGO_BIN_EXE_revision-owner")),
     });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
