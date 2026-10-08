@@ -2,8 +2,9 @@
 //!
 //! Authentication and credentials belong to the embedding host. An `ActorId`
 //! passed here must come from that host's authenticated principal, never from an
-//! untrusted request's actor field. This library does not contact providers or
-//! publish graphs and cannot fence a provider that accepts unconditional writes.
+//! untrusted request's actor field. This library retains sealed graph artifacts
+//! and publishes their checkpoints; the trusted host constructs complete typed
+//! projections. It does not contact or independently fence remote providers.
 #![doc = include_str!("../../../book/src/revision-io.md")]
 #![forbid(unsafe_code)]
 
@@ -140,4 +141,4 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 mod store;
-pub use store::{IndexPublisher, Store};
+pub use store::{IndexJobToken, IndexPublisher, IndexState, IndexWork, Store};

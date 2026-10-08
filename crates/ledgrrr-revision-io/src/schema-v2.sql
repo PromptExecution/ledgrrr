@@ -16,20 +16,3 @@ CREATE TABLE operations (project TEXT NOT NULL, operation TEXT NOT NULL, branch 
 CREATE INDEX recovery_order ON operations(project,branch,operation);
 CREATE TABLE physical_projects (provider TEXT NOT NULL, remote_project TEXT NOT NULL,
  project TEXT NOT NULL UNIQUE REFERENCES projects(project), PRIMARY KEY(provider,remote_project)) STRICT;
-CREATE TABLE accepted_revisions (sequence INTEGER PRIMARY KEY,
- project TEXT NOT NULL REFERENCES projects(project), revision TEXT NOT NULL, branch TEXT NOT NULL,
- parent TEXT, envelope TEXT NOT NULL REFERENCES artifacts(digest), candidate_digest TEXT NOT NULL,
- UNIQUE(project,revision), FOREIGN KEY(project,branch) REFERENCES branches(project,branch)) STRICT;
-CREATE TABLE index_jobs (project TEXT NOT NULL, revision TEXT NOT NULL, projection_schema TEXT NOT NULL,
- dialect TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('queued','claimed','sealed','published')),
- worker TEXT, fence INTEGER NOT NULL DEFAULT 0 CHECK(fence>=0), lease_until INTEGER NOT NULL DEFAULT 0,
- attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts>=0), descriptor BLOB,
- PRIMARY KEY(project,revision,projection_schema),
- FOREIGN KEY(project,revision) REFERENCES accepted_revisions(project,revision)) STRICT;
-CREATE TABLE graph_artifacts (digest TEXT PRIMARY KEY, bytes BLOB NOT NULL) STRICT;
-CREATE TABLE branch_index (project TEXT NOT NULL, branch TEXT NOT NULL, model_revision TEXT,
- model_sequence INTEGER NOT NULL DEFAULT 0, unavailable_reason TEXT,
- PRIMARY KEY(project,branch), FOREIGN KEY(project,branch) REFERENCES branches(project,branch)) STRICT;
-CREATE TABLE branch_checkpoints (project TEXT NOT NULL, branch TEXT NOT NULL, projection_schema TEXT NOT NULL,
- revision TEXT NOT NULL, sequence INTEGER NOT NULL,
- PRIMARY KEY(project,branch,projection_schema), FOREIGN KEY(project,branch) REFERENCES branches(project,branch)) STRICT;

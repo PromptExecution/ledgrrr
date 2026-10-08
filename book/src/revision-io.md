@@ -2,8 +2,10 @@
 
 `ledgrrr-revision-io` owns portable proposal artifacts, immutable operation identity,
 project grants and restart-visible receipts in a local SQLite database. It consumes
-the canonical upstream `ufo-types` revision contract. It has no bookkeeping, model
-runtime, provider HTTP or graph-store dependency.
+the canonical upstream `ufo-types` revision contract. It also owns accepted
+revision manifests, durable fenced index jobs, immutable graph artifacts and
+atomic checkpoints. Oxigraph's mature RDF parser validates sealed graph syntax;
+provider HTTP, projection construction and query execution belong to the host.
 
 The embedding host authenticates each actor and controls project bootstrap and
 database file permissions. Never construct the authenticated `ActorId` from an
@@ -89,11 +91,24 @@ be constrained separately before advertising safe remote serialization.
 
 `publisher` returns a project-scoped capability only for a trusted admin. Keep it
 inside the actual graph publisher, not a generic client receipt-update endpoint.
-Its `record_index` checks receipt generation and exact project/revision/dialect.
-It rejects Pending-to-Indexed and contradictory completion. It records supplied
-publication evidence only; it cannot prove graph completeness, publish a graph or
-advance a branch checkpoint pointer. Completion of an older operation never
-changes a newer branch dispatch reservation.
+Its compatibility `record_index` checks receipt generation and exact
+project/revision/dialect and requires an already-published sealed checkpoint.
+A caller-supplied receipt cannot fabricate graph publication. New workers use
+`claim_index`, `seal_index` and `publish_index`: a live monotonic lease fence binds
+the accepted candidate, actual provider revision and projection schema. Sealing
+checks artifact digest, RDF syntax, quad count, graph scope and required accepted
+identity metadata. The trusted host's deterministic typed projector supplies the
+complete graph; administrative callers are not untrusted projection clients.
+Publication atomically records the checkpoint, matching Indexed receipts and
+eligible branch discovery pointers. Historical completion cannot rewind a newer
+pointer or release an unresolved native dispatch. No-op receipts share one
+consistent accepted revision and graph job.
+
+Accepted bundles and source blobs remain separate from removable graph artifacts.
+Projection loss is unavailable until rebuild reproduces the sealed digest.
+Exact historical reads validate their selected artifact independently of the
+branch-current projection. Graph and descriptor reads check current project grants
+transactionally; possession of a digest or revision grants no access.
 
 `recovery` returns bounded deterministic pages (1–256 records), including exact
 intent identity, original/canonical artifact references, dispatch evidence,
@@ -104,7 +119,9 @@ SQLite connections verify foreign keys, WAL and FULL synchronization and use a
 bounded busy timeout. Writes use immediate transactions and parameterized SQL.
 The application ID, schema version, schema definitions and schema digest are
 checked. Initialization is allowed only for an empty database; future, unrelated
-or corrupt schemas fail closed. No migration or reset is inferred. Storage
+or corrupt schemas fail closed. Only explicit preserved v1→v2→v3 migrations are
+accepted; no reset is inferred. Bounded request connections also install SQLite
+progress interruption and a remaining-budget busy timeout. Storage
 guarantees apply to local filesystems and the SQLite/filesystem durability
 contract, not distributed authority or an untrusted process with raw database
 write access. See [SQLite transactions](https://www.sqlite.org/lang_transaction.html)
@@ -119,13 +136,14 @@ every individual public intake statement.
 
 ## Remaining live gates
 
-Native/ReqIF adapters, browser schema, envelope projection and fetch–emit–fetch
-fidelity are pending. Private provider mutation routes, actual remote promotion,
-outcome reconciliation, external head polling and live two-client merge/conflict
-are pending. Complete immutable staged Oxigraph graphs, fenced atomic publication,
-exact/min-revision queries, freshness and replay/rebuild are pending. Integrated
-proposal/conflict/fidelity/unknown/pending UI inspection is pending. This storage
-milestone does not pass the complete SysML plan's seven end-to-end gates.
+The supported native/private-owner milestone and its real acceptance,
+reconciliation and merge/conflict evidence are described in
+[SysML revision adapter](./sysml-revision-adapter.md). Revision-index publication
+and queries require their own real accepted-commit live evidence. Full ReqIF/source
+codecs, browser integration, broader resolved native library/behavior semantics,
+kr0ki owner-read integration and proposal/conflict/fidelity/unknown/pending UI
+inspection remain required. Library tests alone do not pass the complete SysML
+plan's seven end-to-end gates.
 
 ## Related Chapters
 
@@ -153,3 +171,12 @@ or ambiguous work never expires. `record_observed` atomically binds a fully
 verified existing revision without authorizing a request. Index work binds the
 accepted candidate digest and actual server revision. `start_dispatch` remains
 a compatibility operation for trusted older adapters and grants one send.
+
+Schema version 3 atomically adds accepted manifests, index work, sealed graph
+artifacts and branch publication identities. Known v2 data migrates in dispatch
+fence order, preserving the accepted candidate separately from original intake.
+Legacy committed records without a prepared accepted candidate remain unavailable
+for indexing until independently reconstructed; original proposals are never
+substituted. Actual subprocess tests kill v1/v2 migrations before commit and kill
+publication after receipt/pointer writes before commit, then verify rollback and
+replay. These process tests do not simulate hardware power loss.

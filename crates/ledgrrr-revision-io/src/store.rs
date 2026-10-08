@@ -6,6 +6,7 @@ use ufo_types::revision::canonical_bytes;
 
 const SCHEMA: &str = include_str!("schema.sql");
 const SCHEMA_V1: &str = include_str!("schema-v1.sql");
+const SCHEMA_V2: &str = include_str!("schema-v2.sql");
 const APP_ID: i64 = 0x4c525649;
 const MAX_ENVELOPE: usize = 32 * 1024 * 1024;
 
@@ -14,6 +15,8 @@ const MAX_ENVELOPE: usize = 32 * 1024 * 1024;
 pub struct Store {
     connection: Connection,
 }
+mod index;
+pub use index::{IndexJobToken, IndexState, IndexWork};
 
 fn decode<T: DeserializeOwned + Serialize>(bytes: &[u8]) -> Result<T> {
     let value: T = serde_json::from_slice(bytes).map_err(|e| Error::Corrupt(e.to_string()))?;
@@ -326,11 +329,41 @@ impl Store {
     }
 
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open_inner(path, None)
+    }
+    /// Read requests retain this deadline through subsequent SQLite work.
+    pub fn open_bounded(path: impl AsRef<Path>, timeout: Duration) -> Result<Self> {
+        if timeout.is_zero() {
+            return Err(Error::Invalid("expired store deadline".into()));
+        }
+        Self::open_inner(path, Some(timeout))
+    }
+    /// Refresh the remaining request budget after provider I/O.
+    pub fn bound_work_for(&mut self, timeout: Duration) -> Result<()> {
+        if timeout.is_zero() {
+            return Err(Error::Invalid("expired store deadline".into()));
+        }
+        self.connection
+            .busy_timeout(timeout.min(Duration::from_millis(3000)))?;
+        let deadline = std::time::Instant::now() + timeout;
+        self.connection
+            .progress_handler(1000, Some(move || std::time::Instant::now() >= deadline));
+        Ok(())
+    }
+    fn open_inner(path: impl AsRef<Path>, timeout: Option<Duration>) -> Result<Self> {
         if path.as_ref() == Path::new(":memory:") {
             return Err(Error::Invalid("on-disk local database required".into()));
         }
         let mut c = Connection::open(path)?;
-        c.busy_timeout(Duration::from_millis(3000))?;
+        c.busy_timeout(
+            timeout
+                .unwrap_or(Duration::from_millis(3000))
+                .min(Duration::from_millis(3000)),
+        )?;
+        if let Some(timeout) = timeout {
+            let deadline = std::time::Instant::now() + timeout;
+            c.progress_handler(1000, Some(move || std::time::Instant::now() >= deadline));
+        }
         c.pragma_update(None, "foreign_keys", true)?;
         // Check identity before changing journal settings on a foreign database.
         let tx = c.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -344,13 +377,17 @@ impl Store {
                 [ArtifactDigest::of(SCHEMA.as_bytes()).as_str()],
             )?;
             tx.pragma_update(None, "application_id", APP_ID)?;
-            tx.pragma_update(None, "user_version", 2)?;
+            tx.pragma_update(None, "user_version", 3)?;
         } else {
-            if app != APP_ID || !matches!(version, 1 | 2) {
+            if app != APP_ID || !matches!(version, 1..=3) {
                 return Err(Error::Schema);
             }
             let expected = Connection::open_in_memory()?;
-            expected.execute_batch(if version == 1 { SCHEMA_V1 } else { SCHEMA })?;
+            expected.execute_batch(match version {
+                1 => SCHEMA_V1,
+                2 => SCHEMA_V2,
+                _ => SCHEMA,
+            })?;
             if shape != schema_shape(&expected)? {
                 return Err(Error::Schema);
             }
@@ -360,10 +397,10 @@ impl Store {
                 |r| r.get(0),
             )?;
             if digest
-                != ArtifactDigest::of(if version == 1 {
-                    SCHEMA_V1.as_bytes()
-                } else {
-                    SCHEMA.as_bytes()
+                != ArtifactDigest::of(match version {
+                    1 => SCHEMA_V1.as_bytes(),
+                    2 => SCHEMA_V2.as_bytes(),
+                    _ => SCHEMA.as_bytes(),
                 })
                 .as_str()
             {
@@ -389,7 +426,7 @@ impl Store {
                         return Err(Error::IdentityConflict);
                     }
                 }
-                tx.execute_batch(SCHEMA.strip_prefix(SCHEMA_V1).ok_or(Error::Schema)?)?;
+                tx.execute_batch(SCHEMA_V2.strip_prefix(SCHEMA_V1).ok_or(Error::Schema)?)?;
                 for (project, raw) in bindings {
                     let b: ProjectBinding = decode(&raw)?;
                     tx.execute(
@@ -427,9 +464,20 @@ impl Store {
                 migration_test_pause()?;
                 tx.execute(
                     "UPDATE metadata SET schema_digest=?1",
-                    [ArtifactDigest::of(SCHEMA.as_bytes()).as_str()],
+                    [ArtifactDigest::of(SCHEMA_V2.as_bytes()).as_str()],
                 )?;
                 tx.pragma_update(None, "user_version", 2)?;
+            }
+            if version <= 2 {
+                tx.execute_batch(SCHEMA.strip_prefix(SCHEMA_V2).ok_or(Error::Schema)?)?;
+                index::migrate_accepted(&tx)?;
+                #[cfg(test)]
+                migration_test_pause()?;
+                tx.execute(
+                    "UPDATE metadata SET schema_digest=?1",
+                    [ArtifactDigest::of(SCHEMA.as_bytes()).as_str()],
+                )?;
+                tx.pragma_update(None, "user_version", 3)?;
             }
         }
         // Validate physical mappings even on reopen; raw DB writers are trusted but corruption fails closed.
@@ -1091,6 +1139,7 @@ impl Store {
         value.receipt.status = SyncStatus::ModelCommitted {
             revision: evidence.actual_revision.clone(),
         };
+        index::enqueue_accepted(&tx, &mut value)?;
         update_operation(&tx, &mut value)?;
         tx.execute("UPDATE branches SET active_operation=NULL WHERE project=?1 AND branch=?2 AND fence=?3 AND active_operation=?4",params![token.project.as_str(),token.branch.as_str(),token.fence,token.operation.as_str()])?;
         tx.commit()?;
@@ -1191,6 +1240,10 @@ impl IndexPublisher<'_> {
         if !matches!(value.receipt.status, SyncStatus::ModelCommitted { .. }) {
             return Err(Error::Transition);
         }
+        // Legacy compatibility API may only attach already-published sealed evidence.
+        if !index::published_checkpoint(&tx, checkpoint)? {
+            return Err(Error::Transition);
+        }
         value.receipt.status = target;
         update_operation(&tx, &mut value)?;
         tx.commit()?;
@@ -1273,7 +1326,7 @@ mod migration_tests {
             .unwrap();
         drop(store);
         let c = Connection::open(&path).unwrap();
-        c.execute_batch("DROP TABLE physical_projects; PRAGMA user_version=1;")
+        c.execute_batch("DROP TABLE branch_checkpoints; DROP TABLE branch_index; DROP TABLE graph_artifacts; DROP TABLE index_jobs; DROP TABLE accepted_revisions; DROP TABLE physical_projects; PRAGMA user_version=1;")
             .unwrap();
         c.execute(
             "UPDATE metadata SET schema_digest=?1",

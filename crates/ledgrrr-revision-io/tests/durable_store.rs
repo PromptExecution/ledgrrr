@@ -496,24 +496,23 @@ fn transition_and_checkpoint_preconditions() {
             .record_index(&op.operation, 0, &checkpoint()),
         Err(Error::Stale)
     ));
-    let indexed = s
-        .publisher(&actor("owner"), &project())
-        .unwrap()
-        .record_index(&op.operation, committed.generation, &checkpoint())
-        .unwrap();
-    assert_eq!(
+    assert!(matches!(
         s.publisher(&actor("owner"), &project())
             .unwrap()
-            .record_index(&op.operation, committed.generation, &checkpoint())
+            .record_index(&op.operation, committed.generation, &checkpoint()),
+        Err(Error::Transition)
+    ));
+    assert_eq!(
+        s.operation(&actor("owner"), &project(), &op.operation)
             .unwrap(),
-        indexed
+        committed
     );
     let mut bad = checkpoint();
     bad.graph_digest = ArtifactDigest::of(b"different");
     assert!(s
         .publisher(&actor("owner"), &project())
         .unwrap()
-        .record_index(&op.operation, indexed.generation, &bad)
+        .record_index(&op.operation, committed.generation, &bad)
         .is_err());
 }
 #[test]
@@ -626,14 +625,15 @@ fn competing_dispatch_is_single_and_old_index_does_not_release_new_work() {
             "second request",
         )
         .unwrap();
-    s.publisher(&actor("owner"), &project())
+    assert!(s
+        .publisher(&actor("owner"), &project())
         .unwrap()
         .record_index(
             &committed.receipt.operation,
             committed.generation,
             &checkpoint(),
         )
-        .unwrap();
+        .is_err());
     assert!(matches!(
         s.start_dispatch(
             &actor("owner"),
@@ -958,7 +958,7 @@ fn independent_physical_bootstrap_race_and_preserving_v1_upgrade() {
     drop(s);
     // Reproduce exact known v1 schema while preserving all application rows.
     let c = rusqlite::Connection::open(&path).unwrap();
-    c.execute_batch("DROP TABLE physical_projects; PRAGMA user_version=1;")
+    c.execute_batch("DROP TABLE branch_checkpoints; DROP TABLE branch_index; DROP TABLE graph_artifacts; DROP TABLE index_jobs; DROP TABLE accepted_revisions; DROP TABLE physical_projects; PRAGMA user_version=1;")
         .unwrap();
     c.execute(
         "UPDATE metadata SET schema_digest=?1",
@@ -1070,7 +1070,7 @@ fn duplicate_legacy_migration_fails_atomically_and_noop_never_sends() {
     let path = dir.path().join("duplicate.db");
     drop(setup(&path));
     let c = rusqlite::Connection::open(&path).unwrap();
-    c.execute_batch("DROP TABLE physical_projects; PRAGMA user_version=1;")
+    c.execute_batch("DROP TABLE branch_checkpoints; DROP TABLE branch_index; DROP TABLE graph_artifacts; DROP TABLE index_jobs; DROP TABLE accepted_revisions; DROP TABLE physical_projects; PRAGMA user_version=1;")
         .unwrap();
     c.execute(
         "UPDATE metadata SET schema_digest=?1",
