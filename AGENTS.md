@@ -725,3 +725,27 @@ The `hive` surface declares `"pattern": "parallel-subagents", "isolation": "work
 OpenMetadata should be treated as a remote governed MCP/provider surface, not forked first. Use the reusable `HttpMcpProvider` transport for `{OMURL}/mcp` JSON-RPC over HTTP with bearer auth, then wrap OpenMetadata as `OpenMetadataProvider` with `openmetadata__*` tool prefixes so provider tools cannot collide with ledgrrr's published catalog.
 
 Represent OpenMetadata catalog objects through `ledgerr_ontology` custom kinds first (`openmetadata_service`, `openmetadata_database`, `openmetadata_database_schema`, `openmetadata_table`, `openmetadata_column`, `openmetadata_tag`, `openmetadata_glossary_term`, `openmetadata_owner`) instead of expanding core `ArtifactKind` prematurely. Keep OpenMetadata entity identity stable: hash `source_system`, `entity_type`, and `fully_qualified_name`; do not include volatile hrefs, display labels, timestamps, or bearer-derived data in deterministic identity/provenance.
+
+### Revision I/O owner (2026-10-05)
+
+- `ledgrrr-revision-io` owns provider-neutral durable proposal artifacts/intents/receipts; run `just revision-io-test` and `just revision-io-check`. See `book/src/revision-io.md` for the authenticated host boundary and executable API example.
+- All canonical `ufo-types` consumers share the workspace git pin. Keep revision wire types upstream; enable the `revision` feature only on its consumer and preserve the visualization parser's dev-only restriction.
+- SQLite ownership requires local storage, WAL/FULL, foreign keys and immediate parameterized transactions. Unsupported/corrupt records fail closed; never reset or invent migrations. Artifact hashes grant no access.
+- Persist dispatch evidence before remote requests. Restart or local lease expiry cannot authorize resending an unresolved unconditional provider request. Ambiguous work blocks the branch until matching independently observed remote evidence; storage fences alone do not constrain provider mutation routes.
+- Indexed receipts require the trusted publisher capability and exact revision evidence. Receipt validation does not establish graph completeness or advance branch pointers; real provider/index/UI release gates remain separate.
+
+### Private SysML owner runtime
+
+- Use `just sysml-revision-test`, `just sysml-revision-check`, `just sysml-owner-up` and `just sysml-owner-live`; inspect every gate in `/tmp/sysml-owner-c9d-live-report.json`. Unknown infrastructure is nonzero, never skipped success.
+- Keep `pex-sysml-owner-c9d` separate from retained `pex-sysml-reference`; never restart the baseline because its schema uses destructive `create-drop`. Native HTTP must bind pod-local loopback with no host publication; prove host and unrelated-container isolation.
+- Host credentials/configuration stay outside Git; actors and grants come from host config. One physical backend has one durable owner DB. Native CAS is unavailable; ambiguity cannot expire into permission to resend. Graph/UI and unsupported native library/behavior gates remain separate.
+
+### Accepted revision index operations
+
+- Use `just sysml-index-test`, `just sysml-index-check` and `just sysml-index-live`; the live report is `/tmp/sysml-index-c9d-live-report.json`. Inspect actual accepted revisions, sealed descriptors, query freshness and rebuild digests before declaring owner index gates satisfied.
+- The live probe changes only the preserving private owner runtime, inspects live handles first, and restores reader grants/background indexing after failures. Keep retained `pex-sysml-reference` untouched. Host-only index CLI actions are administrative; never expose caller-supplied graph publication through HTTP.
+- Original intake and accepted merged candidate differ. Project `prepared.envelope` bound to the actual provider revision, retain immutable accepted manifests through projection loss, and require current worker fencing when sealing/publishing. An indexing-work digest or receipt-generation check alone is not proof of a complete graph.
+- Exact/minimum/current selectors and all query wire data belong upstream in `ufo-types`. Historical answers identify their actual revision and freshness; known graph hashes never bypass project grants. Owner publication evidence does not establish kr0ki read integration, native library/behavior semantics or UI gates.
+
+- Bounded query verification must observe actual evaluator-worker execution and reaping. A deadline spent fetching the native head proves no evaluator cancellation. Keep worker permits through process termination; inspect the live report worker PID and recovery-query gates.
+- Query workers require the owner executable with its hidden synchronous `query-worker` entry; embedded/test hosts must configure the worker path. Keep the four-process cap, 1 GiB address-space and six-second CPU limits, bounded IPC and at-most-five-second total deadline. Cooperative cancellation alone is insufficient for the VALUES/COUNT defect tracked in #252.

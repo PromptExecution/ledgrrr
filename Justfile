@@ -101,6 +101,14 @@ test:
     cargo build -p ledgerr-mcp --bin mcp-outcome-test
     ./target/debug/mcp-outcome-test
 
+# Test the provider-neutral durable revision owner.
+revision-io-test:
+    cargo test -p ledgrrr-revision-io
+
+# Check the revision owner and its tests with warnings denied.
+revision-io-check:
+    cargo clippy -p ledgrrr-revision-io --all-targets -- -D warnings
+
 # ─── Tauri build (Windows host) ─────────────────────────────────────────────────
 
 # One composable Windows package entry point. Supply `Build` for artifacts or
@@ -775,3 +783,39 @@ env-docs-check:
 # Timed b00t maintenance probe for version/task/focus/audit surfaces.
 b00t-maintenance-check budget="":
     bash scripts/check-b00t-maintenance.sh {{ if budget == "" { "" } else { "--budget " + budget } }}
+
+# Native codec + durable owner checks. Live infrastructure has a separate gate.
+sysml-revision-test:
+    cargo test -p ledgrrr-revision-io -p ledgrrr-sysml-adapter --locked
+
+sysml-revision-check:
+    cargo clippy -p ledgrrr-revision-io -p ledgrrr-sysml-adapter --all-targets --locked -- -D warnings
+
+# Durable accepted-revision projection, fenced publication and bounded queries.
+sysml-index-test:
+    cargo test -p ledgrrr-revision-io --test durable_index --locked
+    cargo test -p ledgrrr-sysml-adapter --test revision_projection --test revision_queries --test index_owner_routes --locked
+
+sysml-index-check:
+    cargo clippy -p ledgrrr-revision-io -p ledgrrr-sysml-adapter --all-targets --locked -- -D warnings
+
+# Requires the preserving private owner runtime; never resets provider state.
+sysml-index-live:
+    python3 scripts/sysml-index-live-probe.py --output /tmp/sysml-index-c9d-live-report.json
+
+sysml-owner-build:
+    cargo build -p ledgrrr-sysml-adapter --bin revision-owner --locked
+
+# New private provider pod only; retained pex-sysml-reference is never restarted.
+sysml-owner-up: sysml-owner-build
+    bash scripts/sysml-owner-runtime.sh up
+
+# Real HTTP acceptance; unavailable infrastructure reports Unknown and exits 2.
+sysml-owner-live:
+    python3 scripts/sysml-owner-live-probe.py --output /tmp/sysml-owner-c9d-live-report.json
+
+# P2 gate: fetch→emit→OMG server→fetch→hydrate semantic digest roundtrip.
+# Requires the disposable reference server: export SYSML_API_URL=http://127.0.0.1:19000
+sysml-p2-live:
+    SYSML_API_URL="${SYSML_API_URL:-http://127.0.0.1:19000}" \
+    cargo test -p ledgrrr-sysml-adapter --test live_roundtrip --locked -- --test-threads=1 --nocapture

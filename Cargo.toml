@@ -1,6 +1,8 @@
 [workspace]
 members = [
   "crates/ledger-core",
+  "crates/ledgrrr-revision-io",
+  "crates/ledgrrr-sysml-adapter",
   "crates/ledger-attest",
   "crates/ledgerr-focus",
   "crates/ledgrrr-settings",
@@ -38,6 +40,8 @@ edition = "2021"
 license = "MIT"
 
 [workspace.dependencies]
+ufo-types = { git = "https://github.com/promptexecution/ufo-types", rev = "5f8d0186947da376cfa17ad8b59cd280f2f85338" }
+rusqlite = { version = "=0.33.0", features = ["bundled", "hooks"] }
 rust_xlsxwriter = "0.94.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

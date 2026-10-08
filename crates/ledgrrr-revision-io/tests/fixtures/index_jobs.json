@@ -1,0 +1,9 @@
+{
+  "schema":"test-projection-1",
+  "worker":"bounded-indexer",
+  "lease_cases":[
+    {"lease_ms":0,"valid":false},
+    {"lease_ms":300001,"valid":false},
+    {"lease_ms":60000,"valid":true}
+  ]
+}

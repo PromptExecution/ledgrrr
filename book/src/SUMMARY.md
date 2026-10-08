@@ -1,5 +1,8 @@
 # Summary
 
+- [Durable Revision I/O](revision-io.md)
+- [Private SysML Revision Adapter](sysml-revision-adapter.md)
+
 - [Introduction](./intro.md)
 
 # Operator Capabilities
