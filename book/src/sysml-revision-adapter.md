@@ -59,9 +59,9 @@ fields, original blob bytes, full-envelope no-op commit counts, disjoint merge,
 conflict, authorization, route isolation, and restart reconciliation. Trusted crash
 hooks belong exclusively to the host test harness; production requests cannot
 activate them. Review every report gate rather than treating an HTTP 200 as proof.
-Resolved derivation/library and broader native behavior, immutable graph publication,
-revision-scoped queries, browser integration and interactive UI inspection remain
-required full-plan work.
+Resolved derivation/library and broader native behavior, browser integration and
+interactive UI inspection remain required full-plan work. Owner graph publication
+and revision queries have their own verification gates below.
 
 ## Revision index verification
 
@@ -84,6 +84,8 @@ administrative actions or supply graph artifacts/checkpoints for publication.
 `SYSML_INDEXING_ENABLED=false` on an owner restart updates only the task's private
 host configuration. The probe restores the reader grant and automatic indexing
 when it exits, including after partial failure. Provider data is never reset.
+The final report records terminal container handles and restoration failures;
+a successful query cannot conceal a stopped owner or an unrestored grant.
 Removing a projection for rebuild proof retains its accepted manifest and source
 blobs; rebuild must preserve the graph digest and native commit count.
 
@@ -109,6 +111,15 @@ Pending and unavailable results contain no fabricated query answer. Historical
 exact answers can be stale relative to the branch while fully satisfying their
 requested revision. Project grants apply to graph/checkpoint access even when the
 caller already knows their digests.
+
+Query execution uses a bounded pool of supervised `revision-owner query-worker`
+processes. The request deadline covers graph loading, parsing, evaluation and lazy
+result consumption. The supervisor cancels the evaluator, kills a worker that
+outlives its deadline, and reaps it before returning capacity. Each child also has
+address-space and CPU limits. This process boundary handles engine operations
+that fail to observe cooperative cancellation before producing their first row.
+The live probe observes an actual expensive-query child PID, then checks its exit
+and a successful subsequent query; an HTTP timeout alone does not prove this gate.
 
 The versioned `urn:ledgrrr:revision:1:` projection preserves canonical model and
 evidence fields. Its convenience predicates include `element_kind`, `id`,

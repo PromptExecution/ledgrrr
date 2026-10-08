@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """Real accepted revisions, sealed publication and rebuild; never reset native data."""
 import argparse
+import concurrent.futures
 import hashlib
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
 import time
 import tomllib
+import urllib.parse
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parent.parent
@@ -99,7 +102,39 @@ def main():
     REPORT['binary_sha256'] = hashlib.sha256(binary.read_bytes()).hexdigest()
 
     def count():
-        return len(owner.native(f"/projects/{remote['remote_project']}/commits"))
+        # Native commits accumulate across runs; a full page is not a complete count.
+        path = f"/projects/{remote['remote_project']}/commits"
+        current = 'http://127.0.0.1:9000' + path
+        visited, identities = set(), set()
+        for _ in range(100):
+            if current in visited:
+                raise owner.Unknown('native commit observer repeated pagination URL')
+            visited.add(current)
+            result = owner.run(['podman', 'exec', POD + '-native', 'curl', '-sS', '-f', '--max-time', '20', '-i', current])
+            if len(result.stdout) > 8 * 1024 * 1024:
+                raise owner.Unknown('native commit observer response exceeded bound')
+            headers, body = result.stdout.split(b'\r\n\r\n', 1)
+            page = json.loads(body)
+            if not isinstance(page, list):
+                raise owner.Unknown('native commit observer expected a list')
+            for commit in page:
+                identity = commit['@id']
+                if identity in identities:
+                    raise owner.Unknown('native commit observer repeated commit identity')
+                identities.add(identity)
+            links = [line.split(b':', 1)[1].decode() for line in headers.split(b'\r\n')
+                     if line.lower().startswith(b'link:')]
+            next_links = [match.group(1) for link in links
+                          for match in re.finditer(r'<([^>]+)>\s*;\s*rel="?next"?', link)]
+            if not next_links:
+                return len(identities)
+            if len(next_links) != 1:
+                raise owner.Unknown('native commit observer ambiguous next page')
+            current = urllib.parse.urljoin(current, next_links[0])
+            parsed = urllib.parse.urlsplit(current)
+            if parsed.scheme != 'http' or parsed.netloc != '127.0.0.1:9000' or parsed.path != path or parsed.fragment:
+                raise owner.Unknown('native commit observer pagination escaped configured route')
+        raise owner.Unknown('native commit observer exceeded page bound')
 
     def head():
         status, value = request('GET', base + '/head', tokens['reader'])
@@ -265,12 +300,29 @@ def main():
     values = ' '.join(str(n) for n in range(80))
     expensive = 'SELECT (COUNT(*) AS ?n) WHERE { ' + ' '.join(
         f'VALUES ?v{i} {{ {values} }}' for i in range(8)) + ' }'
+    def query_workers():
+        result = owner.run(['podman', 'top', POD + '-owner', 'pid,args'])
+        return {line.split(None, 1)[0]: line.split(None, 1)[1]
+                for line in result.stdout.decode().splitlines()[1:]
+                if 'query-worker' in line and len(line.split(None, 1)) == 2}
+
+    gate('no-worker-before-expensive-request', not query_workers())
     started = time.monotonic()
-    timeout = exact(rm, expensive, 250)
+    observed = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        pending_query = executor.submit(exact, rm, expensive, 2000)
+        while not pending_query.done():
+            observed.update(query_workers())
+            time.sleep(0.025)
+        timeout = pending_query.result()
     elapsed = time.monotonic() - started
+    gate('expensive-query-reached-evaluator-process', bool(observed), observed)
     gate('bounded-expensive-evaluation', elapsed < 5 and timeout[0] == 200
          and timeout[1].get('outcome', {}).get('reason') == 'deadline_exceeded', {'elapsed_seconds': elapsed, 'response': timeout})
-    completed('capacity-after-evaluator-cancellation', exact(rm), rm)
+    remaining = query_workers()
+    gate('timed-out-query-worker-is-reaped', not remaining,
+         {'observed_worker_pids': sorted(observed), 'remaining_workers': remaining})
+    completed('capacity-after-evaluator-cancellation', exact(rm, deadline=2000), rm)
 
     # Grant revocation must invalidate access even after the graph was queried.
     config_update(lambda c: [a.update(read=False) for p in c['projects'] if p['project'] == project
@@ -327,6 +379,17 @@ if __name__ == '__main__':
             REPORT['restoration_error'] = str(error)
             if exit_code == 0:
                 REPORT['status'], exit_code = 'Unknown', 2
+        try:
+            handles = json.loads(owner.run(['podman', 'inspect', POD + '-owner', POD + '-native', POD + '-db']).stdout)
+            REPORT['runtime_after'] = [{'id': h['Id'], 'name': h['Name'],
+                'running': h['State']['Running'], 'exit_code': h['State'].get('ExitCode')} for h in handles]
+            if not all(h['State']['Running'] for h in handles) and exit_code == 0:
+                REPORT['status'], exit_code = 'Unknown', 2
+        except (owner.Unknown, OSError, ValueError, subprocess.TimeoutExpired) as error:
+            REPORT['runtime_observation_error'] = str(error)
+            if exit_code == 0:
+                REPORT['status'], exit_code = 'Unknown', 2
+        REPORT['terminal_exit_code'] = exit_code
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(REPORT, ensure_ascii=False, indent=2) + '\n')
     print(json.dumps({'status': REPORT['status'], 'gates': len(REPORT['gates']), 'report': str(args.output)}))
