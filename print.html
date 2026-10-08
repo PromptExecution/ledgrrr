@@ -41,10 +41,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-01c0a00f.js";
+            window.path_to_searchindex_js = "searchindex-a061a51f.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-8264d5c0.js"></script>
+        <script src="toc-da05551f.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -183,7 +183,306 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
+                        <h1 id="durable-revision-io"><a class="header" href="#durable-revision-io">Durable Revision I/O</a></h1>
+<p><code>ledgrrr-revision-io</code> owns portable proposal artifacts, immutable operation identity,
+project grants and restart-visible receipts in a local SQLite database. It consumes
+the canonical upstream <code>ufo-types</code> revision contract. It also owns accepted
+revision manifests, durable fenced index jobs, immutable graph artifacts and
+atomic checkpoints. Oxigraph’s mature RDF parser validates sealed graph syntax;
+provider HTTP, projection construction and query execution belong to the host.</p>
+<p>The embedding host authenticates each actor and controls project bootstrap and
+database file permissions. Never construct the authenticated <code>ActorId</code> from an
+untrusted request field. <code>ProjectBinding</code> contains configured provider handles,
+not credentials. An explicit bootstrap creates an absent project; existing
+projects cannot be taken over or rebound through bootstrap. All later project
+methods check the relevant grant in the same transaction as their work. A digest
+is an identity, not a read capability: artifact retrieval also requires a project
+reference and read grant. Grant administration cannot remove the last admin.</p>
+<p>This executable example proves durable local intake and original-envelope retention.
+Its empty model keeps the example short; the JSON integration fixture exercises
+requirements, source symbols, typed values, relations and binary attachments.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use ledgrrr_revision_io::*;
+use std::collections::BTreeMap;
+use ufo_types::revision::{PortableModel, RevisionContext};
+
+let dir = tempfile::tempdir()?;
+let path = dir.path().join("revisions.sqlite");
+let owner = ActorId::new("authenticated-owner")?;
+let project = ProjectId::new("example-project")?;
+let branch = BranchId::new("proposal-branch")?;
+let binding = ProjectBinding {
+    provider: "configured-provider".into(),
+    remote_project: "configured-project".into(),
+    model_dialect: "SysML-v2".into(),
+};
+let bundle = PortableBundle::dehydrate(
+    PortableModel { elements: BTreeMap::new(), relations: BTreeMap::new() },
+    RevisionContext {
+        project: project.clone(), revision: RevisionId::new("proposal-1")?,
+        parent: None, model_dialect: binding.model_dialect.clone(),
+        library_revisions: BTreeMap::new(), source_revisions: BTreeMap::new(),
+        toolchain: BTreeMap::new(),
+    }, BTreeMap::new(),
+)?;
+let raw = serde_json::to_vec_pretty(&amp;bundle)?;
+let mut store = Store::open(&amp;path)?;
+store.bootstrap_project(&amp;owner, &amp;project, &amp;binding)?;
+store.register_branch(&amp;owner, &amp;project, &amp;branch, "configured-remote-branch")?;
+let request = Intake {
+    project: project.clone(), branch, operation: OperationId::new("operation-1")?,
+    expected_head: ExpectedHead::Empty, binding,
+};
+let accepted = store.intake(&amp;owner, &amp;request, &amp;raw)?;
+assert_eq!(accepted.receipt.status, SyncStatus::Pending);
+drop(store);
+let mut reopened = Store::open(&amp;path)?;
+assert_eq!(reopened.operation(&amp;owner, &amp;project, &amp;request.operation)?, accepted);
+assert_eq!(reopened.artifact(&amp;owner, &amp;project, &amp;accepted.raw_envelope)?, raw);
+<span class="boring">Ok::&lt;(), Box&lt;dyn std::error::Error&gt;&gt;(())
+</span><span class="boring">}</span></code></pre>
+<p>Intake strictly validates a <code>PortableBundle</code>, its complete digest, source bytes,
+project, dialect and proposal parent. <code>ExpectedHead::Empty</code> is explicitly empty,
+never an unchecked write. The branch must have an immutable configured remote
+binding. The operation key is <code>(project, operation)</code>; its actor, branch, expected
+head and full proposal digest are immutable. Identical retries return the current
+receipt without replacing the first original envelope. Differently formatted JSON
+is acceptable only when its complete canonical bundle identity agrees. Original
+envelope bytes, canonical envelope bytes and every referenced source/attachment
+are stored separately as immutable SHA-256-addressed BLOBs.</p>
+<p><code>start_dispatch</code> requires an authenticated admin worker, reserves a branch and
+persists its monotonic fence and request evidence <strong>before</strong> the provider request.
+A repeated call never authorizes resending, including after process restart.
+<code>mark_ambiguous</code> preserves that reservation. There is no timeout, lease-expiry,
+force-success or automatic resend/release API. A worker resolves a matching
+dispatch with <code>record_commit</code> using independently obtained provider evidence bound
+to its project/provider, operation, fence, expected head and complete proposal
+digest. The actual observed provider revision is preserved; a deterministic
+index-work identity is persisted with <code>ModelCommitted</code> in the same transaction.
+Predispatch <code>Conflict</code> and <code>Unavailable</code> can be recorded through
+<code>reject_before_dispatch</code>; after dispatch they cannot release an uncertain request.</p>
+<p>This store cannot prove that evidence reflects a real remote observation. Keep
+provider workers inside the authenticated trusted host, with credentials outside
+proposal clients. In particular, a local fence cannot stop an in-flight request
+on a provider that lacks conditional writes. Every provider mutation route must
+be constrained separately before advertising safe remote serialization.</p>
+<p><code>publisher</code> returns a project-scoped capability only for a trusted admin. Keep it
+inside the actual graph publisher, not a generic client receipt-update endpoint.
+Its compatibility <code>record_index</code> checks receipt generation and exact
+project/revision/dialect and requires an already-published sealed checkpoint.
+A caller-supplied receipt cannot fabricate graph publication. New workers use
+<code>claim_index</code>, <code>seal_index</code> and <code>publish_index</code>: a live monotonic lease fence binds
+the accepted candidate, actual provider revision and projection schema. Sealing
+checks artifact digest, RDF syntax, quad count, graph scope and required accepted
+identity metadata. The trusted host’s deterministic typed projector supplies the
+complete graph; administrative callers are not untrusted projection clients.
+Publication atomically records the checkpoint, matching Indexed receipts and
+eligible branch discovery pointers. Historical completion cannot rewind a newer
+pointer or release an unresolved native dispatch. No-op receipts share one
+consistent accepted revision and graph job.</p>
+<p>Accepted bundles and source blobs remain separate from removable graph artifacts.
+Projection loss is unavailable until rebuild reproduces the sealed digest.
+Exact historical reads validate their selected artifact independently of the
+branch-current projection. Graph and descriptor reads check current project grants
+transactionally; possession of a digest or revision grants no access.</p>
+<p><code>recovery</code> returns bounded deterministic pages (1–256 records), including exact
+intent identity, original/canonical artifact references, dispatch evidence,
+actual revision and indexing-work identity. Reads revalidate canonical records,
+byte hashes and receipt identities under a transactional project grant check.</p>
+<p>SQLite connections verify foreign keys, WAL and FULL synchronization and use a
+bounded busy timeout. Writes use immediate transactions and parameterized SQL.
+The application ID, schema version, schema definitions and schema digest are
+checked. Initialization is allowed only for an empty database; future, unrelated
+or corrupt schemas fail closed. Only explicit preserved v1→v2→v3 migrations are
+accepted; no reset is inferred. Bounded request connections also install SQLite
+progress interruption and a remaining-budget busy timeout. Storage
+guarantees apply to local filesystems and the SQLite/filesystem durability
+contract, not distributed authority or an untrusted process with raw database
+write access. See <a href="https://www.sqlite.org/lang_transaction.html">SQLite transactions</a>
+and <a href="https://www.sqlite.org/pragma.html">PRAGMA settings</a>.</p>
+<p>Run <code>just revision-io-test</code> and <code>just revision-io-check</code>. Integration tests cover
+restart, independent connection races, conflicting identity, denied/revoked access,
+corrupt records/artifacts, SQL rollback and actual child-process interruption.
+The interruption test kills a child after uncommitted artifact insertion and after
+a completed public intake; it does not simulate hardware power loss or interrupt
+every individual public intake statement.</p>
+<h2 id="remaining-live-gates"><a class="header" href="#remaining-live-gates">Remaining live gates</a></h2>
+<p>The supported native/private-owner milestone and its real acceptance,
+reconciliation and merge/conflict evidence are described in
+<a href="#private-sysml-revision-adapter">SysML revision adapter</a>. Revision-index publication
+and queries require their own real accepted-commit live evidence. Full ReqIF/source
+codecs, browser integration, broader resolved native library/behavior semantics,
+kr0ki owner-read integration and proposal/conflict/fidelity/unknown/pending UI
+inspection remain required. Library tests alone do not pass the complete SysML
+plan’s seven end-to-end gates.</p>
+<h2 id="related-chapters"><a class="header" href="#related-chapters">Related Chapters</a></h2>
+<ul>
+<li><a href="#ontology--type-mesh">Ontology &amp; Type Mesh</a></li>
+<li><a href="#mcp-surface">MCP Surface</a></li>
+</ul>
+<h2 id="native-promotion-preparation"><a class="header" href="#native-promotion-preparation">Native promotion preparation</a></h2>
+<p>Schema version 2 explicitly upgrades the known version 1 schema in one SQLite
+transaction. Artifacts, receipts and identity columns stay intact; legacy
+unresolved dispatches remain authorized and blocking. Duplicate physical
+<code>(provider, remote_project)</code> mappings reject the upgrade without resetting data
+(issue <a href="https://github.com/PromptExecution/ledgrrr/issues/250">#250</a>). Dialect is
+excluded from physical identity. Provider handles are canonical lowercase host
+configuration identities; the host must map each physical origin to one handle.
+One owner database owns a physical provider topology; SQLite is not distributed
+authority across independently configured databases.</p>
+<p>New adapters call <code>reserve</code> before remote head reads, <code>prepare</code> to persist the
+immutable accepted candidate, then <code>authorize_send</code> exactly once. Preparation
+stores full candidate/artifact bytes, actual parent, native projection and identity
+map digests separately from original intake. A repeat authorization never grants
+a second send. Never-authorized reservations can use <code>cancel_reserved</code>; authorized
+or ambiguous work never expires. <code>record_observed</code> atomically binds a fully
+verified existing revision without authorizing a request. Index work binds the
+accepted candidate digest and actual server revision. <code>start_dispatch</code> remains
+a compatibility operation for trusted older adapters and grants one send.</p>
+<p>Schema version 3 atomically adds accepted manifests, index work, sealed graph
+artifacts and branch publication identities. Known v2 data migrates in dispatch
+fence order, preserving the accepted candidate separately from original intake.
+Legacy committed records without a prepared accepted candidate remain unavailable
+for indexing until independently reconstructed; original proposals are never
+substituted. Actual subprocess tests kill v1/v2 migrations before commit and kill
+publication after receipt/pointer writes before commit, then verify rollback and
+replay. These process tests do not simulate hardware power loss.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="private-sysml-revision-adapter"><a class="header" href="#private-sysml-revision-adapter">Private SysML revision adapter</a></h1>
+<p><code>ledgrrr-sysml-adapter</code> projects the upstream portable revision contract into the
+pinned official SysML API and promotes it through the durable revision owner.
+Run <code>just sysml-revision-test</code> and <code>just sysml-revision-check</code> for the local
+contract checks. Run <code>just sysml-owner-up</code>, then <code>just sysml-owner-live</code> for the
+separate real provider gate. The live report is
+<code>/tmp/sysml-owner-c9d-live-report.json</code>; unavailable infrastructure exits nonzero
+with <code>Unknown</code>, and incomplete evidence cannot pass acceptance.</p>
+<p>The task-owned rootless Podman pod <code>pex-sysml-owner-c9d</code> publishes only the owner
+at <code>127.0.0.1:19001</code>. Native HTTP binds <strong>inside the pod</strong> to <code>127.0.0.1:9000</code>;
+PostgreSQL also binds pod-local loopback. The owner shares that network namespace.
+An unrelated network namespace cannot reach those loopback services. This is a
+network isolation boundary, independently probed from the host and an unrelated
+container. A loopback publication alone would not establish private backend
+access. Host/Podman administrators who can attach processes to the pod remain
+trusted, as do administrators who can write the owner database/configuration.
+The runtime refuses extra published ports and never publishes the native API.</p>
+<p>The official source is pinned to
+<code>0af711b14bbcea7b240bb0a3a65817ae68302092</code>; Java and PostgreSQL images use the
+baseline’s immutable digests. <code>sysml-owner-up</code> requires its already-built official
+stage, copies it into task-owned state, and edits only the copied JPA configuration
+to explicit <code>hibernate.hbm2ddl.auto=update</code>. PostgreSQL files and the owner’s SQLite
+database persist in <code>/tmp/sysml-owner-c9d</code>. There is no destructive reset recipe.
+The retained <strong><code>pex-sysml-reference</code> must never be restarted</strong>: its <code>create-drop</code>
+configuration would destroy the earlier probe data. New provider project/branch
+provisioning is a privileged host action before owner startup.</p>
+<p>Credentials are generated into a mode-0600 host configuration outside Git. Tokens
+map to host-established actors/grants; requests cannot choose their actor, provider,
+bootstrap or publisher. Only bounded <code>/v1</code> proposal/promotion, receipt/recovery,
+exact bundle/artifact and head routes are exposed. Native project, branch, tag,
+ordinary/named commit and query mutations have no passthrough route. Editors may
+submit proposals; the configured worker holds promotion administration. Artifact
+reads require the same project authorization, even when a digest is known.</p>
+<p>The provider ignores stale <code>previousCommit</code>, so independent native writers are
+unsupported. One physical provider branch has one durable owner authority;
+project aliases must not bypass it (<a href="https://github.com/PromptExecution/ledgrrr/issues/250">issue 250</a>).
+Reservation precedes head fetch. Accepted merged content, actual parent and native
+projection are persisted separately from immutable submitted bytes. Dispatch is
+single-use. Unknown outcomes retain their reservation across restart; reconciliation
+requires complete reachable history and exact operation/content/parent evidence.
+Missing evidence never authorizes resending. A full-envelope/native no-op records
+an observed existing revision and sends no commit.</p>
+<p>Native requirement, verification, satisfy and allocation claims require comparison
+of fetched native fields, including their actual singleton/array endpoint shapes.
+Envelope preservation separately proves original source/attachment byte fidelity.
+The capability table refuses required unsupported native semantics before publication.
+Source symbols/compiler evidence retained in an envelope do not prove resolved
+SysML behavior or a derivation library. Exact accepted revisions enqueue indexing;
+<code>ModelCommitted</code> does not establish <code>Indexed</code>.</p>
+<p>Live acceptance records actual remote revisions and parents, fetched bundles/native
+fields, original blob bytes, full-envelope no-op commit counts, disjoint merge,
+conflict, authorization, route isolation, and restart reconciliation. Trusted crash
+hooks belong exclusively to the host test harness; production requests cannot
+activate them. Review every report gate rather than treating an HTTP 200 as proof.
+Resolved derivation/library and broader native behavior, browser integration and
+interactive UI inspection remain required full-plan work. Owner graph publication
+and revision queries have their own verification gates below.</p>
+<h2 id="revision-index-verification"><a class="header" href="#revision-index-verification">Revision index verification</a></h2>
+<p>Use <code>just sysml-index-test</code> and <code>just sysml-index-check</code> for storage publication,
+projection and query checks. <code>just sysml-index-live</code> runs the real accepted-model
+probe and writes <code>/tmp/sysml-index-c9d-live-report.json</code>. A successful test process
+does not replace the live report: inspect every gate and its actual revision,
+candidate digest, graph descriptor and query response. Missing infrastructure is
+<code>Unknown</code> with exit 2; a contradicted invariant is <code>Violated</code> with exit 1.</p>
+<p>The index probe uses the preserving <code>pex-sysml-owner-c9d</code> runtime. It inspects
+existing container handles before restarting the owner, disables automatic
+indexing through trusted host configuration, and drives separate claim, seal and
+publication stages through the host-only <code>revision-owner index</code> command. It kills
+the actual owner after claiming work and after sealing an unpublished graph,
+then reopens the same database. Compiled-test-only storage tests cover interruption
+inside the atomic publication transaction. No HTTP request can select these
+administrative actions or supply graph artifacts/checkpoints for publication.</p>
+<p><code>SYSML_INDEXING_ENABLED=false</code> on an owner restart updates only the task’s private
+host configuration. The probe restores the reader grant and automatic indexing
+when it exits, including after partial failure. Provider data is never reset.
+The final report records terminal container handles and restoration failures;
+a successful query cannot conceal a stopped owner or an unrestored grant.
+Removing a projection for rebuild proof retains its accepted manifest and source
+blobs; rebuild must preserve the graph digest and native commit count.</p>
+<p>Authenticated revision queries use
+<code>POST /v1/projects/{project}/branches/{branch}/query</code>. The body includes the same
+project and branch, a canonical selector, SPARQL text and relative deadline:</p>
+<pre><code class="language-json">{
+  "project": "live-project",
+  "branch": "main",
+  "selector": {"kind": "current", "allow_older": false},
+  "query": "ASK {}",
+  "deadline_ms": 2000
+}
+</code></pre>
+<p>Exact selectors identify an actual accepted provider revision. Minimum selectors
+carry a previously returned checkpoint and require proven accepted ancestry;
+revision UUID ordering has no freshness meaning. A completed response includes
+actual model/index revisions, a graph descriptor and <code>fresh</code> or <code>stale</code> freshness.
+Pending and unavailable results contain no fabricated query answer. Historical
+exact answers can be stale relative to the branch while fully satisfying their
+requested revision. Project grants apply to graph/checkpoint access even when the
+caller already knows their digests.</p>
+<p>Query execution uses a bounded pool of supervised <code>revision-owner query-worker</code>
+processes. The request deadline covers graph loading, parsing, evaluation and lazy
+result consumption. The supervisor cancels the evaluator, kills a worker that
+outlives its deadline, and reaps it before returning capacity. Each child also has
+a 1 GiB address-space limit and a six-second CPU limit; the total request deadline
+is at most five seconds. At most four query workers run concurrently. Worker input
+uses a bounded 1 MiB header plus at most 64 MiB of graph bytes; output and error
+pipes are bounded and joined before capacity is released. This process boundary handles engine operations
+that fail to observe cooperative cancellation before producing their first row
+(<a href="https://github.com/PromptExecution/ledgrrr/issues/252">tracked evaluator defect #252</a>).
+Embedded hosts must configure the <code>revision-owner</code> executable as their worker path;
+the default executable is the current owner process.
+The live probe observes an actual expensive-query child PID, then checks its exit
+and a successful subsequent query; an HTTP timeout alone does not prove this gate.</p>
+<p>The versioned <code>urn:ledgrrr:revision:1:</code> projection preserves canonical model and
+evidence fields. Its convenience predicates include <code>element_kind</code>, <code>id</code>,
+<code>relation_kind</code>, named endpoint roles and <code>authority</code>; source coordinates hang
+from <code>evidence</code> nodes. For example, this query finds requirement definitions or
+usages without an authored Verify relation:</p>
+<pre><code class="language-sparql">PREFIX rev: &lt;urn:ledgrrr:revision:1:&gt;
+SELECT ?id WHERE {
+  ?requirement rev:element_kind ?kind ; rev:id ?id .
+  FILTER (?kind IN ("requirement_definition", "requirement_usage"))
+  FILTER NOT EXISTS {
+    ?relation rev:relation_kind "verify" ;
+      rev:requirement ?requirement ; rev:authority "authored" .
+  }
+}
+ORDER BY ?id
+</code></pre>
+<p>These graph facts retain their authority and accepted input identity. Projecting
+compiler or inferred evidence does not promote it to an authored native assertion.
+Owner graph publication remains distinct from full P4: kr0ki must consume the
+same authorized revision query contract before its discovery integration is proven.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
 <div class="admonition info">
 <div class="admonition-title">Info</div>
 
@@ -250,7 +549,7 @@ fn cpa_review() -&gt; audit_history
 </tbody>
 </table>
 </div>
-<h2 id="related-chapters"><a class="header" href="#related-chapters">Related Chapters</a></h2>
+<h2 id="related-chapters-1"><a class="header" href="#related-chapters-1">Related Chapters</a></h2>
 <ul>
 <li><a href="#capability-map">Capability Map</a></li>
 <li><a href="#mcp-surface">MCP Surface</a></li>
@@ -765,7 +1064,7 @@ just host-playbook-window-windows-ai
 </code></pre>
 <p>The Windows AI provider is selectable in the host window. It is not auto-selected.
 Use the <code>Windows AI / Foundry Local</code> control after the smoke test passes.</p>
-<h2 id="related-chapters-1"><a class="header" href="#related-chapters-1">Related Chapters</a></h2>
+<h2 id="related-chapters-2"><a class="header" href="#related-chapters-2">Related Chapters</a></h2>
 <ul>
 <li><a href="#capability-map">Capability Map</a></li>
 <li><a href="#mcp-surface">MCP Surface</a></li>
@@ -1022,7 +1321,7 @@ fn review_flag() -&gt; workbook_commit
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="validation"><a class="header" href="#validation">Validation</a></h1>
 <p>The validation module provides the core type system for pipeline stage results.</p>
-<h2 id="related-chapters-2"><a class="header" href="#related-chapters-2">Related Chapters</a></h2>
+<h2 id="related-chapters-3"><a class="header" href="#related-chapters-3">Related Chapters</a></h2>
 <ul>
 <li><a href="#pipeline">Pipeline</a> - State machine integration</li>
 <li><a href="#constraints">Constraints</a> - Kasuari constraint types</li>
@@ -1148,7 +1447,7 @@ match z3_result =&gt; Unknown -&gt; request_more_facts
 }
 <span class="boring">}</span></code></pre>
 <p>Unknown facts should produce <code>Z3Result::Unknown</code> rather than pretending the transaction passed. This keeps the legal layer conservative and audit-friendly.</p>
-<h2 id="related-chapters-3"><a class="header" href="#related-chapters-3">Related Chapters</a></h2>
+<h2 id="related-chapters-4"><a class="header" href="#related-chapters-4">Related Chapters</a></h2>
 <ul>
 <li><a href="#rule-engine">Rule Engine</a></li>
 <li><a href="#validation">Validation</a></li>
@@ -1363,7 +1662,7 @@ fn audit_sheet() -&gt; cpa_review
 <p>The NDJSON journal provides append/replay behavior for ingested transactions. Transaction identity is content-addressed with Blake3 over account, date, amount, and description, making repeated ingest idempotent.</p>
 <h2 id="projection-rule"><a class="header" href="#projection-rule">Projection Rule</a></h2>
 <p>The workbook is a projection, not the only system of record for agent queues or replay state. It remains the canonical human/audit layer because the CPA workflow depends on Excel, but operational restart state belongs in the sidecar snapshot.</p>
-<h2 id="related-chapters-4"><a class="header" href="#related-chapters-4">Related Chapters</a></h2>
+<h2 id="related-chapters-5"><a class="header" href="#related-chapters-5">Related Chapters</a></h2>
 <ul>
 <li><a href="#document-ingestion">Document Ingestion</a></li>
 <li><a href="#validation">Validation</a></li>
@@ -1620,7 +1919,7 @@ fn reconciliation_candidates() -&gt; operator_review
 <li>reconciliation gates compare extracted totals, local postings, and remote accounting facts</li>
 <li>link decisions should be audit-visible and reversible where practical</li>
 </ul>
-<h2 id="related-chapters-5"><a class="header" href="#related-chapters-5">Related Chapters</a></h2>
+<h2 id="related-chapters-6"><a class="header" href="#related-chapters-6">Related Chapters</a></h2>
 <ul>
 <li><a href="#mcp-surface">MCP Surface</a></li>
 <li><a href="#ledger-operations">Reconciliation &amp; Ledger Operations</a></li>
@@ -1629,7 +1928,7 @@ fn reconciliation_candidates() -&gt; operator_review
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="theory-of-operation"><a class="header" href="#theory-of-operation">Theory of Operation</a></h1>
 <p>This chapter documents the novel architecture patterns that power l3dg3rr’s AI agent governance system.</p>
-<h2 id="related-chapters-6"><a class="header" href="#related-chapters-6">Related Chapters</a></h2>
+<h2 id="related-chapters-7"><a class="header" href="#related-chapters-7">Related Chapters</a></h2>
 <ul>
 <li><a href="#graph-data-model">Graph Data Model</a> - Node and edge definitions</li>
 <li><a href="#force-layout">Force Layout</a> - Force-directed positioning</li>
@@ -2203,7 +2502,7 @@ if action == export_workbook -&gt; workbook_projection
 </ol>
 <h2 id="compatibility-rule"><a class="header" href="#compatibility-rule">Compatibility Rule</a></h2>
 <p>Hidden legacy <code>l3dg3rr_*</code> and proxy names may continue to parse, but documentation and examples should use <code>ledgerr_*</code> only. Drift between <code>contract.rs</code> and generated docs is a test failure, not a manual documentation chore.</p>
-<h2 id="related-chapters-7"><a class="header" href="#related-chapters-7">Related Chapters</a></h2>
+<h2 id="related-chapters-8"><a class="header" href="#related-chapters-8">Related Chapters</a></h2>
 <ul>
 <li><a href="#capability-map">Capability Map</a></li>
 <li><a href="#document-ingestion">Document Ingestion</a></li>
@@ -2419,7 +2718,7 @@ b00t exec ledgrrr_status       # invoke the controller tool through the guard/au
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="pipeline"><a class="header" href="#pipeline">Pipeline</a></h1>
 <p>The pipeline module implements a type-state pattern for the document processing workflow.</p>
-<h2 id="related-chapters-8"><a class="header" href="#related-chapters-8">Related Chapters</a></h2>
+<h2 id="related-chapters-9"><a class="header" href="#related-chapters-9">Related Chapters</a></h2>
 <ul>
 <li><a href="#validation">Validation</a> - Disposition and confidence types</li>
 <li><a href="#visualization">Visualization</a> - PipelineGraph rendering</li>
@@ -2618,7 +2917,7 @@ match constraint_evaluation =&gt; Weak -&gt; advisory_issue
 <p><code>InvoiceConstraintSolver</code> checks invoice arithmetic such as subtotal, tax, and total consistency. Today it is a lightweight plausibility solver; future work can route strict arithmetic proof obligations through Z3 where audit explanations need counterexamples.</p>
 <h2 id="layoutsolver"><a class="header" href="#layoutsolver">LayoutSolver</a></h2>
 <p>The visualization system also uses constraints to keep graph nodes readable. Match arms, default lanes, and rejoin points are layout constraints, not financial constraints.</p>
-<h2 id="related-chapters-9"><a class="header" href="#related-chapters-9">Related Chapters</a></h2>
+<h2 id="related-chapters-10"><a class="header" href="#related-chapters-10">Related Chapters</a></h2>
 <ul>
 <li><a href="#legal-verification">Legal Verification</a></li>
 <li><a href="#validation">Validation</a></li>
@@ -2971,7 +3270,7 @@ document ──&gt; ingest (via DocType detection)
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="visualization"><a class="header" href="#visualization">Visualization</a></h1>
 <p>The visualize module generates Mermaid diagrams and HTML exports for pipeline state.</p>
-<h2 id="related-chapters-10"><a class="header" href="#related-chapters-10">Related Chapters</a></h2>
+<h2 id="related-chapters-11"><a class="header" href="#related-chapters-11">Related Chapters</a></h2>
 <ul>
 <li><a href="#pipeline">Pipeline</a> - State definitions</li>
 <li><a href="#force-layout">Layout</a> - Position calculations</li>
@@ -3638,7 +3937,7 @@ let screen = renderer.screen_position(100.0, 0.0, 50.0);
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="match-visualization-plan"><a class="header" href="#match-visualization-plan">Match Visualization Plan</a></h1>
 <p>This chapter documents the planned visualization contract for a future <code>match</code> operator so the Mermaid and isometric views stay semantically aligned.</p>
-<h2 id="related-chapters-11"><a class="header" href="#related-chapters-11">Related Chapters</a></h2>
+<h2 id="related-chapters-12"><a class="header" href="#related-chapters-12">Related Chapters</a></h2>
 <ul>
 <li><a href="#theory-of-operation">Theory of Operation</a> - branching examples and disposition handling</li>
 <li><a href="#workflow">Workflow</a> - TOML workflow compilation surface</li>
