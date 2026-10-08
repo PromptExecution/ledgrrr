@@ -144,12 +144,14 @@ def main():
     def checkpoint(revision):
         return request('GET', f'/v1/projects/{project}/revisions/{revision}/checkpoint', tokens['reader'])
 
-    def query(selector, text='ASK {}', deadline=250, token=None, overrides=None):
+    # Normal semantic gates use the service's two-second budget. The private
+    # provider head read itself takes ~300ms; 250ms tests only head timeout.
+    def query(selector, text='ASK {}', deadline=2000, token=None, overrides=None):
         body = {'project': project, 'branch': branch, 'selector': selector, 'query': text, 'deadline_ms': deadline}
         body.update(overrides or {})
         return request('POST', base + '/query', token or tokens['reader'], body)
 
-    def exact(revision, text='ASK {}', deadline=250):
+    def exact(revision, text='ASK {}', deadline=2000):
         return query({'kind': 'exact', 'revision': revision}, text, deadline)
 
     def completed(label, response, revision):
@@ -241,7 +243,7 @@ def main():
     stale = completed('explicit-older-query-during-pending-index', query({'kind': 'current', 'allow_older': True}), r0)
     gate('older-result-declares-pending-model-head', stale['freshness'] == 'stale' and stale['model_revision'] == ra, stale)
     started = time.monotonic()
-    status, waiting = query({'kind': 'current', 'allow_older': False}, deadline=100)
+    status, waiting = query({'kind': 'current', 'allow_older': False}, deadline=2000)
     wait_elapsed = time.monotonic() - started
     gate('read-your-write-deadline-remains-pending', status == 200 and waiting['outcome']['kind'] == 'pending'
          and wait_elapsed < 5, {'elapsed_seconds': wait_elapsed, 'response': waiting})
@@ -359,7 +361,7 @@ def main():
     expires = time.monotonic() + 20
     last = None
     while time.monotonic() < expires:
-        last = exact(background_revision, deadline=250)
+        last = exact(background_revision, deadline=2000)
         if last[0] == 200 and last[1].get('outcome', {}).get('kind') == 'completed':
             break
         time.sleep(0.1)
