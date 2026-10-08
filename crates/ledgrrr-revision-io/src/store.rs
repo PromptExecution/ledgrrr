@@ -338,6 +338,32 @@ impl Store {
         }
         Self::open_inner(path, Some(timeout))
     }
+    /// Open for read-only query access using a Deferred transaction so query
+    /// paths do not compete for the write (RESERVED) lock with the indexer.
+    /// Skips migration logic — callers are expected to find a v3 DB already
+    /// initialized by the write path.
+    pub fn open_bounded_read(path: impl AsRef<Path>, timeout: Duration) -> Result<Self> {
+        if timeout.is_zero() {
+            return Err(Error::Invalid("expired store deadline".into()));
+        }
+        if path.as_ref() == Path::new(":memory:") {
+            return Err(Error::Invalid("on-disk local database required".into()));
+        }
+        let mut c = Connection::open(path)?;
+        c.busy_timeout(timeout.min(Duration::from_millis(3000)))?;
+        let deadline = std::time::Instant::now() + timeout;
+        c.progress_handler(1000, Some(move || std::time::Instant::now() >= deadline));
+        c.pragma_update(None, "foreign_keys", true)?;
+        // Deferred: acquires only a shared lock — concurrent with writer's reserved lock in WAL.
+        let tx = c.transaction_with_behavior(TransactionBehavior::Deferred)?;
+        let app: i64 = tx.pragma_query_value(None, "application_id", |r| r.get(0))?;
+        let version: i64 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
+        if app != APP_ID || version != 3 {
+            return Err(Error::Schema);
+        }
+        tx.commit()?;
+        Ok(Self { connection: c })
+    }
     /// Refresh the remaining request budget after provider I/O.
     pub fn bound_work_for(&mut self, timeout: Duration) -> Result<()> {
         if timeout.is_zero() {

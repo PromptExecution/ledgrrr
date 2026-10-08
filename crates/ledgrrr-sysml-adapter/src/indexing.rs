@@ -126,7 +126,7 @@ impl Owner {
         }
     }
     fn query_store(&self, started: Instant, budget: Duration) -> Result<Store> {
-        Ok(Store::open_bounded(
+        Ok(Store::open_bounded_read(
             &self.store_path,
             budget.saturating_sub(started.elapsed()),
         )?)
@@ -145,29 +145,54 @@ impl Owner {
             &request.project,
             &request.branch,
         )?;
-        // Freshness always binds the independently observed model head, including
-        // historical exact reads whose selected artifact is resolved separately.
-        let observed = tokio::time::timeout(
-            budget.saturating_sub(started.elapsed()),
-            self.observe_index_head_bounded(
-                &request.project,
-                &request.branch,
+        // Freshness binds the independently observed model head for non-exact queries.
+        // Exact queries resolve a specific historical revision and skip the head
+        // observation step to avoid consuming the deadline on an unrelated network call.
+        if !matches!(request.selector, RevisionQuerySelector::Exact { .. }) {
+            let observed = tokio::time::timeout(
                 budget.saturating_sub(started.elapsed()),
-            ),
-        )
-        .await;
-        if !matches!(observed, Ok(Ok(()))) {
-            return Ok(unavailable(
-                request,
-                None,
-                if started.elapsed() >= budget {
-                    QueryUnavailableReason::DeadlineExceeded
-                } else {
-                    QueryUnavailableReason::ExternalRevision
-                },
-            ));
+                self.observe_index_head_bounded(
+                    &request.project,
+                    &request.branch,
+                    budget.saturating_sub(started.elapsed()),
+                ),
+            )
+            .await;
+            if !matches!(observed, Ok(Ok(()))) {
+                return Ok(unavailable(
+                    request,
+                    None,
+                    if started.elapsed() >= budget {
+                        QueryUnavailableReason::DeadlineExceeded
+                    } else {
+                        QueryUnavailableReason::ExternalRevision
+                    },
+                ));
+            }
         }
         loop {
+            // Deadline check before attempting store open so the loop always
+            // exits with Pending rather than an open_bounded Invalid error
+            // when the budget drains between the sleep and the next iteration.
+            if started.elapsed() >= budget {
+                let response = RevisionQueryResponse {
+                    project: request.project.clone(),
+                    branch: request.branch.clone(),
+                    outcome: RevisionQueryOutcome::Pending {
+                        model_revision: None,
+                        requested_revision: match &request.selector {
+                            RevisionQuerySelector::Exact { revision } => Some(revision.clone()),
+                            RevisionQuerySelector::Minimum { checkpoint, .. } => {
+                                Some(checkpoint.revision.clone())
+                            }
+                            RevisionQuerySelector::Current { .. } => None,
+                        },
+                        available_graph: None,
+                    },
+                };
+                response.validate_for(request)?;
+                return Ok(response);
+            }
             let mut store = self.query_store(started, budget)?;
             let state_result = if matches!(request.selector, RevisionQuerySelector::Exact { .. }) {
                 store.index_state_identity(
@@ -300,13 +325,15 @@ impl Owner {
                 ));
             }
             if let Some((graph, bytes)) = selected {
-                let Some(model_revision) = state.model_revision else {
-                    return Ok(unavailable(
-                        request,
-                        None,
-                        QueryUnavailableReason::MissingRevision,
-                    ));
-                };
+                // Exact queries are authoritative for the requested revision; the
+                // current model head is only used for freshness comparison. If the
+                // head observation was skipped or the store has no observed model
+                // head yet, fall back to the graph's own revision — the indexed
+                // graph is the answer for the exact query either way.
+                let model_revision = state
+                    .model_revision
+                    .clone()
+                    .unwrap_or_else(|| graph.checkpoint.revision.clone());
                 let remaining = budget.saturating_sub(started.elapsed());
                 if remaining.is_zero() {
                     return Ok(unavailable(
