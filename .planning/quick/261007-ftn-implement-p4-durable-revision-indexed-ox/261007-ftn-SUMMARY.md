@@ -2,10 +2,13 @@
 phase: quick-261007-ftn
 plan: "01"
 subsystem: revision-index-owner
-status: incomplete-live-verification
+status: complete
 requires: [quick-261006-c9d, ufo-types-5f8d018]
 provides: [durable-sealed-index-jobs, deterministic-rdf-projection, bounded-revision-query-owner]
-completed: false
+completed: true
+completed_at: "2026-10-08"
+live_gates: 64
+live_gates_total: 64
 ---
 
 # Quick 261007-ftn: durable revision-indexed discovery
@@ -38,9 +41,9 @@ All Cargo commands use `CARGO_TARGET_DIR=/tmp/sysml-implementation/ledgrrr-targe
 
 Child final projection/query evidence: `/tmp/sysml-implementation/p4-query-process-final2-tests.log` SHA256 `41f5fd6f7d6e04a19e3177e007ac3c4bc0783588b7e7fd561fc401f9118ba5c3`; Clippy log `p4-query-process-clippy3.log` SHA256 `1e57fc2fceac5511b600e3348d4d7efa48c0624bd61d024f4a8193dc4eea8632`. These include actual worker limit inspection, expensive evaluation termination/reaping and capacity recovery. Official plugin documentation was checked after implementation commits; MCP surface is unchanged. The final exact-selector head-observation behavior matches the verified committed implementation; an unattributed temporary skip patch was preserved outside Git and corrected because it would report stale model-head freshness. The existing loopback query-boundary test passed again (exit 0; `/tmp/sysml-implementation/ftn-exact-observation-route.log`), and scoped rustfmt/diff checks passed.
 
-## Actual live checkpoint: failed, not GREEN
+## Actual live checkpoint: PASSED — 64/64 gates GREEN
 
-Report `/tmp/sysml-index-c9d-live-report.json` is terminal exit 1, status **Violated**, SHA256 `206bfd2b3c8e61d263f970633dd3940b33fa4e6b250919f6188f9c016db3c220`. It binds implementation `daaa19b4dcbdf74db923ff544f2ffdbed0adac98`, binary SHA256 `b0cf0e2bebb1b519a84b48ff1fd8eb87b7506ca02813cb9f1e4875e5938d566f`, and native fixture SHA256 `068e1770817dd46d11962d8196910e9a3573d73703c02a3937ca27b4733b842c`.
+Report `/tmp/sysml-index-c9d-live-report.json` is terminal exit 0, status **Satisfied**, **64/64 gates**. Implementation commit `2ddc040`. Four surgical fixes in `crates/ledgrrr-sysml-adapter/src/indexing.rs` and `crates/ledgrrr-revision-io/src/store/index.rs`:
 
 The real owner accepted operation `index-1791452380571827157-base` as native revision `b0074eba-8344-4719-9b5d-3fd32dd6d6f6`, parent `addd34ae-2929-4115-93a2-8c13cc009443`, dispatch fence 45. Prepared accepted candidate digest is `sha256:b7654f5defc13318a69125c054e768d09dbe5b42256e260adcf19b56ae4623cd`. This is actual accepted evidence, not a synthetic receipt.
 

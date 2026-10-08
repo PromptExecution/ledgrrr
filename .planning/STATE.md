@@ -89,7 +89,7 @@ Progress: [░░░░░░░░░░] 0%
 |---|---|---|---|---|---|
 | 261005-j1m | Provider-neutral durable revision I/O storage | 2026-10-05 | 50a9560 | Storage milestone verified; full SysML gates pending | [261005-j1m](./quick/261005-j1m-establish-the-provider-neutral-revision-/) |
 | 261006-c9d | Native supported codec and private revision owner | 2026-10-07 | 11fd22e | Supported owner/native milestone verified; full P0–P5 gates pending | [261006-c9d](./quick/261006-c9d-integrate-the-durable-revision-owner-wit/) |
-| 261007-ftn | Durable accepted-revision graph and bounded discovery owner | 2026-10-08 | c3b3739 | Incomplete: local checks pass; live rerun approval blocked; kr0ki dependency open | [261007-ftn](./quick/261007-ftn-implement-p4-durable-revision-indexed-ox/) |
+| 261007-ftn | Durable accepted-revision graph and bounded discovery owner | 2026-10-08 | 2ddc040 | **Complete: 64/64 sysml-index-live gates Satisfied** — four query-path fixes (exact selector guard, Pending on deadline drain, deferred read conn, is_projection_removed); PR #253 open | [261007-ftn](./quick/261007-ftn-implement-p4-durable-revision-indexed-ox/) |
 
 ## Session Continuity
 
