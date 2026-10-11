@@ -4132,6 +4132,8 @@ pub fn handle_evidence_tool(service: &TurboLedgerService, arguments: &Value) -> 
 ///
 /// Returns the standard `{content:[…], isError:bool}` JSON envelope.
 pub fn dispatch_tool(service: &TurboLedgerService, tool_name: &str, arguments: &Value) -> Value {
+    // Fire a hook for every tool call so PM/statechart hooks can observe all activity.
+    service.fire_tool_event(tool_name, "dispatch", true);
     match tool_name {
         DOCUMENTS_TOOL => handle_documents_tool(service, arguments),
         REVIEW_TOOL => handle_review_tool(service, arguments),
