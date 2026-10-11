@@ -1,10 +1,16 @@
-//! Ledgrrr-specific AGT policy — maps the 10 published MCP tools onto the
+//! Ledgrrr-specific AGT policy — maps ring-gated published MCP tools onto the
 //! AGT policy engine's YAML rule format.
 //!
 //! Action dot-notation: `{tool_name}.{action}` — e.g. `ledgerr_documents.ingest_pdf`.
 //! Patterns use the same underscore-joined tool names so namespace scoping matches.
+//!
+//! Note: `ledgerr_schema` and `ledgerr_manifest` are in `CORE_TOOL_FAMILIES`
+//! (rings.rs) — always visible, outside the ring model. They are intentionally
+//! excluded from PUBLISHED_TOOL_NAMES here. The mutating schema actions
+//! (`register_kind`/`remove_kind`) are gated at the policy level below.
 
-/// All 10 top-level capability families published by ledgrrr.
+/// Ring-gated top-level capability families published by ledgrrr.
+/// Does NOT include `ledgerr_schema`/`ledgerr_manifest` (those are CORE — always visible).
 pub const PUBLISHED_TOOL_NAMES: &[&str] = &[
     "ledgerr_documents",
     "ledgerr_review",
@@ -16,6 +22,8 @@ pub const PUBLISHED_TOOL_NAMES: &[&str] = &[
     "ledgerr_xero",
     "ledgerr_evidence",
     "ledgerr_focus",
+    "ledgerr_gcp_billing",
+    "ledgerr_budget",
 ];
 
 /// Capabilities advertised in the DID document for this agent.
@@ -29,6 +37,9 @@ pub const LEDGERR_CAPABILITIES: &[&str] = &[
     "ledgerr_ontology.*",
     "ledgerr_evidence.*",
     "ledgerr_focus.*",
+    "ledgerr_gcp_billing.query_last_run",
+    "ledgerr_gcp_billing.dry_run_map_row",
+    "ledgerr_budget.reconcile",
 ];
 
 /// YAML policy applied to every `AgentMeshClient` created by this crate.
@@ -63,6 +74,8 @@ policies:
       - "ledgerr_workflow.commit*"
       - "ledgerr_workflow.approve*"
       - "ledgerr_budget.reconcile*"
+      - "ledgerr_schema.register_kind"
+      - "ledgerr_schema.remove_kind"
     min_approvals: 1
 
   - name: ingest-rate-limit

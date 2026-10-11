@@ -102,7 +102,7 @@ pub struct LedgrrAgtGateway {
     /// Per-agent lifecycle state machines.  One `LifecycleManager` per
     /// registered agent; keyed by bare `agent_id` (no DID prefix).
     lifecycle_map: Arc<RwLock<HashMap<String, LifecycleManager>>>,
-    /// MCP tool-schema security scanner.  Initialized with the 10 PUBLISHED_TOOL_NAMES
+    /// MCP tool-schema security scanner.  Initialized with the PUBLISHED_TOOL_NAMES
     /// as trusted fingerprints; detects rug-pulls, poisoning, and injection attacks.
     scanner: McpSecurityScanner,
     /// Spawned sub-agents — each has its own `AgentMeshClient` so trust scores
