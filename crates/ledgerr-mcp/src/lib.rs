@@ -37,6 +37,8 @@ pub mod feie;
 pub mod focus_tool;
 pub mod hsm;
 pub mod mcp_adapter;
+#[cfg(feature = "rmcp-transport")]
+pub mod rmcp_handler;
 pub mod ontology;
 pub mod openmetadata;
 pub mod plugin_info;
