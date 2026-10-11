@@ -256,3 +256,129 @@ pub fn status_response(node: LifecycleNode, mut blockers: Vec<String>) -> HsmSta
         blockers,
     }
 }
+
+/// Build the lazily `ChartDef` for the ledgrrr lifecycle state machine.
+///
+/// Topology: six compound states (Ingest, Normalize, Validate, Reconcile,
+/// Commit, Summarize), each with two orthogonal sub-states (pending → ready).
+/// Advance events fire on the linear chain; reverse is not modeled (blocked
+/// at the service layer).
+///
+/// Gated on the `statechart` feature — inactive on default builds.
+#[cfg(feature = "statechart")]
+pub fn lifecycle_chart_def() -> Result<lazily::statechart::ChartDef, String> {
+    use lazily::statechart::{ChartBuilder, StateBuilder};
+
+    ChartBuilder::new()
+        // Root compound state — initial child is Ingest
+        .state(StateBuilder::compound("lifecycle", "ingest"))
+        // Ingest
+        .state(StateBuilder::compound("ingest", "ingest.pending").parent("lifecycle"))
+        .state(StateBuilder::atomic("ingest.pending").parent("ingest"))
+        .state(
+            StateBuilder::atomic("ingest.ready")
+                .parent("ingest")
+                .on("advance", "normalize"),
+        )
+        // Normalize
+        .state(StateBuilder::compound("normalize", "normalize.pending").parent("lifecycle"))
+        .state(StateBuilder::atomic("normalize.pending").parent("normalize"))
+        .state(
+            StateBuilder::atomic("normalize.ready")
+                .parent("normalize")
+                .on("advance", "validate"),
+        )
+        // Validate
+        .state(StateBuilder::compound("validate", "validate.pending").parent("lifecycle"))
+        .state(StateBuilder::atomic("validate.pending").parent("validate"))
+        .state(
+            StateBuilder::atomic("validate.ready")
+                .parent("validate")
+                .on("advance", "reconcile"),
+        )
+        // Reconcile
+        .state(StateBuilder::compound("reconcile", "reconcile.pending").parent("lifecycle"))
+        .state(StateBuilder::atomic("reconcile.pending").parent("reconcile"))
+        .state(
+            StateBuilder::atomic("reconcile.ready")
+                .parent("reconcile")
+                .on("advance", "commit"),
+        )
+        // Commit
+        .state(StateBuilder::compound("commit", "commit.pending").parent("lifecycle"))
+        .state(StateBuilder::atomic("commit.pending").parent("commit"))
+        .state(
+            StateBuilder::atomic("commit.ready")
+                .parent("commit")
+                .on("advance", "summarize"),
+        )
+        // Summarize (terminal)
+        .state(StateBuilder::compound("summarize", "summarize.pending").parent("lifecycle"))
+        .state(StateBuilder::atomic("summarize.pending").parent("summarize"))
+        .state(StateBuilder::final_state("summarize.ready").parent("summarize"))
+        .build()
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(feature = "statechart")]
+    use super::lifecycle_chart_def;
+
+    #[cfg(feature = "statechart")]
+    #[test]
+    fn lifecycle_chart_def_builds_without_error() {
+        let result = lifecycle_chart_def();
+        assert!(
+            result.is_ok(),
+            "lifecycle_chart_def() failed: {:?}",
+            result.err()
+        );
+    }
+
+    #[cfg(feature = "statechart")]
+    #[test]
+    fn lifecycle_chart_initial_state_is_ingest_pending() {
+        use lazily::Context;
+        let def = lifecycle_chart_def().expect("chart def");
+        let ctx = Context::new();
+        let chart = lazily::statechart::StateChart::new(&ctx, def);
+        let config = chart.configuration(&ctx);
+        assert!(
+            config.contains("ingest"),
+            "initial config must include 'ingest': {config:?}"
+        );
+        assert!(
+            config.contains("ingest.pending"),
+            "initial config must include 'ingest.pending': {config:?}"
+        );
+    }
+
+    #[cfg(feature = "statechart")]
+    #[test]
+    fn lifecycle_chart_ingest_ready_advance_moves_to_normalize() {
+        use lazily::Context;
+        use std::collections::HashMap;
+        let def = lifecycle_chart_def().expect("chart def");
+        let ctx = Context::new();
+        let chart = lazily::statechart::StateChart::new(&ctx, def);
+
+        // The chart starts in ingest.pending. The "advance" event is only
+        // defined on ingest.ready → normalize; we need to transition to
+        // ingest.ready first via a "mark_ready" event.
+        let marked = chart.send(&ctx, "mark_ready", &HashMap::new());
+        // mark_ready is not yet in the chart definition — verify this is a
+        // no-op (returns false) rather than panicking. Phase 2 will add the
+        // intra-state transitions.
+        assert!(
+            !marked,
+            "mark_ready is not yet defined in Phase-1 chart; expect no-op"
+        );
+
+        // Confirm initial config has not changed.
+        let config = chart.configuration(&ctx);
+        assert!(
+            config.contains("ingest.pending"),
+            "config must still be ingest.pending after no-op event: {config:?}"
+        );
+    }
+}

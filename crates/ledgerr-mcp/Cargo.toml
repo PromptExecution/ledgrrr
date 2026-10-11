@@ -48,6 +48,9 @@ semver = { version = "1", optional = true }
 # path). See src/bin/ledgerr-mcp-server.rs's serve_http().
 tiny_http = { version = "0.12", optional = true }
 
+# statechart feature dep — lazily reactive statechart for HsmMachine migration (#259).
+lazily = { workspace = true, optional = true }
+
 # winreg — Windows-only, safe registry wrapper; gated at the cfg level in code
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
@@ -77,6 +80,10 @@ self-update = ["dep:reqwest", "dep:semver"]
 # Azure Container Apps scale-to-zero deployment this exists for). Off by
 # default: opt in with --features http-transport.
 http-transport = ["dep:tiny_http"]
+
+# statechart: enables lazily::StateChart-backed HsmMachine migration (#259).
+# Off by default until the full migration (Phase 2) lands.
+statechart = ["dep:lazily"]
 
 # Legacy: gates the old mcp_adapter.rs dispatch and the pre-actor server
 # match-statement path.  The new actor/gate channel system is the default;
