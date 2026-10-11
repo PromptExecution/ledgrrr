@@ -281,6 +281,9 @@ fn handle_request(request: Value, agent_id: Option<&str>) -> Option<Value> {
             let params = request.get("params").cloned().unwrap_or(Value::Null);
             let tool_name = params.get("name").and_then(Value::as_str).unwrap_or("");
 
+            // Fire a hook for every tool/call so PM hooks observe all activity.
+            global_raw_service().fire_tool_event(tool_name, "dispatch", true);
+
             // Issue #225: governance gate for tools/call. No-op (returns
             // None) when `agent_id` is `None` — same unenforced default as
             // before this change — or when `tool_name` isn't one of the

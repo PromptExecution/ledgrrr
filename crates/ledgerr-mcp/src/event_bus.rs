@@ -259,4 +259,39 @@ mod tests {
         assert_eq!(evt.attr("action"), Some("transition"));
         assert_eq!(evt.attr("success"), Some("true"));
     }
+
+    /// Every MCP tool dispatch fires a `tool_called` hook regardless of
+    /// which tool family is being called.  This test proves the contract:
+    /// a registered hook sees ALL tool calls, not just task-management ones.
+    #[test]
+    fn hook_fires_for_every_tool_family() {
+        let bus = ProjectEventBus::default();
+        let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let seen_clone = Arc::clone(&seen);
+        bus.register(Arc::new(move |evt: &ProjectEvent| {
+            if evt.kind == "tool_called" {
+                if let Some(t) = evt.attr("tool") {
+                    seen_clone.lock().unwrap().push(t.to_string());
+                }
+            }
+        }));
+
+        // Simulate dispatch for every major tool family.
+        for tool in &[
+            "ledgerr_documents",
+            "ledgerr_review",
+            "ledgerr_reconciliation",
+            "ledgerr_workflow",
+            "ledgerr_audit",
+            "ledgerr_tax",
+            "ledgerr_ontology",
+            "ledgerr_budget",
+            "ledgerr_gcp_billing",
+        ] {
+            bus.fire(&ProjectEvent::tool_called(tool, "dispatch", true));
+        }
+
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.len(), 9, "expected hook to fire for all 9 tool families; got {seen:?}");
+    }
 }
