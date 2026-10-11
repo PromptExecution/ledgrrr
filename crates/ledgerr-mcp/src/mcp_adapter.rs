@@ -72,8 +72,8 @@ fn external_tool_descriptors() -> Vec<Value> {
 // Public re-exports are always available (they're just constants).
 pub use crate::contract::{
     AUDIT_TOOL, BUDGET_TOOL, DOCUMENTS_TOOL, EVIDENCE_TOOL, FOCUS_TOOL, GCP_BILLING_TOOL,
-    MANIFEST_TOOL, ONTOLOGY_TOOL, RECONCILIATION_TOOL, REVIEW_TOOL, SCHEMA_TOOL, TAX_TOOL,
-    WORKFLOW_TOOL, XERO_TOOL,
+    MANIFEST_TOOL, ONTOLOGY_TOOL, RECONCILIATION_TOOL, REVIEW_TOOL, SCHEMA_TOOL, SCOPE_TOOL,
+    TAX_TOOL, WORKFLOW_TOOL, XERO_TOOL,
 };
 
 // ── Default dispatch ──────────────────────────────────────────────────────────
@@ -485,6 +485,7 @@ const BUILTIN_TOOL_NAMES: &[&str] = &[
     MANIFEST_TOOL,
     BUDGET_TOOL,
     GCP_BILLING_TOOL,
+    SCOPE_TOOL,
 ];
 
 fn builtin_tool_input_schema(name: &str) -> Value {
@@ -504,6 +505,7 @@ fn builtin_tool_description(name: &str) -> &'static str {
         EVIDENCE_TOOL => "Evidence provenance: trace transactions and identify gaps",
         BUDGET_TOOL => "GPU-training cloud budget reconciliation: AWS, GCP, Azure, HuggingFace Jobs",
         GCP_BILLING_TOOL => "GCP BigQuery Billing Export (FOCUS-conformant) ingestion into ledgerr_focus::CostAndUsageRow",
+        SCOPE_TOOL => "Runtime identity and scope-increase: whoami, request_increase (issue #226)",
         _ => "Ledgerr MCP tool",
     }
 }

@@ -24,6 +24,7 @@ pub const PUBLISHED_TOOL_NAMES: &[&str] = &[
     "ledgerr_focus",
     "ledgerr_gcp_billing",
     "ledgerr_budget",
+    "ledgerr_scope",
 ];
 
 /// Capabilities advertised in the DID document for this agent.
@@ -111,4 +112,5 @@ policies:
       - "ledgerr_reconciliation.*"
       - "ledgerr_budget.*"
       - "ledgerr_gcp_billing.*"
+      - "ledgerr_scope.*"
 "#;
