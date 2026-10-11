@@ -1,0 +1,118 @@
+# kr0ki process-model SHACL shapes — SysML-v2 ActionUsage constraints
+#
+# These shapes validate the subset of a SysML-v2 graph that kr0ki renders as
+# process/activity diagrams.  They are NOT a full SysML-v2 SHACL ontology;
+# they encode only the structural invariants kr0ki depends on (ledgrrr#254).
+#
+# Namespace conventions:
+#   sysml:  — our working prefix for SysML-v2 / KerML metaclasses.
+#             A future binding to the OMG-issued namespace URI is a 1-line change.
+#   kr0ki:  — shapes defined here (owned by PromptExecution/kr0ki pipeline).
+
+@prefix sh:    <http://www.w3.org/ns/shacl#> .
+@prefix sysml: <https://sysml.org/v2#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+@prefix kr0ki: <https://kr0ki.promptexecution.com/shapes#> .
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+
+# ── ActionUsageShape ─────────────────────────────────────────────────────────
+# Every ActionUsage in a process model must carry a name.
+# Nameless nodes cannot be rendered meaningfully and produce ambiguous diagrams.
+
+kr0ki:ActionUsageShape
+    a sh:NodeShape ;
+    sh:targetClass sysml:ActionUsage ;
+    sh:property [
+        sh:path    sysml:name ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:message "Every ActionUsage must have a sysml:name (xsd:string)." ;
+    ] .
+
+# ── ProcessShape ─────────────────────────────────────────────────────────────
+# A ProcessUsage (the root of a renderable process) must have a name and own
+# at least one ActionUsage member.  An empty process produces an empty diagram.
+
+kr0ki:ProcessShape
+    a sh:NodeShape ;
+    sh:targetClass sysml:ProcessUsage ;
+    sh:property [
+        sh:path    sysml:name ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:message "Every ProcessUsage must have a sysml:name (xsd:string)." ;
+    ] ;
+    sh:property [
+        sh:path             sysml:ownedMember ;
+        sh:minCount         1 ;
+        sh:class            sysml:ActionUsage ;
+        sh:message "A ProcessUsage must own at least one ActionUsage member." ;
+    ] .
+
+# ── SuccessionFlowShape ──────────────────────────────────────────────────────
+# Every flow edge must connect ActionUsage nodes at both ends.
+# A flow whose target is a PartUsage or PortUsage is a modelling error that
+# would produce a broken edge in the rendered diagram.
+
+kr0ki:SuccessionFlowShape
+    a sh:NodeShape ;
+    sh:targetClass sysml:SuccessionFlowUsage ;
+    sh:property [
+        sh:path    sysml:source ;
+        sh:minCount 1 ;
+        sh:class   sysml:ActionUsage ;
+        sh:message "SuccessionFlowUsage.source must be an ActionUsage." ;
+    ] ;
+    sh:property [
+        sh:path    sysml:target ;
+        sh:minCount 1 ;
+        sh:class   sysml:ActionUsage ;
+        sh:message "SuccessionFlowUsage.target must be an ActionUsage." ;
+    ] .
+
+# ── DecisionNodeShape ────────────────────────────────────────────────────────
+# A DecisionNode branches flow; it is only meaningful with ≥2 outbound edges.
+# Use sh:inversePath: walk backwards from the node along sysml:source to find
+# all SuccessionFlowUsage instances that list this node as their source.
+
+kr0ki:DecisionNodeShape
+    a sh:NodeShape ;
+    sh:targetClass sysml:DecisionNode ;
+    sh:property [
+        sh:path      [ sh:inversePath sysml:source ] ;
+        sh:minCount  2 ;
+        sh:message "DecisionNode must be the source of at least 2 SuccessionFlowUsage edges." ;
+    ] .
+
+# ── ForkNodeShape / JoinNodeShape ────────────────────────────────────────────
+# ForkNode (parallel split): ≥2 outbound, ≥1 inbound.
+# JoinNode (parallel join):  ≥2 inbound,  ≥1 outbound.
+
+kr0ki:ForkNodeShape
+    a sh:NodeShape ;
+    sh:targetClass sysml:ForkNode ;
+    sh:property [
+        sh:path     [ sh:inversePath sysml:source ] ;
+        sh:minCount 2 ;
+        sh:message "ForkNode must have at least 2 outbound SuccessionFlowUsage edges." ;
+    ] ;
+    sh:property [
+        sh:path     [ sh:inversePath sysml:target ] ;
+        sh:minCount 1 ;
+        sh:message "ForkNode must have at least 1 inbound SuccessionFlowUsage edge." ;
+    ] .
+
+kr0ki:JoinNodeShape
+    a sh:NodeShape ;
+    sh:targetClass sysml:JoinNode ;
+    sh:property [
+        sh:path     [ sh:inversePath sysml:target ] ;
+        sh:minCount 2 ;
+        sh:message "JoinNode must have at least 2 inbound SuccessionFlowUsage edges." ;
+    ] ;
+    sh:property [
+        sh:path     [ sh:inversePath sysml:source ] ;
+        sh:minCount 1 ;
+        sh:message "JoinNode must have at least 1 outbound SuccessionFlowUsage edge." ;
+    ] .

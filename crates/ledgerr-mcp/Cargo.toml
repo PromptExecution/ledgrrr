@@ -39,6 +39,9 @@ tokio = { workspace = true }
 # plugin_info — always available (cross-platform system metadata)
 sysinfo = { version = "0.33", default-features = false, features = ["system"] }
 
+# validate_process: pyshacl subprocess needs a named temp file (write data graph, pass path to CLI)
+tempfile = { workspace = true }
+
 # self-update feature deps — only compiled when the feature is active
 reqwest = { version = "0.12", features = ["blocking", "json", "rustls-tls"], default-features = false, optional = true }
 semver = { version = "1", optional = true }

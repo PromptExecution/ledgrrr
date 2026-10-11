@@ -38,6 +38,7 @@ resolver = "2"
 version = "1.10.0"
 edition = "2021"
 license = "MIT"
+repository = "https://github.com/PromptExecution/ledgrrr"
 
 [workspace.dependencies]
 ufo-types = { git = "https://github.com/promptexecution/ufo-types", rev = "5f8d0186947da376cfa17ad8b59cd280f2f85338" }
@@ -61,8 +62,13 @@ ordered-float = { version = "4", features = ["serde"] }
 syn = "2"
 quote = "1"
 proc-macro2 = "1"
-b00t-reflect-types = { path = "crates/b00t-reflect-types" }
-b00t-reflect = { path = "crates/b00t-reflect" }
+# `version` alongside `path` on both: crates.io strips a bare path-only
+# dependency from a published package, breaking every external consumer of
+# whatever depends on these (e.g. holon-viz). Local workspace builds still
+# resolve via `path`; a `cargo publish` verification build resolves the
+# same version via the registry.
+b00t-reflect-types = { path = "crates/b00t-reflect-types", version = "1.10.0" }
+b00t-reflect = { path = "crates/b00t-reflect", version = "1.10.0" }
 ledger-core = { path = "crates/ledger-core" }
 ledgerr-focus = { path = "crates/ledgerr-focus" }
 ledgerr-mcp-core = { path = "crates/ledgerr-mcp-core" }

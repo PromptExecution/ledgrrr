@@ -48,6 +48,8 @@ pub mod reconciliation;
 pub mod schedule_e;
 pub mod schema;
 pub mod shape_tool;
+pub mod validate_process;
+pub use validate_process::{validate_process_graph, GraphFormat, ProcessValidationResult, Violation};
 pub mod tax_assist;
 pub mod us_rdc;
 pub mod xero_service;
