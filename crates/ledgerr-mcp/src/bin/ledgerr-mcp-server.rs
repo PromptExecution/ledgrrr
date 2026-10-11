@@ -139,16 +139,27 @@ fn serve<R: BufRead, W: Write>(reader: R, mut writer: W) {
         let Ok(request) = serde_json::from_str::<Value>(&raw) else {
             continue;
         };
-        // Per-request caller identity (issue #224): stdio is already one
-        // process per agent, so `LEDGERR_MCP_AGENT_ID` is process-scoped —
-        // read fresh each line for simplicity/symmetry with the HTTP path,
-        // but it is expected to be stable for the process lifetime, matching
-        // the existing `LEDGERR_MCP_MANIFEST` convention.
         let agent_id = env_agent_id();
-        if let Some(response) = handle_request(request, agent_id.as_deref()) {
+        if let Some(mut response) = handle_request(request, agent_id.as_deref()) {
+            // Scope increase (issue #226): if the handler set _list_changed, strip
+            // the marker and emit a notifications/tools/list_changed notification
+            // after the response.
+            let list_changed = response
+                .as_object_mut()
+                .and_then(|o| o.remove("_list_changed"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             if let Ok(serialized) = serde_json::to_string(&response) {
                 let _ = writeln!(writer, "{serialized}");
                 let _ = writer.flush();
+            }
+            if list_changed {
+                let notif =
+                    json!({"jsonrpc": "2.0", "method": "notifications/tools/list_changed"});
+                if let Ok(s) = serde_json::to_string(&notif) {
+                    let _ = writeln!(writer, "{s}");
+                    let _ = writer.flush();
+                }
             }
         }
     }
@@ -240,6 +251,9 @@ const AGT_GATED_TOOL_FAMILIES: &[&str] = &[
     // Budget reconciliation is a write op that reconciles cloud spend —
     // same trust class as reconciliation/ingest tools.
     mcp_adapter::BUDGET_TOOL,
+    // Scope increase (request_increase) can promote an agent to a higher ring —
+    // must be AGT-gated so an unregistered Sandboxed agent cannot self-promote.
+    mcp_adapter::SCOPE_TOOL,
 ];
 
 /// Governance gate for `tools/call` (issue #225: "Wire
@@ -311,7 +325,7 @@ fn handle_request(request: Value, agent_id: Option<&str>) -> Option<Value> {
             "result": {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {
-                    "tools": {}
+                    "tools": { "listChanged": true }
                 },
                 "serverInfo": {
                     "name": "ledgerr-mcp",
@@ -343,6 +357,28 @@ fn handle_request(request: Value, agent_id: Option<&str>) -> Option<Value> {
                     "id": id,
                     "result": denial
                 }));
+            }
+
+            // Issue #226: scope tool dispatch returns (result, list_changed).
+            // Handle it early so we can annotate the response with _list_changed
+            // and let serve() emit notifications/tools/list_changed after the reply.
+            if tool_name == mcp_adapter::SCOPE_TOOL {
+                let arguments = params.get("arguments").cloned().unwrap_or(Value::Null);
+                let (result, list_changed) = ledgerr_mcp::scope_tool::dispatch(
+                    agent_id,
+                    configured_ring(),
+                    &arguments,
+                    global_gateway(),
+                );
+                let mut response = json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": result
+                });
+                if list_changed {
+                    response["_list_changed"] = Value::Bool(true);
+                }
+                return Some(response);
             }
 
             let result = match tool_name {

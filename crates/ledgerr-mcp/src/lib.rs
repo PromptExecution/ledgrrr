@@ -47,6 +47,7 @@ pub mod providers;
 pub mod reconciliation;
 pub mod schedule_e;
 pub mod schema;
+pub mod scope_tool;
 pub mod shape_tool;
 pub mod tax_assist;
 pub mod us_rdc;
