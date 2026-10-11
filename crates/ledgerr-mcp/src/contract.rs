@@ -618,6 +618,11 @@ pub enum WorkflowArgs {
         #[serde(flatten)]
         payload: WorkflowPluginInfoInput,
     },
+    /// Register a named built-in lifecycle hook.
+    /// `hook_name` must be one of: `on_ingest`, `on_validate`, `on_commit`.
+    RegisterHook {
+        hook_name: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]

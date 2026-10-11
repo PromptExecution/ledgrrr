@@ -30,7 +30,7 @@ use crate::{
     ClassifyIngestedRequest, ClassifyTransactionRequest, DocumentInventoryRequest,
     DocumentQueueStatusRequest, EventHistoryFilter, ExportCpaWorkbookRequest, FetchQueueRequest,
     FlagStatusRequest, GetRawContextRequest, GetScheduleSummaryRequest, HsmResumeRequest,
-    HsmStatusRequest, HsmTransitionRequest, IngestPdfRequest, IngestStatementRowsRequest,
+    HsmStatusRequest, HsmTransitionRequest, RegisterHookRequest, IngestPdfRequest, IngestStatementRowsRequest,
     ListAccountsRequest, OntologyExportSnapshotRequest, OntologyQueryPathRequest,
     OntologyUpsertEdgesRequest, OntologyUpsertEntitiesRequest, QueryAuditLogRequest,
     QueryFlagsRequest, QueryTransactionsRequest, QueueItemType, QueueStatus,
@@ -1345,6 +1345,11 @@ pub fn handle_workflow_tool(service: &TurboLedgerService, arguments: &Value) -> 
         WorkflowArgs::PluginInfo { payload } => handle_plugin_info(&json!({
             "subcommand": payload.subcommand.map(|value| value.0),
         })),
+        WorkflowArgs::RegisterHook { hook_name } => dispatch_hsm(
+            service,
+            "register_hook",
+            &json!({ "hook_name": hook_name }),
+        ),
     }
 }
 
@@ -2211,6 +2216,24 @@ pub fn dispatch_hsm(service: &TurboLedgerService, tool_name: &str, arguments: &V
                         "isError": blocked
                     })
                 }
+                Err(err) => error_envelope(&err),
+            }
+        }
+        "register_hook" => {
+            let hook_name = match arguments.get("hook_name").and_then(|v| v.as_str()) {
+                Some(s) => s.to_string(),
+                None => return error_envelope(&ToolError::InvalidInput("hook_name is required".to_string())),
+            };
+            match service.register_hook_tool(RegisterHookRequest { hook_name }) {
+                Ok(response) => json!({
+                    "content": [text_content(json!({
+                        "registered": response.registered,
+                        "hook_name": response.hook_name,
+                        "fires_on": response.fires_on,
+                        "reason": response.reason,
+                    }))],
+                    "isError": false
+                }),
                 Err(err) => error_envelope(&err),
             }
         }

@@ -2,7 +2,7 @@ use blake3;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use ledger_core::classify::{ClassificationEngine, FlagStatus, SampleTransaction};
 use ledger_core::document::{DocType, DocumentRecord, DocumentStatus, XeroLink};
@@ -71,8 +71,9 @@ pub use fbar::{
 };
 pub use feie::{FeieInput, FeieOutcome, ForeignResidenceTest};
 pub use hsm::{
-    HsmMachine, HsmResumeRequest, HsmResumeResponse, HsmStatusRequest, HsmStatusResponse,
-    HsmTransitionRequest, HsmTransitionResponse,
+    BuiltInHook, HookFn, HsmHookRegistry, HsmMachine, HsmResumeRequest, HsmResumeResponse,
+    HsmStatusRequest, HsmStatusResponse, HsmTransitionRequest, HsmTransitionResponse,
+    RegisterHookRequest, RegisterHookResponse, TransitionHookEvent,
 };
 pub use ontology::{
     content_hash, edge_content_hash, entity_content_hash, load_store, persist_store,
@@ -524,6 +525,10 @@ pub struct TurboLedgerService {
     classification_state: Mutex<ClassificationState>,
     lifecycle_events: Mutex<InMemoryLifecycleEventStore>,
     hsm_state: Mutex<HsmMachine>,
+    /// Hooks fired on every lifecycle state transition (issue #259 Phase 2).
+    /// Register via `register_hsm_hook`; fires synchronously after each
+    /// successful `hsm_transition_tool` or `hsm_resume_tool` call.
+    hsm_hooks: Arc<HsmHookRegistry>,
     /// In-memory registry: doc_id → DocumentRecord. Persisted as a JSON sidecar.
     document_registry: Mutex<BTreeMap<String, DocumentRecord>>,
     /// Evidence graph for provenance tracking (arc-kit-au).
@@ -703,6 +708,7 @@ impl TurboLedgerService {
             classification_state: Mutex::new(persisted.classification_state),
             lifecycle_events: Mutex::new(persisted.lifecycle_events),
             hsm_state: Mutex::new(persisted.hsm_state),
+            hsm_hooks: Arc::new(HsmHookRegistry::default()),
             document_registry: Mutex::new(registry),
             evidence: Mutex::new(
                 arc_kit_au::EvidenceStore::new(initial_evidence_path)
@@ -718,6 +724,35 @@ impl TurboLedgerService {
 
     pub fn workbook_path(&self) -> &std::path::Path {
         std::path::Path::new(&self.manifest.session.workbook_path)
+    }
+
+    /// Register a hook that fires synchronously after every successful
+    /// lifecycle state transition (both `hsm_transition_tool` and
+    /// `hsm_resume_tool`). Hooks are called in registration order.
+    pub fn register_hsm_hook(&self, hook: HookFn) {
+        self.hsm_hooks.register(hook);
+    }
+
+    /// MCP-facing: register a named built-in hook (`on_ingest`, `on_validate`,
+    /// `on_commit`). Returns an error for unknown hook names.
+    pub fn register_hook_tool(
+        &self,
+        request: hsm::RegisterHookRequest,
+    ) -> Result<hsm::RegisterHookResponse, ToolError> {
+        let built_in = hsm::BuiltInHook::from_str(&request.hook_name).ok_or_else(|| {
+            ToolError::InvalidInput(format!(
+                "unknown hook '{}'; valid values: on_ingest, on_validate, on_commit",
+                request.hook_name
+            ))
+        })?;
+        let fires_on = built_in.fires_on().to_string();
+        self.hsm_hooks.register(built_in.into_hook_fn());
+        Ok(hsm::RegisterHookResponse {
+            registered: true,
+            hook_name: request.hook_name,
+            fires_on,
+            reason: None,
+        })
     }
 
     fn state_sidecar_path(&self) -> PathBuf {
@@ -908,6 +943,7 @@ impl TurboLedgerService {
             hsm.last_valid_checkpoint = hsm::checkpoint_marker(requested);
             let response = hsm::transition_advanced_response(requested);
             drop(hsm);
+            self.hsm_hooks.fire(&hsm::TransitionHookEvent { from: current, to: requested });
             self.persist_state()?;
             return Ok(response);
         }
@@ -950,9 +986,11 @@ impl TurboLedgerService {
             ));
         }
 
+        let from_node = hsm.current;
         hsm.current = resume_node;
         let response = hsm::resume_response(hsm.current, true, Vec::new());
         drop(hsm);
+        self.hsm_hooks.fire(&hsm::TransitionHookEvent { from: from_node, to: resume_node });
         self.persist_state()?;
         Ok(response)
     }
