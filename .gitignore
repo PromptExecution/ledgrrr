@@ -44,3 +44,5 @@ book/book/
 # tracked in this repo (keeps ledgrrr project-agnostic). See
 # rules/CLIENT_RULES.md for the onboarding contract.
 rules/client/
+__pycache__/
+.crew/
