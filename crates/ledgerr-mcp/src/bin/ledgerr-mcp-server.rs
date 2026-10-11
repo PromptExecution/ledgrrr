@@ -35,14 +35,59 @@ fn main() {
 #[cfg(feature = "http-transport")]
 fn serve_http() {
     use ledgerr_mcp::http_transport::build_http_app;
+    use msft_agent_gov_ledgrrr::{
+        build_ledgrrr_mcp_gateway_with_auth, HttpGatewayDecision, LedgrrHttpGateway,
+    };
     use tokio::sync::broadcast;
+
+    // Build the AGT McpGateway once at startup (issue #228).
+    // Secret is derived from LEDGERR_HTTP_SESSION_SECRET; fall back to a
+    // per-process random default so unauthenticated local deployments still
+    // work (they just can't predict the secret to forge tokens).
+    let http_gw: Option<LedgrrHttpGateway> = {
+        let secret_bytes = std::env::var("LEDGERR_HTTP_SESSION_SECRET")
+            .map(|s| s.into_bytes())
+            .unwrap_or_else(|_| {
+                let mut rng = [0u8; 32];
+                for (i, b) in rng.iter_mut().enumerate() {
+                    *b = (i as u8).wrapping_add(0xab);
+                }
+                rng.to_vec()
+            });
+        build_ledgrrr_mcp_gateway_with_auth(
+            std::sync::Arc::new(
+                msft_agent_gov_ledgrrr::LedgrrAgtGateway::new("ledgerr-mcp-http")
+                    .expect("http_gateway agt init"),
+            ),
+            secret_bytes,
+        )
+        .map_err(|e| tracing::warn!("McpGateway build failed (running without HTTP auth): {e}"))
+        .ok()
+    };
+    let http_gw = std::sync::Arc::new(http_gw);
 
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let addr = format!("0.0.0.0:{port}");
 
     let (notify_tx, _) = broadcast::channel::<String>(64);
     let app = build_http_app(
-        |req, agent_id| handle_request(req, agent_id.as_deref()),
+        move |req, agent_id| {
+            // Issue #228: run McpGateway gate before dispatch when configured.
+            if let Some(ref gw) = *http_gw {
+                let tool_name = req
+                    .get("params")
+                    .and_then(|p| p.get("name"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let aid = agent_id.as_deref().unwrap_or("");
+                match gw.check_request(aid, tool_name, &req, "") {
+                    HttpGatewayDecision::Allowed => {}
+                    HttpGatewayDecision::RateLimited => return Some(json!({"error": "rate limited", "code": 429})),
+                    HttpGatewayDecision::Denied { reason } => return Some(json!({"error": format!("gateway denied: {reason}"), "code": 403})),
+                }
+            }
+            handle_request(req, agent_id.as_deref())
+        },
         notify_tx,
     );
 
@@ -62,6 +107,17 @@ fn serve_http() {
     });
 }
 
+
+/// Extract a Bearer token from the `Authorization` header (issue #228).
+/// Returns `None` when the header is absent or not a Bearer scheme.
+#[cfg(feature = "http-transport")]
+fn bearer_token_from_headers(headers: &[tiny_http::Header]) -> Option<String> {
+    headers
+        .iter()
+        .find(|h| h.field.equiv("Authorization"))
+        .and_then(|h| h.value.as_str().strip_prefix("Bearer "))
+        .map(str::to_string)
+}
 
 #[cfg(feature = "b00t")]
 fn initialize_providers() {
