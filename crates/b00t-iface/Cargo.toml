@@ -17,6 +17,7 @@ dirs = "6"
 # Pinned to an exact version, matching this workspace's other scxml pins
 # (_b00t_#1177 P7/P8): small bus factor (2 contributors, 0.x semver).
 scxml = { version = "=0.2.2", optional = true }
+lazily = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
@@ -28,6 +29,8 @@ autoresearch = ["b00t", "dep:reqwest"]
 real_datums = []
 # 🤓 statechart: W3C SCXML export for SurfaceMachine (_b00t_#1177 P8)
 statechart = ["dep:scxml"]
+# lazily: live ThreadSafeStateChart execution layer for SurfaceMachine
+lazily = ["dep:lazily"]
 
 [lints]
 workspace = true
