@@ -4,7 +4,7 @@
 //! Action dot-notation: `{tool_name}.{action}` — e.g. `ledgerr_documents.ingest_pdf`.
 //! Patterns use the same underscore-joined tool names so namespace scoping matches.
 
-/// All 10 top-level capability families published by ledgrrr.
+/// All 11 top-level capability families published by ledgrrr.
 pub const PUBLISHED_TOOL_NAMES: &[&str] = &[
     "ledgerr_documents",
     "ledgerr_review",
@@ -16,6 +16,7 @@ pub const PUBLISHED_TOOL_NAMES: &[&str] = &[
     "ledgerr_xero",
     "ledgerr_evidence",
     "ledgerr_focus",
+    "ledgerr_scope",
 ];
 
 /// Capabilities advertised in the DID document for this agent.
@@ -98,4 +99,5 @@ policies:
       - "ledgerr_reconciliation.*"
       - "ledgerr_budget.*"
       - "ledgerr_gcp_billing.*"
+      - "ledgerr_scope.*"
 "#;
