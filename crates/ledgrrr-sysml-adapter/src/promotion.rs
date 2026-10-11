@@ -5,7 +5,7 @@ use crate::{
 };
 use ledgrrr_revision_io::*;
 use std::path::PathBuf;
-use ufo_types::revision::{merge_models, MergeOutcome, PortableModel};
+use ledgrrr_revision_io::revision::{merge_models, MergeOutcome, PortableModel};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -16,7 +16,7 @@ pub enum Error {
     #[error(transparent)]
     Transport(#[from] crate::client::Error),
     #[error(transparent)]
-    Revision(#[from] ufo_types::revision::RevisionError),
+    Revision(#[from] ledgrrr_revision_io::revision::RevisionError),
     #[error("authority unavailable: {0}")]
     Unavailable(String),
 }

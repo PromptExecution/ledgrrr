@@ -64,8 +64,8 @@ impl From<ledgrrr_revision_io::Error> for ApiError {
         Self::Owner(e.into())
     }
 }
-impl From<ufo_types::revision::RevisionError> for ApiError {
-    fn from(_: ufo_types::revision::RevisionError) -> Self {
+impl From<ledgrrr_revision_io::revision::RevisionError> for ApiError {
+    fn from(_: ledgrrr_revision_io::revision::RevisionError) -> Self {
         Self::Invalid
     }
 }
@@ -288,12 +288,12 @@ async fn query(
     Path((p, b)): Path<(String, String)>,
     headers: HeaderMap,
     body: Bytes,
-) -> Result<Json<ufo_types::revision::RevisionQueryResponse>> {
+) -> Result<Json<ledgrrr_revision_io::revision::RevisionQueryResponse>> {
     let actor = principal(&host, &headers)?;
     if body.len() > 128 * 1024 {
         return Err(ApiError::Invalid);
     }
-    let request: ufo_types::revision::RevisionQueryRequest =
+    let request: ledgrrr_revision_io::revision::RevisionQueryRequest =
         serde_json::from_slice(&body).map_err(|_| ApiError::Invalid)?;
     if request.project.as_str() != p || request.branch.as_str() != b || request.deadline_ms > 5000 {
         return Err(ApiError::Invalid);
@@ -309,7 +309,7 @@ async fn checkpoint(
     State(host): State<Arc<Host>>,
     Path((p, r)): Path<(String, String)>,
     headers: HeaderMap,
-) -> Result<Json<ufo_types::revision::RevisionGraphDescriptor>> {
+) -> Result<Json<ledgrrr_revision_io::revision::RevisionGraphDescriptor>> {
     let actor = principal(&host, &headers)?;
     let p = ProjectId::new(p)?;
     let r = RevisionId::new(r)?;

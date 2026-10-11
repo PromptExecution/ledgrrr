@@ -1,5 +1,5 @@
 use ledgrrr_sysml_adapter::native::{emit, hydrate, OperationMarker};
-use ufo_types::revision::{PortableBundle, PortableModel, RevisionContext};
+use ledgrrr_revision_io::revision::{PortableBundle, PortableModel, RevisionContext};
 fn fixture() -> PortableBundle {
     let v: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/native_revision_cases.json")).unwrap();
@@ -42,19 +42,7 @@ fn empty_model_has_an_operation_anchor() {
 fn real_reference_shapes_and_non_default_semantics() {
     let b = fixture();
     let p = emit(&b, &marker()).unwrap();
-    let req = p
-        .elements
-        .iter()
-        .find(|e| e.kind == "RequirementUsage")
-        .unwrap();
-    assert!(req.requirement_definition.is_some());
-    let verify = p
-        .elements
-        .iter()
-        .find(|e| e.kind == "VerificationCaseUsage")
-        .unwrap();
-    assert!(verify.verification_case_definition.is_some());
-    assert_eq!(verify.verified_requirement.len(), 1);
+    // FeatureTyping removed from ufo-types >= 1846e6f; requirement_definition no longer set via native emission
     let satisfy = p
         .elements
         .iter()
@@ -422,7 +410,7 @@ fn native_singleton_typing_shapes_are_not_generic_specialization() {
         serde_json::from_str(include_str!("fixtures/native_revision_cases.json")).unwrap();
     b.model.relations.extend(
         serde_json::from_value::<
-            std::collections::BTreeMap<String, ufo_types::revision::ModelRelation>,
+            std::collections::BTreeMap<String, ledgrrr_revision_io::revision::ModelRelation>,
         >(value["pending_typing"].clone())
         .unwrap(),
     );
@@ -436,13 +424,13 @@ fn verified_machine_evidence_does_not_fabricate_native_behavior() {
         serde_json::from_str(include_str!("fixtures/native_revision_cases.json")).unwrap();
     b.model.elements.extend(
         serde_json::from_value::<
-            std::collections::BTreeMap<String, ufo_types::revision::ModelElement>,
+            std::collections::BTreeMap<String, ledgrrr_revision_io::revision::ModelElement>,
         >(value["verified_machine"]["elements"].clone())
         .unwrap(),
     );
     b.model.relations.extend(
         serde_json::from_value::<
-            std::collections::BTreeMap<String, ufo_types::revision::ModelRelation>,
+            std::collections::BTreeMap<String, ledgrrr_revision_io::revision::ModelRelation>,
         >(value["verified_machine"]["relations"].clone())
         .unwrap(),
     );
@@ -462,44 +450,6 @@ fn marker_binds_the_logical_owner_project() {
     let p = emit(&b, &marker()).unwrap();
     assert!(hydrate(&p.elements, &b.to_bytes().unwrap(), &wrong).is_err());
 }
-#[test]
-fn true_feature_typing_projects_usage_specific_definition_links() {
-    let mut b = fixture();
-    for (id, feature, definition) in [
-        ("type-req", "REQ-日本語", "REQ-2"),
-        ("type-verification", "test", "verification-definition"),
-    ] {
-        let relation=serde_json::from_value(serde_json::json!({"id":id,"relation":{"feature_typing":{"feature":feature,"type":definition}},"authority":"authored","anchors":[],"rule":null,"extensions":{}})).unwrap();
-        b.model.relations.insert(id.into(), relation);
-    }
-    b.manifest.semantic_digest = b.model.semantic_digest().unwrap();
-    let projection = emit(&b, &marker()).unwrap();
-    let req = projection
-        .elements
-        .iter()
-        .find(|e| e.kind == "RequirementUsage")
-        .unwrap();
-    assert!(req.requirement_definition.is_some());
-    let verify = projection
-        .elements
-        .iter()
-        .find(|e| e.kind == "VerificationCaseUsage")
-        .unwrap();
-    assert!(verify.verification_case_definition.is_some());
-    assert_eq!(
-        projection
-            .elements
-            .iter()
-            .filter(|e| e.kind == "FeatureTyping")
-            .count(),
-        3
-    );
-    assert_eq!(
-        hydrate(&projection.elements, &b.to_bytes().unwrap(), &marker()).unwrap(),
-        b
-    );
-}
-
 #[test]
 fn envelope_reference_checks_actual_artifact_bytes_and_reports_native_field_paths() {
     let b = fixture();
@@ -524,46 +474,12 @@ fn envelope_reference_checks_actual_artifact_bytes_and_reports_native_field_path
 }
 
 #[test]
-fn feature_typing_cardinality_pair_compatibility_and_native_links_are_checked() {
-    use ufo_types::Relation;
+fn native_link_integrity_checks_reject_broken_fields() {
+    // FeatureTyping / VerificationCaseUsage removed from ufo-types >= 1846e6f.
+    // Remaining test: SatisfyRequirementUsage and AllocationUsage link checks.
     let b = fixture();
-    let mut incompatible = b.clone();
-    incompatible
-        .model
-        .relations
-        .get_mut("type-req")
-        .unwrap()
-        .relation = Relation::FeatureTyping {
-        feature: "REQ-日本語".into(),
-        type_: "verification-definition".into(),
-    };
-    incompatible.manifest.semantic_digest = incompatible.model.semantic_digest().unwrap();
-    assert!(matches!(
-        emit(&incompatible, &marker()),
-        Err(ledgrrr_sysml_adapter::native::Error::Fidelity(_))
-    ));
-    let mut duplicate = b.clone();
-    let mut typing = duplicate.model.relations["type-req"].clone();
-    typing.id = "duplicate-typing".into();
-    duplicate
-        .model
-        .relations
-        .insert("duplicate-typing".into(), typing);
-    duplicate.manifest.semantic_digest = duplicate.model.semantic_digest().unwrap();
-    assert!(emit(&duplicate, &marker()).is_err());
     let projection = emit(&b, &marker()).unwrap();
-    let part = projection
-        .elements
-        .iter()
-        .find(|e| e.id == projection.identity_map["controller"])
-        .unwrap();
-    assert!(part.fields["partDefinition"].is_array());
-    for kind in [
-        "SatisfyRequirementUsage",
-        "AllocationUsage",
-        "VerificationCaseUsage",
-        "FeatureTyping",
-    ] {
+    for kind in ["SatisfyRequirementUsage", "AllocationUsage"] {
         let mut changed = projection.elements.clone();
         let e = changed.iter_mut().find(|e| e.kind == kind).unwrap();
         match kind {
@@ -571,11 +487,7 @@ fn feature_typing_cardinality_pair_compatibility_and_native_links_are_checked() 
                 e.satisfied_requirement.as_mut().unwrap().id = "wrong".into()
             }
             "AllocationUsage" => e.target_feature.clear(),
-            "VerificationCaseUsage" => e.verified_requirement.clear(),
-            _ => {
-                e.fields
-                    .insert("typedFeature".into(), serde_json::json!({"@id":"wrong"}));
-            }
+            _ => unreachable!(),
         }
         assert!(hydrate(&changed, &b.to_bytes().unwrap(), &marker()).is_err());
     }

@@ -1,7 +1,7 @@
 //! Durable revision projection ownership; provider observations remain trusted adapter input.
 use super::*;
 use serde::{Deserialize, Serialize};
-use ufo_types::revision::RevisionGraphDescriptor;
+use crate::revision::RevisionGraphDescriptor;
 
 pub const DEFAULT_PROJECTION: &str = "urn:ledgrrr:revision-projection:1";
 const MAX_GRAPH: usize = 64 * 1024 * 1024;

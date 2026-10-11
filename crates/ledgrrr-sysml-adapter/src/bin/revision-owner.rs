@@ -8,7 +8,7 @@ use ledgrrr_sysml_adapter::{
 };
 use serde::Deserialize;
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
-use ufo_types::revision::{ArtifactPath, PortableModel, RevisionContext};
+use ledgrrr_revision_io::revision::{ArtifactPath, PortableModel, RevisionContext};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -142,7 +142,7 @@ async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
         .ok_or_else(|| invalid("store needs parent directory"))?;
     std::fs::create_dir_all(directory)?;
     let guard = directory.join("provider-authority.json");
-    let identity = ufo_types::revision::canonical_bytes(&(
+    let identity = ledgrrr_revision_io::revision::canonical_bytes(&(
         config.backend_origin.clone(),
         config.store_path.clone(),
     ))?;
@@ -297,7 +297,7 @@ fn index_command(
                     300_000,
                 )?
                 .ok_or_else(|| invalid("no claimable index job"))?;
-            std::fs::write(path, ufo_types::revision::canonical_bytes(&work.token)?)?;
+            std::fs::write(path, ledgrrr_revision_io::revision::canonical_bytes(&work.token)?)?;
             println!("{}", serde_json::to_string(&work.token)?);
         }
         "seal" | "publish" => {
