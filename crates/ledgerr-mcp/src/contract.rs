@@ -40,6 +40,7 @@ pub const MANIFEST_TOOL: &str = "ledgerr_manifest";
 pub const BUDGET_TOOL: &str = "ledgerr_budget";
 pub const GCP_BILLING_TOOL: &str = "ledgerr_gcp_billing";
 pub const SCOPE_TOOL: &str = "ledgerr_scope";
+pub const VALIDATE_PROCESS_TOOL: &str = "ledgerr_validate_process";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolContractSpec {
@@ -66,9 +67,10 @@ pub const TOOL_REGISTRY: &[&str] = &[
     BUDGET_TOOL,
     GCP_BILLING_TOOL,
     SCOPE_TOOL,
+    VALIDATE_PROCESS_TOOL,
 ];
 
-pub const PUBLISHED_TOOLS: [ToolContractSpec; 15] = [
+pub const PUBLISHED_TOOLS: [ToolContractSpec; 16] = [
     ToolContractSpec {
         name: DOCUMENTS_TOOL,
         purpose: "document intake (PDF, image, CSV), tagging, filesystem metadata sync",
@@ -213,6 +215,11 @@ pub const PUBLISHED_TOOLS: [ToolContractSpec; 15] = [
         name: SCOPE_TOOL,
         purpose: "runtime identity and scope-increase — whoami / request_increase (issue #226)",
         actions: &["whoami", "request_increase"],
+    },
+    ToolContractSpec {
+        name: VALIDATE_PROCESS_TOOL,
+        purpose: "SHACL validation of SysML-v2 process graphs against kr0ki process-model shapes (ledgrrr#255)",
+        actions: &["validate"],
     },
 ];
 

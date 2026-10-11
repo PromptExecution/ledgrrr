@@ -4196,7 +4196,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "tracing",
- "ufo-types",
+ "ufo-types 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -5135,7 +5135,7 @@ dependencies = [
  "toml 0.8.2",
  "tracing",
  "trybuild",
- "ufo-types",
+ "ufo-types 0.11.0 (git+https://github.com/promptexecution/ufo-types?rev=1881d67)",
  "xattr",
  "z3",
 ]
@@ -5293,7 +5293,7 @@ dependencies = [
  "tokio-stream",
  "tower 0.5.3",
  "tracing",
- "ufo-types",
+ "ufo-types 0.11.0 (git+https://github.com/promptexecution/ufo-types?rev=1881d67)",
  "winreg 0.52.0",
 ]
 
@@ -10019,7 +10019,12 @@ source = "git+https://github.com/PromptExecution/sysml-derive.git?rev=3340ece#33
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.119",
+=======
+ "syn 2.0.117",
+ "ufo-types 0.11.0 (git+https://github.com/promptexecution/ufo-types?rev=1881d67)",
+>>>>>>> f17f673 (feat(shacl): SysML-v2 process-model SHACL shapes + ledgrrr_validate_process MCP tool)
 ]
 
 [[package]]
@@ -11281,8 +11286,27 @@ dependencies = [
 
 [[package]]
 name = "ufo-types"
+<<<<<<< HEAD
 version = "0.15.0"
 source = "git+https://github.com/promptexecution/ufo-types?rev=1846e6f#1846e6f20c68e8eb614556386a56cd3077446cdb"
+=======
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3532fc5897257475ea64eae5aa3c9ab87bd7a7a32b2d7a1279f1d9d279015cd5"
+dependencies = [
+ "chrono",
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "sysml-v2-parser",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "ufo-types"
+version = "0.11.0"
+source = "git+https://github.com/promptexecution/ufo-types?rev=1881d67#1881d671876a6b46939205f7f9664637bf3abf54"
+>>>>>>> f17f673 (feat(shacl): SysML-v2 process-model SHACL shapes + ledgrrr_validate_process MCP tool)
 dependencies = [
  "anyhow",
  "chrono",

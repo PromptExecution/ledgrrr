@@ -73,7 +73,7 @@ fn external_tool_descriptors() -> Vec<Value> {
 pub use crate::contract::{
     AUDIT_TOOL, BUDGET_TOOL, DOCUMENTS_TOOL, EVIDENCE_TOOL, FOCUS_TOOL, GCP_BILLING_TOOL,
     MANIFEST_TOOL, ONTOLOGY_TOOL, RECONCILIATION_TOOL, REVIEW_TOOL, SCHEMA_TOOL, SCOPE_TOOL,
-    TAX_TOOL, WORKFLOW_TOOL, XERO_TOOL,
+    TAX_TOOL, VALIDATE_PROCESS_TOOL, WORKFLOW_TOOL, XERO_TOOL,
 };
 
 // ── Default dispatch ──────────────────────────────────────────────────────────
@@ -469,6 +469,41 @@ fn gcp_billing_source_from_env() -> Result<ledgerr_gcp_billing::BigQueryFocusSou
     ))
 }
 
+/// Validate a SysML-v2 process graph (Turtle) against kr0ki SHACL shapes.
+///
+/// Expected `arguments`: `{ "graph": "<turtle text>", "format": "turtle" | "json-ld" }`
+/// Returns `{ "conformant": bool, "violations": [...] }`.
+pub fn handle_validate_process_tool(arguments: &Value) -> Value {
+    use crate::validate_process::{validate_process_graph, GraphFormat};
+
+    let graph = match arguments.get("graph").and_then(|v| v.as_str()) {
+        Some(g) => g,
+        None => {
+            return error_envelope(&ToolError::InvalidInput(
+                "missing required field: 'graph' (Turtle or JSON-LD string)".into(),
+            ))
+        }
+    };
+
+    let format = match arguments
+        .get("format")
+        .and_then(|v| v.as_str())
+        .unwrap_or("turtle")
+    {
+        "json-ld" | "jsonld" => GraphFormat::JsonLd,
+        _ => GraphFormat::Turtle,
+    };
+
+    match validate_process_graph(graph, format) {
+        Ok(result) => json!({
+            "content": [text_content(serde_json::to_value(&result)
+                .unwrap_or(Value::Null))],
+            "isError": false
+        }),
+        Err(err) => error_envelope(&err),
+    }
+}
+
 /// Hardcoded list of published tool names (always available).
 const BUILTIN_TOOL_NAMES: &[&str] = &[
     DOCUMENTS_TOOL,
@@ -486,6 +521,7 @@ const BUILTIN_TOOL_NAMES: &[&str] = &[
     BUDGET_TOOL,
     GCP_BILLING_TOOL,
     SCOPE_TOOL,
+    VALIDATE_PROCESS_TOOL,
 ];
 
 fn builtin_tool_input_schema(name: &str) -> Value {
@@ -506,6 +542,7 @@ fn builtin_tool_description(name: &str) -> &'static str {
         BUDGET_TOOL => "GPU-training cloud budget reconciliation: AWS, GCP, Azure, HuggingFace Jobs",
         GCP_BILLING_TOOL => "GCP BigQuery Billing Export (FOCUS-conformant) ingestion into ledgerr_focus::CostAndUsageRow",
         SCOPE_TOOL => "Runtime identity and scope-increase: whoami, request_increase (issue #226)",
+        VALIDATE_PROCESS_TOOL => "SHACL validation of SysML-v2 process graphs against kr0ki process-model shapes",
         _ => "Ledgerr MCP tool",
     }
 }

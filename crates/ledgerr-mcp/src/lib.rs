@@ -52,6 +52,8 @@ pub mod provider;
 #[cfg(feature = "b00t")]
 pub mod providers;
 pub mod reconciliation;
+pub mod validate_process;
+pub use validate_process::{validate_process_graph, GraphFormat, ProcessValidationResult, Violation};
 pub mod schedule_e;
 pub mod schema;
 pub mod scope_tool;
