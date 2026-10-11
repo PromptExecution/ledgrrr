@@ -81,8 +81,8 @@ pub use event_bus::{
 pub use pm_hooks::{PmHookEvent, StageStatus, TaskStatusStore};
 pub use feie::{FeieInput, FeieOutcome, ForeignResidenceTest};
 pub use hsm::{
-    HsmMachine, HsmResumeRequest, HsmResumeResponse, HsmStatusRequest, HsmStatusResponse,
-    HsmTransitionRequest, HsmTransitionResponse,
+    HookFn, HsmHookRegistry, HsmMachine, HsmResumeRequest, HsmResumeResponse, HsmStatusRequest,
+    HsmStatusResponse, HsmTransitionRequest, HsmTransitionResponse, TransitionHookEvent,
 };
 pub use ontology::{
     content_hash, edge_content_hash, entity_content_hash, load_store, persist_store,
@@ -1068,9 +1068,11 @@ impl TurboLedgerService {
             ));
         }
 
+        let from_node = hsm.current;
         hsm.current = resume_node;
         let response = hsm::resume_response(hsm.current, true, Vec::new());
         drop(hsm);
+        self.hsm_hooks.fire(&hsm::TransitionHookEvent { from: from_node, to: resume_node });
         self.persist_state()?;
         Ok(response)
     }
