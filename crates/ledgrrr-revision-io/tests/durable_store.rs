@@ -1,6 +1,6 @@
 use ledgrrr_revision_io::*;
 use std::collections::BTreeMap;
-use ufo_types::revision::{ArtifactPath, PortableModel, RevisionContext};
+use ledgrrr_revision_io::revision::{ArtifactPath, PortableModel, RevisionContext};
 
 fn fixture() -> serde_json::Value {
     serde_json::from_str(include_str!("fixtures/durable_revision_cases.json")).unwrap()
@@ -740,7 +740,7 @@ fn malformed_records_and_missing_artifacts_fail_closed() {
                 record.receipt.actor = actor("forged");
                 c.execute(
                     "UPDATE operations SET record=?1",
-                    [ufo_types::revision::canonical_bytes(&record).unwrap()],
+                    [ledgrrr_revision_io::revision::canonical_bytes(&record).unwrap()],
                 )
                 .unwrap();
             }
@@ -969,7 +969,7 @@ fn independent_physical_bootstrap_race_and_preserving_v1_upgrade() {
     legacy.send_authorized = false;
     c.execute(
         "UPDATE operations SET record=?1",
-        [ufo_types::revision::canonical_bytes(&legacy).unwrap()],
+        [ledgrrr_revision_io::revision::canonical_bytes(&legacy).unwrap()],
     )
     .unwrap();
     drop(c);
@@ -1079,7 +1079,7 @@ fn duplicate_legacy_migration_fails_atomically_and_noop_never_sends() {
     .unwrap();
     c.execute(
         "INSERT INTO projects VALUES ('duplicate',?1,'owner')",
-        [ufo_types::revision::canonical_bytes(&binding()).unwrap()],
+        [ledgrrr_revision_io::revision::canonical_bytes(&binding()).unwrap()],
     )
     .unwrap();
     drop(c);
@@ -1155,8 +1155,8 @@ fn upstream_typed_conflicts_are_digest_bound_and_survive_reopen() {
     let mut theirs = base.clone();
     ours.elements.get_mut(id).unwrap().name = case["ours"].as_str().unwrap().into();
     theirs.elements.get_mut(id).unwrap().name = case["theirs"].as_str().unwrap().into();
-    let ufo_types::revision::MergeOutcome::Conflicted { conflicts } =
-        ufo_types::revision::merge_models(&base, &ours, &theirs).unwrap()
+    let ledgrrr_revision_io::revision::MergeOutcome::Conflicted { conflicts } =
+        ledgrrr_revision_io::revision::merge_models(&base, &ours, &theirs).unwrap()
     else {
         panic!("fixture must conflict")
     };
@@ -1198,6 +1198,6 @@ fn upstream_typed_conflicts_are_digest_bound_and_survive_reopen() {
             reopened.conflict_evidence.as_ref().unwrap(),
         )
         .unwrap();
-    let actual: Vec<ufo_types::revision::Conflict> = serde_json::from_slice(&bytes).unwrap();
+    let actual: Vec<ledgrrr_revision_io::revision::Conflict> = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(actual, conflicts);
 }

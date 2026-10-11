@@ -9,7 +9,9 @@
 #![forbid(unsafe_code)]
 
 use serde::{Deserialize, Serialize};
-pub use ufo_types::revision::{
+
+pub mod revision;
+pub use crate::revision::{
     ActorId, ArtifactDigest, BranchId, ExpectedHead, IndexCheckpoint, OperationId,
     OperationReceipt, PortableBundle, ProjectId, RevisionId, SyncStatus,
 };
@@ -133,7 +135,7 @@ pub enum Error {
     #[error(transparent)]
     Sql(#[from] rusqlite::Error),
     #[error(transparent)]
-    Revision(#[from] ufo_types::revision::RevisionError),
+    Revision(#[from] crate::revision::RevisionError),
     #[error(transparent)]
     Json(#[from] serde_json::Error),
 }

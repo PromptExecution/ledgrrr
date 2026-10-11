@@ -6,7 +6,7 @@ use crate::{
 };
 use ledgrrr_revision_io::*;
 use std::time::{Duration, Instant};
-use ufo_types::revision::{
+use ledgrrr_revision_io::revision::{
     QueryFreshness, QueryUnavailableReason, RevisionGraphDescriptor, RevisionQueryOutcome,
     RevisionQueryRequest, RevisionQueryResponse, RevisionQuerySelector,
 };

@@ -2,7 +2,7 @@ use crate::*;
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::de::DeserializeOwned;
 use std::{path::Path, time::Duration};
-use ufo_types::revision::canonical_bytes;
+use crate::revision::canonical_bytes;
 
 const SCHEMA: &str = include_str!("schema.sql");
 const SCHEMA_V1: &str = include_str!("schema-v1.sql");
@@ -189,7 +189,7 @@ fn load_operation(
         }
     }
     if let Some(digest) = &value.conflict_evidence {
-        let conflicts: Vec<ufo_types::revision::Conflict> = decode(&artifact(c, project, digest)?)?;
+        let conflicts: Vec<crate::revision::Conflict> = decode(&artifact(c, project, digest)?)?;
         if !matches!(&receipt.status,SyncStatus::Conflict{paths} if *paths==conflicts.iter().map(|c|c.path.clone()).collect::<Vec<_>>())
         {
             return Err(Error::Corrupt("conflict evidence identity".into()));
@@ -1002,7 +1002,7 @@ impl Store {
         actor: &ActorId,
         token: &DispatchToken,
         generation: u64,
-        conflicts: &[ufo_types::revision::Conflict],
+        conflicts: &[crate::revision::Conflict],
     ) -> Result<StoredOperation> {
         if conflicts.is_empty() || conflicts.len() > 256 {
             return Err(Error::Invalid("bounded nonempty conflicts required".into()));
@@ -1018,7 +1018,7 @@ impl Store {
         token: &DispatchToken,
         generation: u64,
         status: SyncStatus,
-        conflicts: Option<&[ufo_types::revision::Conflict]>,
+        conflicts: Option<&[crate::revision::Conflict]>,
     ) -> Result<StoredOperation> {
         if !matches!(
             status,
