@@ -47,6 +47,7 @@ semver = { version = "1", optional = true }
 # existing sync dispatch model (no tokio runtime pulled into the request
 # path). See src/bin/ledgerr-mcp-server.rs's serve_http().
 tiny_http = { version = "0.12", optional = true }
+rmcp = { workspace = true, optional = true }
 
 # winreg — Windows-only, safe registry wrapper; gated at the cfg level in code
 [target.'cfg(windows)'.dependencies]
@@ -77,6 +78,10 @@ self-update = ["dep:reqwest", "dep:semver"]
 # Azure Container Apps scale-to-zero deployment this exists for). Off by
 # default: opt in with --features http-transport.
 http-transport = ["dep:tiny_http"]
+# rmcp-transport: use the official rmcp SDK for stdio + SSE transport.
+# Adds a second server binary (ledgerr-mcp-server-rmcp) alongside the
+# existing hand-rolled one; progressive migration path.
+rmcp-transport = ["dep:rmcp"]
 
 # Legacy: gates the old mcp_adapter.rs dispatch and the pre-actor server
 # match-statement path.  The new actor/gate channel system is the default;
