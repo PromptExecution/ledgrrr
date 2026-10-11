@@ -1,0 +1,16 @@
+[package]
+name = "kr0ki-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "kr0ki process execution: maps SysML-v2 ActionUsage/Succession to lazily::statechart"
+
+[dependencies]
+ufo-types.workspace = true
+lazily = { version = "0.59", features = ["statechart", "thread-safe"] }
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+# nothing extra needed — lazily Context is available via lazily itself
