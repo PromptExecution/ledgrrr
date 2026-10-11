@@ -1,6 +1,12 @@
 mod common;
 
-use ledgerr_mcp::{HsmStatusRequest, HsmTransitionRequest, TurboLedgerService};
+use std::sync::{Arc, Mutex};
+
+use ledgerr_mcp::{
+    event_bus::{ProjectEvent, ProjectHookFn},
+    hsm::{advance_count_for, HsmChart, LifecycleNode, LifecycleState, LifecycleSubstate},
+    HsmStatusRequest, HsmTransitionRequest, TurboLedgerService,
+};
 
 fn service() -> TurboLedgerService {
     let workbook_path = common::unique_workbook_path("hsm-contract");
@@ -79,4 +85,70 @@ fn hsm_02_status_always_includes_deterministic_small_model_hints() {
     assert_eq!(status.next_hint, "advance_to_normalize");
     assert_eq!(status.resume_hint, "resume_from_ingest.pending");
     assert_eq!(status.blockers, Vec::<String>::new());
+}
+
+#[test]
+fn hsm_04_transition_fires_lifecycle_event_on_project_event_bus() {
+    let svc = service();
+    let seen: Arc<Mutex<Vec<(String, String)>>> = Arc::new(Mutex::new(Vec::new()));
+    let seen_clone = Arc::clone(&seen);
+    let hook: ProjectHookFn = Arc::new(move |evt: &ProjectEvent| {
+        if evt.kind == "lifecycle_transition" {
+            let from = evt.attr("from").unwrap_or("").to_string();
+            let to = evt.attr("to").unwrap_or("").to_string();
+            seen_clone.lock().unwrap().push((from, to));
+        }
+    });
+    svc.register_project_hook(hook);
+
+    svc.hsm_transition_tool(HsmTransitionRequest {
+        target_state: "normalize".to_string(),
+        target_substate: "ready".to_string(),
+    })
+    .expect("advance to normalize");
+
+    let pairs = seen.lock().unwrap();
+    assert_eq!(pairs.len(), 1, "one lifecycle_transition event expected");
+    assert_eq!(pairs[0].0, "ingest.pending");
+    assert_eq!(pairs[0].1, "normalize.ready");
+}
+
+#[test]
+fn hsm_05_chart_try_advance_fires_lifecycle_transition_consistent_with_pm_event() {
+    // Verify that HsmChart.try_advance() fires "lifecycle_transition" for the
+    // same transition that TurboLedgerService fires on the ProjectEventBus.
+    // This proves PM events are chart-driven (issue #259 integration contract).
+    let from_node = LifecycleNode {
+        state: LifecycleState::Ingest,
+        substate: LifecycleSubstate::Pending,
+    };
+    let from_idx = advance_count_for(from_node);
+    let mut chart = HsmChart::new().expect("HsmChart::new");
+    let fired = chart.try_advance(from_idx);
+    assert!(
+        fired,
+        "HsmChart.try_advance must return true (lifecycle_transition in last_actions)"
+    );
+
+    // Integration: same advance in TurboLedgerService also fires one event
+    let svc = service();
+    let seen: Arc<Mutex<Vec<(String, String)>>> = Arc::new(Mutex::new(Vec::new()));
+    let seen_clone = Arc::clone(&seen);
+    let hook: ProjectHookFn = Arc::new(move |evt: &ProjectEvent| {
+        if evt.kind == "lifecycle_transition" {
+            let from = evt.attr("from").unwrap_or("").to_string();
+            let to = evt.attr("to").unwrap_or("").to_string();
+            seen_clone.lock().unwrap().push((from, to));
+        }
+    });
+    svc.register_project_hook(hook);
+    svc.hsm_transition_tool(HsmTransitionRequest {
+        target_state: "normalize".to_string(),
+        target_substate: "ready".to_string(),
+    })
+    .expect("advance to normalize");
+    let pairs = seen.lock().unwrap();
+    assert_eq!(pairs.len(), 1, "exactly one lifecycle_transition via chart dispatch");
+    assert_eq!(pairs[0].0, "ingest.pending");
+    assert_eq!(pairs[0].1, "normalize.ready");
 }

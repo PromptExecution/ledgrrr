@@ -1345,6 +1345,115 @@ pub fn handle_workflow_tool(service: &TurboLedgerService, arguments: &Value) -> 
         WorkflowArgs::PluginInfo { payload } => handle_plugin_info(&json!({
             "subcommand": payload.subcommand.map(|value| value.0),
         })),
+        WorkflowArgs::RegisterProjectHook { event_kind, tag } => {
+            use crate::event_bus::RegisterProjectHookRequest;
+            match service.register_project_hook_tool(RegisterProjectHookRequest {
+                event_kind,
+                tag,
+            }) {
+                Ok(result) => json!({
+                    "content": [text_content(json!({
+                        "registered": result.registered,
+                        "event_kind": result.event_kind,
+                        "tag": result.tag,
+                    }))],
+                    "isError": false
+                }),
+                Err(err) => error_envelope(&err),
+            }
+        }
+
+        WorkflowArgs::TaskCreate { name, description } => {
+            use crate::TaskEntry;
+            use crate::event_bus::ProjectEvent;
+            let entry = TaskEntry {
+                name: name.clone(),
+                description: description.clone(),
+                status: "pending".to_string(),
+                notes: Vec::new(),
+            };
+            {
+                let mut store = service.task_store.lock()
+                    .expect("task_store lock poisoned");
+                if store.contains_key(&name) {
+                    return json!({"content":[text_content(json!({"error": format!("task '{}' already exists", name)}))], "isError": true});
+                }
+                store.insert(name.clone(), entry);
+            }
+            service.project_event_bus.fire(
+                &ProjectEvent::task_created(&name, description.as_deref().unwrap_or("")),
+            );
+            service.fire_tool_event("ledgerr_workflow", "task_create", true);
+            json!({"content":[text_content(json!({"created": name, "status": "pending"}))], "isError": false})
+        }
+
+        WorkflowArgs::TaskList => {
+            let tasks: Vec<serde_json::Value> = {
+                let store = service.task_store.lock()
+                    .expect("task_store lock poisoned");
+                store.values().map(|t| json!({
+                    "name": t.name,
+                    "status": t.status,
+                    "description": t.description,
+                })).collect()
+            };
+            service.fire_tool_event("ledgerr_workflow", "task_list", true);
+            json!({"content":[text_content(json!({"tasks": tasks, "count": tasks.len()}))], "isError": false})
+        }
+
+        WorkflowArgs::TaskDone { name } => {
+            use crate::event_bus::ProjectEvent;
+            let found = {
+                let mut store = service.task_store.lock()
+                    .expect("task_store lock poisoned");
+                if let Some(t) = store.get_mut(&name) {
+                    t.status = "done".to_string();
+                    true
+                } else {
+                    false
+                }
+            };
+            if !found {
+                return json!({"content":[text_content(json!({"error": format!("task '{}' not found", name)}))], "isError": true});
+            }
+            service.project_event_bus.fire(&ProjectEvent::task_done(&name));
+            service.fire_tool_event("ledgerr_workflow", "task_done", true);
+            json!({"content":[text_content(json!({"done": name}))], "isError": false})
+        }
+
+        WorkflowArgs::TaskUpdate { name, status, note } => {
+            use crate::event_bus::ProjectEvent;
+            let found = {
+                let mut store = service.task_store.lock()
+                    .expect("task_store lock poisoned");
+                if let Some(t) = store.get_mut(&name) {
+                    t.status = status.clone();
+                    if let Some(ref n) = note {
+                        t.notes.push(n.clone());
+                    }
+                    true
+                } else {
+                    false
+                }
+            };
+            if !found {
+                return json!({"content":[text_content(json!({"error": format!("task '{}' not found", name)}))], "isError": true});
+            }
+            service.project_event_bus.fire(
+                &ProjectEvent::task_updated(&name, &status, note.as_deref()),
+            );
+            service.fire_tool_event("ledgerr_workflow", "task_update", true);
+            json!({"content":[text_content(json!({"updated": name, "status": status}))], "isError": false})
+        }
+
+        WorkflowArgs::TaskStatus => {
+            let snapshot = service.task_status_tool();
+            service.fire_tool_event("ledgerr_workflow", "task_status", true);
+            json!({
+                "content": [text_content(serde_json::to_value(snapshot).unwrap_or(serde_json::Value::Null))],
+                "isError": false
+            })
+        }
     }
 }
 
@@ -2135,6 +2244,19 @@ pub fn dispatch_hsm(service: &TurboLedgerService, tool_name: &str, arguments: &V
             match service.hsm_transition_tool(request) {
                 Ok(response) => {
                     let blocked = response.status == "blocked";
+                    let success = !blocked;
+                    service.fire_tool_event("ledgerr_workflow", "transition", success);
+                    if success {
+                        let to = format!("{}.{}", response.state, response.substate);
+                        // lifecycle_transition event is now fired inside
+                        // hsm_transition_tool (chart-driven via HsmChart).
+                        // Only fire additional PM events here.
+                        if response.state.to_ascii_lowercase() == "summarize" {
+                            service.project_event_bus.fire(
+                                &crate::event_bus::ProjectEvent::task_done(&to),
+                            );
+                        }
+                    }
                     let payload = if blocked {
                         json!({
                             "isError": true,
@@ -2188,6 +2310,15 @@ pub fn dispatch_hsm(service: &TurboLedgerService, tool_name: &str, arguments: &V
             match service.hsm_resume_tool(request) {
                 Ok(response) => {
                     let blocked = !response.resumed;
+                    if !blocked {
+                        // Resuming a checkpoint = agent picking up a workflow task.
+                        service.project_event_bus.fire(
+                            &crate::event_bus::ProjectEvent::task_created(
+                                &response.resume_from,
+                                "hsm checkpoint resumed",
+                            ),
+                        );
+                    }
                     let payload = if blocked {
                         json!({
                             "isError": true,
