@@ -208,4 +208,28 @@ mod tests {
         bus.fire(&ProjectEvent::task_created("t1", "test task"));
         assert_eq!(*order.lock().unwrap(), vec![0, 1, 2]);
     }
+
+    #[test]
+    fn task_created_event_has_correct_attrs() {
+        let evt = ProjectEvent::task_created("task-007", "classify ingested PDFs");
+        assert_eq!(evt.kind, "task_created");
+        assert_eq!(evt.attr("task_id"), Some("task-007"));
+        assert_eq!(evt.attr("description"), Some("classify ingested PDFs"));
+    }
+
+    #[test]
+    fn task_done_event_has_correct_attrs() {
+        let evt = ProjectEvent::task_done("task-007");
+        assert_eq!(evt.kind, "task_done");
+        assert_eq!(evt.attr("task_id"), Some("task-007"));
+    }
+
+    #[test]
+    fn tool_called_event_has_correct_attrs() {
+        let evt = ProjectEvent::tool_called("ledgerr_workflow", "transition", true);
+        assert_eq!(evt.kind, "tool_called");
+        assert_eq!(evt.attr("tool"), Some("ledgerr_workflow"));
+        assert_eq!(evt.attr("action"), Some("transition"));
+        assert_eq!(evt.attr("success"), Some("true"));
+    }
 }

@@ -488,6 +488,12 @@ fn handle_request(request: Value, agent_id: Option<&str>) -> Option<Value> {
                     }
                 }
             };
+
+            // Fire a `tool_called` project event for every successful tools/call.
+            // `isError` in the result content indicates dispatch-level failure.
+            let success = result.get("isError").and_then(|v| v.as_bool()) != Some(true);
+            global_raw_service().fire_tool_event(tool_name, "", success);
+
             Some(json!({
                 "jsonrpc": "2.0",
                 "id": id,

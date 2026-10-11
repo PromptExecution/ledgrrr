@@ -2149,6 +2149,12 @@ pub fn dispatch_hsm(service: &TurboLedgerService, tool_name: &str, arguments: &V
                 Err(err) => return error_envelope(&err),
             };
 
+            // Capture current state so lifecycle_transition event has a real `from`.
+            let from_state = service
+                .hsm_status_tool(HsmStatusRequest)
+                .map(|s| format!("{}.{}", s.state, s.substate))
+                .unwrap_or_else(|_| "unknown".to_string());
+
             match service.hsm_transition_tool(request) {
                 Ok(response) => {
                     let blocked = response.status == "blocked";
@@ -2157,8 +2163,14 @@ pub fn dispatch_hsm(service: &TurboLedgerService, tool_name: &str, arguments: &V
                     if success {
                         let to = format!("{}.{}", response.state, response.substate);
                         service.project_event_bus.fire(
-                            &crate::event_bus::ProjectEvent::lifecycle_transition("?", &to),
+                            &crate::event_bus::ProjectEvent::lifecycle_transition(&from_state, &to),
                         );
+                        // Reaching the Summarize state means the workflow task is complete.
+                        if response.state.to_ascii_lowercase() == "summarize" {
+                            service.project_event_bus.fire(
+                                &crate::event_bus::ProjectEvent::task_done(&to),
+                            );
+                        }
                     }
                     let payload = if blocked {
                         json!({
@@ -2213,6 +2225,15 @@ pub fn dispatch_hsm(service: &TurboLedgerService, tool_name: &str, arguments: &V
             match service.hsm_resume_tool(request) {
                 Ok(response) => {
                     let blocked = !response.resumed;
+                    if !blocked {
+                        // Resuming a checkpoint = agent picking up a workflow task.
+                        service.project_event_bus.fire(
+                            &crate::event_bus::ProjectEvent::task_created(
+                                &response.resume_from,
+                                "hsm checkpoint resumed",
+                            ),
+                        );
+                    }
                     let payload = if blocked {
                         json!({
                             "isError": true,
