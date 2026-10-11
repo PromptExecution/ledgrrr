@@ -4124,3 +4124,83 @@ pub fn handle_evidence_tool(service: &TurboLedgerService, arguments: &Value) -> 
         }
     }
 }
+
+/// Transport-agnostic tool dispatch. Accepts any tool call and routes it to
+/// the appropriate handler. Used by both the hand-rolled stdio/HTTP server and
+/// the rmcp `ServerHandler` wrapper (`LedgrrHandler`), ensuring identical
+/// dispatch semantics regardless of transport.
+///
+/// Returns the standard `{content:[…], isError:bool}` JSON envelope.
+pub fn dispatch_tool(service: &TurboLedgerService, tool_name: &str, arguments: &Value) -> Value {
+    match tool_name {
+        DOCUMENTS_TOOL => handle_documents_tool(service, arguments),
+        REVIEW_TOOL => handle_review_tool(service, arguments),
+        RECONCILIATION_TOOL => handle_reconciliation_tool(service, arguments),
+        WORKFLOW_TOOL => handle_workflow_tool(service, arguments),
+        AUDIT_TOOL => handle_audit_tool(service, arguments),
+        TAX_TOOL => handle_tax_tool(service, arguments),
+        ONTOLOGY_TOOL => handle_ontology_tool(service, arguments),
+        XERO_TOOL => handle_xero_tool(service, arguments),
+        EVIDENCE_TOOL => handle_evidence_tool(service, arguments),
+        FOCUS_TOOL => handle_focus_tool(arguments),
+        BUDGET_TOOL => handle_budget_tool(arguments),
+        GCP_BILLING_TOOL => handle_gcp_billing_tool(arguments),
+        "l3dg3rr_list_accounts" => handle_list_accounts(service),
+        "l3dg3rr_get_pipeline_status" => {
+            #[cfg(feature = "b00t")]
+            let docling_ready = b00t_iface::docling::DoclingProcessSurface::new().is_ready();
+            #[cfg(not(feature = "b00t"))]
+            let docling_ready = false;
+            handle_pipeline_status(true, true, docling_ready, Vec::new())
+        }
+        "proxy_docling_ingest_pdf" => handle_ingest_pdf(service, arguments, None),
+        "proxy_rustledger_ingest_statement_rows" => {
+            handle_ingest_statement_rows(service, arguments, None)
+        }
+        "l3dg3rr_get_raw_context" => handle_get_raw_context(service, arguments),
+        "l3dg3rr_ontology_query_path" => handle_ontology_query_path(service, arguments),
+        "l3dg3rr_ontology_export_snapshot" => handle_ontology_export_snapshot(service, arguments),
+        "l3dg3rr_validate_reconciliation" => {
+            dispatch_reconciliation(service, "validate", arguments)
+        }
+        "l3dg3rr_reconcile_postings" => dispatch_reconciliation(service, "reconcile", arguments),
+        "l3dg3rr_commit_guarded" => dispatch_reconciliation(service, "commit", arguments),
+        "l3dg3rr_hsm_transition" => dispatch_hsm(service, "transition", arguments),
+        "l3dg3rr_hsm_status" => dispatch_hsm(service, "status", arguments),
+        "l3dg3rr_hsm_resume" => dispatch_hsm(service, "resume", arguments),
+        "l3dg3rr_event_history" => handle_event_history(service, arguments),
+        "l3dg3rr_event_replay" => handle_event_replay(service, arguments),
+        "l3dg3rr_tax_assist" => handle_tax_assist(service, arguments),
+        "l3dg3rr_tax_evidence_chain" => handle_tax_evidence_chain(service, arguments),
+        "l3dg3rr_tax_ambiguity_review" => handle_tax_ambiguity_review(service, arguments),
+        "l3dg3rr_classify_ingested" => handle_classify_ingested(service, arguments),
+        "l3dg3rr_query_flags" => handle_query_flags(service, arguments),
+        "l3dg3rr_query_audit_log" => handle_query_audit_log(service, arguments),
+        "l3dg3rr_classify_transaction" => handle_classify_transaction(service, arguments),
+        "l3dg3rr_reconcile_excel_classification" => {
+            handle_reconcile_excel_classification(service, arguments)
+        }
+        "l3dg3rr_get_schedule_summary" => handle_get_schedule_summary(service, arguments),
+        "l3dg3rr_export_cpa_workbook" => handle_export_cpa_workbook(service, arguments),
+        "l3dg3rr_ontology_upsert_entities" => handle_ontology_upsert_entities(service, arguments),
+        "l3dg3rr_ontology_upsert_edges" => handle_ontology_upsert_edges(service, arguments),
+        "l3dg3rr_plugin_info" => handle_workflow_tool(
+            service,
+            &json!({
+                "action": "plugin_info",
+                "subcommand": arguments.get("subcommand").cloned()
+                    .unwrap_or(Value::String("check".to_string()))
+            }),
+        ),
+        _ => {
+            #[cfg(feature = "b00t")]
+            {
+                handle_external_tool(tool_name, arguments)
+            }
+            #[cfg(not(feature = "b00t"))]
+            {
+                unknown_tool_result(tool_name)
+            }
+        }
+    }
+}
