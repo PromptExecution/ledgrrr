@@ -5,7 +5,7 @@
 //! Each invocation creates a fresh disposable project on the server.
 use ledgrrr_sysml_adapter::client::{Bounds, NativeClient};
 use ledgrrr_sysml_adapter::native::{emit, hydrate, OperationMarker};
-use ufo_types::revision::{PortableBundle, PortableModel, RevisionContext};
+use ledgrrr_revision_io::revision::{PortableBundle, PortableModel, RevisionContext};
 
 fn fixture_bundle() -> PortableBundle {
     let v: serde_json::Value =

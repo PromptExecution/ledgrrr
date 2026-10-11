@@ -112,9 +112,9 @@ async fn authenticated_route_inventory_has_no_native_mutation_or_client_actor_co
     }
     let fixture: Value =
         serde_json::from_str(include_str!("fixtures/native_revision_cases.json")).unwrap();
-    let model: ufo_types::revision::PortableModel =
+    let model: ledgrrr_revision_io::revision::PortableModel =
         serde_json::from_value(fixture["model"].clone()).unwrap();
-    let mut context: ufo_types::revision::RevisionContext =
+    let mut context: ledgrrr_revision_io::revision::RevisionContext =
         serde_json::from_value(fixture["context"].clone()).unwrap();
     context.project = ProjectId::new("p").unwrap();
     let artifacts = serde_json::from_value(fixture["artifacts"].clone()).unwrap();
