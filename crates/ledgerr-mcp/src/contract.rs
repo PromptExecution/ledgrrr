@@ -621,11 +621,37 @@ pub enum WorkflowArgs {
     /// Register a project-management event hook (fires on every named ProjectEvent).
     RegisterProjectHook {
         /// Event kind to subscribe to: `"tool_called"`, `"task_created"`,
-        /// `"task_done"`, `"lifecycle_transition"`, or `"*"` for all events.
+        /// `"task_done"`, `"lifecycle_transition"`, `"task_updated"`, or `"*"` for all events.
         event_kind: String,
         /// Optional caller correlation tag returned in the response.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         tag: Option<String>,
+    },
+    /// Create a tracked task. Fires a `task_created` ProjectEvent.
+    TaskCreate {
+        /// Short machine-readable task name / slug.
+        name: String,
+        /// Human-readable description of what the task is for.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        description: Option<String>,
+    },
+    /// List all tracked tasks.
+    TaskList,
+    /// Mark a task as done. Fires a `task_done` ProjectEvent.
+    TaskDone {
+        /// Task name that was returned by `task_create`.
+        name: String,
+    },
+    /// Update a task's status. Fires a `task_updated` ProjectEvent.
+    /// Valid statuses: `"in_progress"`, `"blocked"`, `"done"`, `"pending"`.
+    TaskUpdate {
+        /// Task name.
+        name: String,
+        /// New status.
+        status: String,
+        /// Optional free-form note recorded alongside the status change.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        note: Option<String>,
     },
 }
 

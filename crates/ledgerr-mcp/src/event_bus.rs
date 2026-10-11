@@ -52,6 +52,18 @@ impl ProjectEvent {
         }
     }
 
+    /// Convenience: build a `task_updated` event.
+    pub fn task_updated(task_id: &str, status: &str, note: Option<&str>) -> Self {
+        let mut attrs = vec![
+            ("task_id".to_string(), task_id.to_string()),
+            ("status".to_string(), status.to_string()),
+        ];
+        if let Some(n) = note {
+            attrs.push(("note".to_string(), n.to_string()));
+        }
+        Self { kind: "task_updated".to_string(), attrs }
+    }
+
     /// Convenience: build a `lifecycle_transition` event.
     pub fn lifecycle_transition(from: &str, to: &str) -> Self {
         Self {
@@ -222,6 +234,21 @@ mod tests {
         let evt = ProjectEvent::task_done("task-007");
         assert_eq!(evt.kind, "task_done");
         assert_eq!(evt.attr("task_id"), Some("task-007"));
+    }
+
+    #[test]
+    fn task_updated_event_has_correct_attrs() {
+        let evt = ProjectEvent::task_updated("task-007", "in_progress", Some("unblocked by PR merge"));
+        assert_eq!(evt.kind, "task_updated");
+        assert_eq!(evt.attr("task_id"), Some("task-007"));
+        assert_eq!(evt.attr("status"), Some("in_progress"));
+        assert_eq!(evt.attr("note"), Some("unblocked by PR merge"));
+    }
+
+    #[test]
+    fn task_updated_event_no_note() {
+        let evt = ProjectEvent::task_updated("task-42", "blocked", None);
+        assert_eq!(evt.attr("note"), None);
     }
 
     #[test]

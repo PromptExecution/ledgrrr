@@ -525,6 +525,15 @@ impl Default for PersistedServiceState {
     }
 }
 
+/// A tracked project task stored in `TurboLedgerService::task_store`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskEntry {
+    pub name: String,
+    pub description: Option<String>,
+    pub status: String,
+    pub notes: Vec<String>,
+}
+
 pub struct TurboLedgerService {
     manifest: Manifest,
     ingest_state: Mutex<IngestedLedger>,
@@ -539,6 +548,8 @@ pub struct TurboLedgerService {
     document_registry: Mutex<BTreeMap<String, DocumentRecord>>,
     /// Evidence graph for provenance tracking (arc-kit-au).
     pub(crate) evidence: Mutex<arc_kit_au::EvidenceGraph>,
+    /// In-memory task store: name → TaskEntry. Drives ProjectEventBus hooks.
+    pub(crate) task_store: Mutex<BTreeMap<String, TaskEntry>>,
     #[cfg(feature = "xero")]
     xero: XeroService,
     #[cfg(feature = "llm")]
@@ -721,6 +732,7 @@ impl TurboLedgerService {
                     .load()
                     .unwrap_or_else(|_| arc_kit_au::EvidenceGraph::new()),
             ),
+            task_store: Mutex::new(BTreeMap::new()),
             #[cfg(feature = "xero")]
             xero,
             #[cfg(feature = "llm")]

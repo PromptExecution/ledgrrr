@@ -1362,6 +1362,89 @@ pub fn handle_workflow_tool(service: &TurboLedgerService, arguments: &Value) -> 
                 Err(err) => error_envelope(&err),
             }
         }
+
+        WorkflowArgs::TaskCreate { name, description } => {
+            use crate::TaskEntry;
+            use crate::event_bus::ProjectEvent;
+            let entry = TaskEntry {
+                name: name.clone(),
+                description: description.clone(),
+                status: "pending".to_string(),
+                notes: Vec::new(),
+            };
+            {
+                let mut store = service.task_store.lock()
+                    .expect("task_store lock poisoned");
+                if store.contains_key(&name) {
+                    return json!({"content":[text_content(json!({"error": format!("task '{}' already exists", name)}))], "isError": true});
+                }
+                store.insert(name.clone(), entry);
+            }
+            service.project_event_bus.fire(
+                &ProjectEvent::task_created(&name, description.as_deref().unwrap_or("")),
+            );
+            service.fire_tool_event("ledgerr_workflow", "task_create", true);
+            json!({"content":[text_content(json!({"created": name, "status": "pending"}))], "isError": false})
+        }
+
+        WorkflowArgs::TaskList => {
+            let tasks: Vec<serde_json::Value> = {
+                let store = service.task_store.lock()
+                    .expect("task_store lock poisoned");
+                store.values().map(|t| json!({
+                    "name": t.name,
+                    "status": t.status,
+                    "description": t.description,
+                })).collect()
+            };
+            service.fire_tool_event("ledgerr_workflow", "task_list", true);
+            json!({"content":[text_content(json!({"tasks": tasks, "count": tasks.len()}))], "isError": false})
+        }
+
+        WorkflowArgs::TaskDone { name } => {
+            use crate::event_bus::ProjectEvent;
+            let found = {
+                let mut store = service.task_store.lock()
+                    .expect("task_store lock poisoned");
+                if let Some(t) = store.get_mut(&name) {
+                    t.status = "done".to_string();
+                    true
+                } else {
+                    false
+                }
+            };
+            if !found {
+                return json!({"content":[text_content(json!({"error": format!("task '{}' not found", name)}))], "isError": true});
+            }
+            service.project_event_bus.fire(&ProjectEvent::task_done(&name));
+            service.fire_tool_event("ledgerr_workflow", "task_done", true);
+            json!({"content":[text_content(json!({"done": name}))], "isError": false})
+        }
+
+        WorkflowArgs::TaskUpdate { name, status, note } => {
+            use crate::event_bus::ProjectEvent;
+            let found = {
+                let mut store = service.task_store.lock()
+                    .expect("task_store lock poisoned");
+                if let Some(t) = store.get_mut(&name) {
+                    t.status = status.clone();
+                    if let Some(ref n) = note {
+                        t.notes.push(n.clone());
+                    }
+                    true
+                } else {
+                    false
+                }
+            };
+            if !found {
+                return json!({"content":[text_content(json!({"error": format!("task '{}' not found", name)}))], "isError": true});
+            }
+            service.project_event_bus.fire(
+                &ProjectEvent::task_updated(&name, &status, note.as_deref()),
+            );
+            service.fire_tool_event("ledgerr_workflow", "task_update", true);
+            json!({"content":[text_content(json!({"updated": name, "status": status}))], "isError": false})
+        }
     }
 }
 
