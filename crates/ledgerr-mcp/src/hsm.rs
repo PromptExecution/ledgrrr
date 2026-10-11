@@ -256,3 +256,132 @@ pub fn status_response(node: LifecycleNode, mut blockers: Vec<String>) -> HsmSta
         blockers,
     }
 }
+
+/// Map a lifecycle node to the number of "advance" events needed to reach it
+/// from the initial state (ingest.pending). Used to sync the HsmChart.
+pub fn advance_count_for(node: LifecycleNode) -> usize {
+    match node.state {
+        LifecycleState::Ingest => 0,
+        LifecycleState::Normalize => 1,
+        LifecycleState::Validate => 2,
+        LifecycleState::Reconcile => 3,
+        LifecycleState::Commit => 4,
+        LifecycleState::Summarize => 5,
+    }
+}
+
+/// Flat chart for PM event dispatch: states are HsmMachine tokens; each
+/// non-initial state fires entry action "lifecycle_transition" on advance.
+pub fn lifecycle_pm_chart_def() -> Result<lazily::statechart::ChartDef, String> {
+    use lazily::statechart::{ChartBuilder, StateBuilder};
+    ChartBuilder::new()
+        .state(StateBuilder::compound("lifecycle", "ingest.pending"))
+        .state(
+            StateBuilder::atomic("ingest.pending")
+                .parent("lifecycle")
+                .on("advance", "normalize.ready"),
+        )
+        .state(
+            StateBuilder::atomic("normalize.ready")
+                .parent("lifecycle")
+                .entry("lifecycle_transition")
+                .on("advance", "validate.ready"),
+        )
+        .state(
+            StateBuilder::atomic("validate.ready")
+                .parent("lifecycle")
+                .entry("lifecycle_transition")
+                .on("advance", "reconcile.ready"),
+        )
+        .state(
+            StateBuilder::atomic("reconcile.ready")
+                .parent("lifecycle")
+                .entry("lifecycle_transition")
+                .on("advance", "commit.ready"),
+        )
+        .state(
+            StateBuilder::atomic("commit.ready")
+                .parent("lifecycle")
+                .entry("lifecycle_transition")
+                .on("advance", "summarize.ready"),
+        )
+        .state(
+            StateBuilder::atomic("summarize.ready")
+                .parent("lifecycle")
+                .entry("lifecycle_transition"),
+        )
+        .build()
+}
+
+/// Chart that mirrors HsmMachine advances and fires "lifecycle_transition"
+/// entry actions. Held in TurboLedgerService to back PM hook dispatch.
+pub struct HsmChart {
+    chart: lazily::statechart::ThreadSafeStateChart,
+    ctx: lazily::ThreadSafeContext,
+    /// Number of successful advances completed; used for fast-forward on restore.
+    advance_count: usize,
+}
+
+impl HsmChart {
+    pub fn new() -> Result<Self, String> {
+        let def = lifecycle_pm_chart_def()?;
+        let ctx = lazily::ThreadSafeContext::new();
+        let chart = lazily::statechart::ThreadSafeStateChart::new(&ctx, def);
+        Ok(Self { chart, ctx, advance_count: 0 })
+    }
+
+    /// Advance the chart from `from_advance_idx` → `from_advance_idx + 1`.
+    /// Fast-forwards silently if the chart is behind (restored session).
+    /// Returns `true` iff "lifecycle_transition" fired as an entry action.
+    pub fn try_advance(&mut self, from_advance_idx: usize) -> bool {
+        use std::collections::HashMap;
+        let guards: HashMap<String, bool> = HashMap::new();
+        while self.advance_count < from_advance_idx {
+            self.chart.send(&self.ctx, "advance", &guards);
+            self.advance_count += 1;
+        }
+        let transitioned = self.chart.send(&self.ctx, "advance", &guards);
+        if transitioned {
+            self.advance_count += 1;
+        }
+        self.chart
+            .last_actions()
+            .contains(&"lifecycle_transition".to_string())
+    }
+}
+
+#[cfg(test)]
+mod hsm_chart_tests {
+    use super::*;
+
+    #[test]
+    fn hsm_chart_builds_without_error() {
+        let result = HsmChart::new();
+        assert!(result.is_ok(), "HsmChart::new() failed: {:?}", result.err());
+    }
+
+    #[test]
+    fn hsm_chart_advance_from_initial_fires_lifecycle_transition() {
+        let mut chart = HsmChart::new().expect("chart");
+        let fired = chart.try_advance(0);
+        assert!(fired, "lifecycle_transition must fire on first advance");
+    }
+
+    #[test]
+    fn hsm_chart_full_lifecycle_all_advances_fire_lifecycle_transition() {
+        let mut chart = HsmChart::new().expect("chart");
+        for idx in 0..5 {
+            let fired = chart.try_advance(idx);
+            assert!(fired, "lifecycle_transition must fire at advance {idx}");
+        }
+    }
+
+    #[test]
+    fn hsm_chart_fast_forward_catches_up_and_fires() {
+        let mut chart = HsmChart::new().expect("chart");
+        // Simulate a restored session: chart is at 0 but HSM is at Validate.Ready (idx=2)
+        let fired = chart.try_advance(2);
+        assert!(fired, "lifecycle_transition must fire after fast-forward");
+        assert_eq!(chart.advance_count, 3);
+    }
+}

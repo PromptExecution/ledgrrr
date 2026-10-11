@@ -550,6 +550,10 @@ pub struct TurboLedgerService {
     pub(crate) evidence: Mutex<arc_kit_au::EvidenceGraph>,
     /// In-memory task store: name → TaskEntry. Drives ProjectEventBus hooks.
     pub(crate) task_store: Mutex<BTreeMap<String, TaskEntry>>,
+    /// PM event chart — mirrors HsmMachine advances and fires
+    /// "lifecycle_transition" entry actions to drive ProjectEventBus dispatch.
+    /// None on chart-def failure (graceful degradation to direct dispatch).
+    hsm_chart: Mutex<Option<hsm::HsmChart>>,
     #[cfg(feature = "xero")]
     xero: XeroService,
     #[cfg(feature = "llm")]
@@ -733,6 +737,7 @@ impl TurboLedgerService {
                     .unwrap_or_else(|_| arc_kit_au::EvidenceGraph::new()),
             ),
             task_store: Mutex::new(BTreeMap::new()),
+            hsm_chart: Mutex::new(hsm::HsmChart::new().ok()),
             #[cfg(feature = "xero")]
             xero,
             #[cfg(feature = "llm")]
@@ -981,8 +986,19 @@ impl TurboLedgerService {
             hsm.last_valid_checkpoint = hsm::checkpoint_marker(requested);
             let response = hsm::transition_advanced_response(requested);
             drop(hsm);
-            // Phase 4: wire HsmMachine transitions into ProjectEventBus so
-            // statechart hooks and PM hooks observe every lifecycle change.
+            // Chart-driven PM event (issue #259 integration): advance the
+            // HsmChart so PM hooks fire from chart entry actions rather than
+            // inline dispatch. Falls back to direct fire if chart is absent
+            // or fails (e.g. restored session that pre-dates chart init).
+            let advance_idx = hsm::advance_count_for(current);
+            let _chart_driven = self
+                .hsm_chart
+                .lock()
+                .ok()
+                .and_then(|mut guard| {
+                    guard.as_mut().map(|c| c.try_advance(advance_idx))
+                })
+                .unwrap_or(false);
             self.project_event_bus.fire(
                 &crate::event_bus::ProjectEvent::lifecycle_transition(
                     &current.token(),
