@@ -618,6 +618,15 @@ pub enum WorkflowArgs {
         #[serde(flatten)]
         payload: WorkflowPluginInfoInput,
     },
+    /// Register a project-management event hook (fires on every named ProjectEvent).
+    RegisterProjectHook {
+        /// Event kind to subscribe to: `"tool_called"`, `"task_created"`,
+        /// `"task_done"`, `"lifecycle_transition"`, or `"*"` for all events.
+        event_kind: String,
+        /// Optional caller correlation tag returned in the response.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tag: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]

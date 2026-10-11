@@ -2,7 +2,7 @@ use blake3;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use ledger_core::classify::{ClassificationEngine, FlagStatus, SampleTransaction};
 use ledger_core::document::{DocType, DocumentRecord, DocumentStatus, XeroLink};
@@ -24,6 +24,7 @@ use xero_service::XeroService;
 
 pub mod batch_executor;
 pub mod beankeeper_import;
+pub mod event_bus;
 use crate::batch_executor::BatchExecutor;
 pub mod au_rd;
 pub mod calendar_tool;
@@ -36,6 +37,8 @@ pub mod fbar;
 pub mod feie;
 pub mod focus_tool;
 pub mod hsm;
+#[cfg(feature = "http-transport")]
+pub mod http_transport;
 pub mod mcp_adapter;
 pub mod ontology;
 pub mod openmetadata;
@@ -68,6 +71,10 @@ pub use events::{
 pub use fbar::{
     compute_fbar, DailyBalance, FbarDetermination, FbarInput, ForeignAccountInput,
     ForeignAccountYear,
+};
+pub use event_bus::{
+    ProjectEvent, ProjectEventBus, ProjectHookFn, RegisterProjectHookRequest,
+    RegisterProjectHookResponse,
 };
 pub use feie::{FeieInput, FeieOutcome, ForeignResidenceTest};
 pub use hsm::{
@@ -524,6 +531,10 @@ pub struct TurboLedgerService {
     classification_state: Mutex<ClassificationState>,
     lifecycle_events: Mutex<InMemoryLifecycleEventStore>,
     hsm_state: Mutex<HsmMachine>,
+    /// General project-management event bus — fires on tool calls, task
+    /// lifecycle events, and lifecycle transitions. Supersedes the narrower
+    /// HsmHookRegistry for cross-cutting PM hooks (issue #259 / PM hooks).
+    pub(crate) project_event_bus: Arc<ProjectEventBus>,
     /// In-memory registry: doc_id → DocumentRecord. Persisted as a JSON sidecar.
     document_registry: Mutex<BTreeMap<String, DocumentRecord>>,
     /// Evidence graph for provenance tracking (arc-kit-au).
@@ -703,6 +714,7 @@ impl TurboLedgerService {
             classification_state: Mutex::new(persisted.classification_state),
             lifecycle_events: Mutex::new(persisted.lifecycle_events),
             hsm_state: Mutex::new(persisted.hsm_state),
+            project_event_bus: Arc::new(ProjectEventBus::default()),
             document_registry: Mutex::new(registry),
             evidence: Mutex::new(
                 arc_kit_au::EvidenceStore::new(initial_evidence_path)
@@ -718,6 +730,55 @@ impl TurboLedgerService {
 
     pub fn workbook_path(&self) -> &std::path::Path {
         std::path::Path::new(&self.manifest.session.workbook_path)
+    }
+
+    /// Fire a `tool_called` project event. Called by MCP tool handlers after
+    /// each successful dispatch so project hooks can observe every tool call.
+    pub fn fire_tool_event(&self, tool: &str, action: &str, success: bool) {
+        self.project_event_bus
+            .fire(&ProjectEvent::tool_called(tool, action, success));
+    }
+
+    /// Register a project-management event hook.
+    /// Fires on every `ProjectEvent` regardless of kind; filter inside the hook
+    /// via `event.kind`. See `ProjectEventBus` for the supported event kinds.
+    pub fn register_project_hook(&self, hook: ProjectHookFn) {
+        self.project_event_bus.register(hook);
+    }
+
+    /// MCP-facing: register a project-event hook for a named event kind.
+    pub fn register_project_hook_tool(
+        &self,
+        request: RegisterProjectHookRequest,
+    ) -> Result<RegisterProjectHookResponse, ToolError> {
+        let valid_kinds = [
+            "tool_called", "task_created", "task_done",
+            "lifecycle_transition", "*",
+        ];
+        if !valid_kinds.contains(&request.event_kind.as_str()) {
+            return Err(ToolError::InvalidInput(format!(
+                "unknown event_kind '{}'; valid: {}",
+                request.event_kind,
+                valid_kinds.join(", ")
+            )));
+        }
+        let kind = request.event_kind.clone();
+        let tag = request.tag.clone().unwrap_or_default();
+        // Logging hook: emit a tracing event for every matching project event.
+        self.project_event_bus.register(Arc::new(move |evt: &ProjectEvent| {
+            if kind == "*" || evt.kind == kind {
+                tracing::info!(
+                    event_kind = %evt.kind,
+                    hook_tag = %tag,
+                    "project event hook fired"
+                );
+            }
+        }));
+        Ok(RegisterProjectHookResponse {
+            registered: true,
+            event_kind: request.event_kind,
+            tag: request.tag,
+        })
     }
 
     fn state_sidecar_path(&self) -> PathBuf {

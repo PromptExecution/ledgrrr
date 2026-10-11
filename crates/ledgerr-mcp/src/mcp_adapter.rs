@@ -1345,6 +1345,23 @@ pub fn handle_workflow_tool(service: &TurboLedgerService, arguments: &Value) -> 
         WorkflowArgs::PluginInfo { payload } => handle_plugin_info(&json!({
             "subcommand": payload.subcommand.map(|value| value.0),
         })),
+        WorkflowArgs::RegisterProjectHook { event_kind, tag } => {
+            use crate::event_bus::RegisterProjectHookRequest;
+            match service.register_project_hook_tool(RegisterProjectHookRequest {
+                event_kind,
+                tag,
+            }) {
+                Ok(result) => json!({
+                    "content": [text_content(json!({
+                        "registered": result.registered,
+                        "event_kind": result.event_kind,
+                        "tag": result.tag,
+                    }))],
+                    "isError": false
+                }),
+                Err(err) => error_envelope(&err),
+            }
+        }
     }
 }
 
@@ -2135,6 +2152,14 @@ pub fn dispatch_hsm(service: &TurboLedgerService, tool_name: &str, arguments: &V
             match service.hsm_transition_tool(request) {
                 Ok(response) => {
                     let blocked = response.status == "blocked";
+                    let success = !blocked;
+                    service.fire_tool_event("ledgerr_workflow", "transition", success);
+                    if success {
+                        let to = format!("{}.{}", response.state, response.substate);
+                        service.project_event_bus.fire(
+                            &crate::event_bus::ProjectEvent::lifecycle_transition("?", &to),
+                        );
+                    }
                     let payload = if blocked {
                         json!({
                             "isError": true,

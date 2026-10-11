@@ -89,6 +89,8 @@ legacy = ["core"]
 [dev-dependencies]
 tempfile = "3"
 calamine = "0.34"
+# Required for axum transport integration tests (ServiceExt::oneshot)
+tower = { version = "0.5", features = ["util"] }
 
 # Enable the b00t feature for tests that exercise McpProvider infrastructure
 # and register_default_providers graceful-degradation coverage.

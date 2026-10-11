@@ -29,136 +29,22 @@ fn main() {
     serve(io::stdin().lock(), io::stdout());
 }
 
-/// HTTP transport: same `handle_request` dispatcher as stdio, reached over
-/// axum-based HTTP + SSE instead of the previous `tiny_http` single-threaded
-/// server. Built for Azure Container Apps' HTTP-triggered scale-to-zero
-/// (PromptExecution/infrastructure#139/#141) and for MCP Streamable HTTP
-/// clients that need server-initiated push notifications (issue #227).
-///
-/// Routes:
-/// - `GET /health`  — liveness probe; matches the `standing-mcp-server` Terraform expectation
-/// - `POST /`       — JSON-RPC dispatch; returns `application/json`
-/// - `GET /sse`     — SSE stream; pushes `notifications/tools/list_changed` when
-///                    a tool call returns the `_list_changed` sentinel (issue #226)
-///
-/// `handle_request` is synchronous — each POST call offloads to
-/// `tokio::task::spawn_blocking` to keep the tokio runtime responsive while
-/// the tool handler runs.
+/// HTTP transport: axum-based Streamable HTTP + SSE (issue #227).
+/// Router built by `http_transport::build_http_app`; see that module for
+/// route documentation and design notes.
 #[cfg(feature = "http-transport")]
 fn serve_http() {
-    use axum::{
-        Router,
-        body::Body,
-        http::{HeaderMap, Response, StatusCode},
-        response::{
-            IntoResponse,
-            sse::{Event, KeepAlive, Sse},
-        },
-        routing::{get, post},
-    };
-    use std::sync::Arc;
+    use ledgerr_mcp::http_transport::build_http_app;
     use tokio::sync::broadcast;
-    use tokio_stream::wrappers::BroadcastStream;
-    use tokio_stream::StreamExt;
-
-    /// Shared state for the axum handlers.
-    struct HttpState {
-        /// Sender for server-initiated SSE notifications (e.g. `notifications/tools/list_changed`).
-        notify_tx: broadcast::Sender<String>,
-    }
 
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let addr = format!("0.0.0.0:{port}");
 
-    // Broadcast channel: capacity 64 events per subscriber; overflow silently dropped.
     let (notify_tx, _) = broadcast::channel::<String>(64);
-    let state = Arc::new(HttpState { notify_tx });
-
-    let app = Router::new()
-        .route("/health", get(|| async { (StatusCode::OK, "ok") }))
-        .route(
-            "/sse",
-            get({
-                let state = Arc::clone(&state);
-                move || {
-                    let rx = state.notify_tx.subscribe();
-                    let stream = BroadcastStream::new(rx).filter_map(|result| {
-                        result.ok().map(|data| {
-                            Ok::<Event, std::convert::Infallible>(Event::default().data(data))
-                        })
-                    });
-                    async move {
-                        Sse::new(stream).keep_alive(KeepAlive::default())
-                    }
-                }
-            }),
-        )
-        .route(
-            "/",
-            post({
-                let state = Arc::clone(&state);
-                move |headers: HeaderMap, body: String| {
-                    let tx = state.notify_tx.clone();
-                    async move {
-                        let agent_id = agent_id_from_headers(&headers);
-                        let parsed = match serde_json::from_str::<Value>(&body) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                return Response::builder()
-                                    .status(StatusCode::BAD_REQUEST)
-                                    .body(Body::from(format!("invalid JSON: {e}")))
-                                    .unwrap()
-                                    .into_response();
-                            }
-                        };
-
-                        // Run the synchronous dispatcher off the tokio thread pool.
-                        let agent_id_owned = agent_id;
-                        let result = tokio::task::spawn_blocking(move || {
-                            handle_request(parsed, agent_id_owned.as_deref())
-                        })
-                        .await
-                        .unwrap_or(None);
-
-                        match result {
-                            Some(mut resp) => {
-                                // If the response carries the `_list_changed` sentinel,
-                                // strip it and push a `notifications/tools/list_changed`
-                                // SSE event to all connected subscribers (issue #226/#227).
-                                if let Some(obj) = resp.as_object_mut() {
-                                    if obj.remove("_list_changed").is_some() {
-                                        let notif = serde_json::to_string(&json!({
-                                            "jsonrpc": "2.0",
-                                            "method": "notifications/tools/list_changed",
-                                            "params": {}
-                                        }))
-                                        .unwrap_or_default();
-                                        // Ignore send errors — no connected SSE clients is fine.
-                                        let _ = tx.send(notif);
-                                    }
-                                }
-
-                                let body_str =
-                                    serde_json::to_string(&resp).unwrap_or_default();
-                                Response::builder()
-                                    .status(StatusCode::OK)
-                                    .header("content-type", "application/json")
-                                    .body(Body::from(body_str))
-                                    .unwrap()
-                                    .into_response()
-                            }
-                            // Notifications (e.g. notifications/initialized) — no response body.
-                            None => Response::builder()
-                                .status(StatusCode::NO_CONTENT)
-                                .body(Body::empty())
-                                .unwrap()
-                                .into_response(),
-                        }
-                    }
-                }
-            }),
-        )
-        .with_state(());
+    let app = build_http_app(
+        |req, agent_id| handle_request(req, agent_id.as_deref()),
+        notify_tx,
+    );
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -176,16 +62,6 @@ fn serve_http() {
     });
 }
 
-/// Extract the calling agent's identity from `X-Agent-Id` (issue #224).
-/// Header name comparison is case-insensitive per HTTP semantics.
-/// Absent header → `None` (fail-open; same default as the stdio transport).
-#[cfg(feature = "http-transport")]
-fn agent_id_from_headers(headers: &axum::http::HeaderMap) -> Option<String> {
-    headers
-        .get("x-agent-id")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string())
-}
 
 #[cfg(feature = "b00t")]
 fn initialize_providers() {
