@@ -1,0 +1,28 @@
+# Fixture: a DecisionNode with only 1 outbound edge — violates DecisionNodeShape.
+# A real decision branches to ≥2 paths; 1 outbound is a sequence, not a decision.
+# Expected violation: sh:focusNode = <urn:example:decision:lonely>
+
+@prefix sysml: <https://sysml.org/v2#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+
+<urn:example:action:before>
+    a sysml:ActionUsage ;
+    sysml:name "ActionBefore" .
+
+<urn:example:action:after>
+    a sysml:ActionUsage ;
+    sysml:name "ActionAfter" .
+
+# 🚩 Only 1 outbound edge — violates DecisionNodeShape (minCount 2)
+<urn:example:decision:lonely>
+    a sysml:DecisionNode .
+
+<urn:example:flow:in>
+    a sysml:SuccessionFlowUsage ;
+    sysml:source <urn:example:action:before> ;
+    sysml:target <urn:example:decision:lonely> .
+
+<urn:example:flow:out-only-one>
+    a sysml:SuccessionFlowUsage ;
+    sysml:source <urn:example:decision:lonely> ;
+    sysml:target <urn:example:action:after> .

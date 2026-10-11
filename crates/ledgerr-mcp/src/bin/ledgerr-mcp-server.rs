@@ -131,6 +131,10 @@ fn handle_request(request: Value) -> Option<Value> {
                     let arguments = params.get("arguments").cloned().unwrap_or(Value::Null);
                     mcp_adapter::handle_budget_tool(&arguments)
                 }
+                mcp_adapter::VALIDATE_PROCESS_TOOL => {
+                    let arguments = params.get("arguments").cloned().unwrap_or(Value::Null);
+                    mcp_adapter::handle_validate_process_tool(&arguments)
+                }
                 "l3dg3rr_list_accounts" => mcp_adapter::handle_list_accounts(global_raw_service()),
                 "l3dg3rr_get_pipeline_status" => {
                     let docling_ready = b00t_iface::docling::DoclingProcessSurface::new().is_ready();

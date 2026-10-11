@@ -72,8 +72,8 @@ fn external_tool_descriptors() -> Vec<Value> {
 // Public re-exports are always available (they're just constants).
 pub use crate::contract::{
     AUDIT_TOOL, BUDGET_TOOL, DOCUMENTS_TOOL, EVIDENCE_TOOL, FOCUS_TOOL, MANIFEST_TOOL,
-    ONTOLOGY_TOOL, RECONCILIATION_TOOL, REVIEW_TOOL, SCHEMA_TOOL, TAX_TOOL, WORKFLOW_TOOL,
-    XERO_TOOL,
+    ONTOLOGY_TOOL, RECONCILIATION_TOOL, REVIEW_TOOL, SCHEMA_TOOL, TAX_TOOL,
+    VALIDATE_PROCESS_TOOL, WORKFLOW_TOOL, XERO_TOOL,
 };
 
 // ── Default dispatch ──────────────────────────────────────────────────────────
@@ -273,6 +273,41 @@ pub fn handle_budget_tool(arguments: &Value) -> Value {
     }
 }
 
+/// Validate a SysML-v2 process graph (Turtle) against kr0ki SHACL shapes.
+///
+/// Expected `arguments`: `{ "graph": "<turtle text>", "format": "turtle" | "json-ld" }`
+/// Returns `{ "conformant": bool, "violations": [...] }`.
+pub fn handle_validate_process_tool(arguments: &Value) -> Value {
+    use crate::validate_process::{validate_process_graph, GraphFormat};
+
+    let graph = match arguments.get("graph").and_then(|v| v.as_str()) {
+        Some(g) => g,
+        None => {
+            return error_envelope(&ToolError::InvalidInput(
+                "missing required field: 'graph' (Turtle or JSON-LD string)".into(),
+            ))
+        }
+    };
+
+    let format = match arguments
+        .get("format")
+        .and_then(|v| v.as_str())
+        .unwrap_or("turtle")
+    {
+        "json-ld" | "jsonld" => GraphFormat::JsonLd,
+        _ => GraphFormat::Turtle,
+    };
+
+    match validate_process_graph(graph, format) {
+        Ok(result) => json!({
+            "content": [text_content(serde_json::to_value(&result)
+                .unwrap_or(Value::Null))],
+            "isError": false
+        }),
+        Err(err) => error_envelope(&err),
+    }
+}
+
 /// Hardcoded list of published tool names (always available).
 const BUILTIN_TOOL_NAMES: &[&str] = &[
     DOCUMENTS_TOOL,
@@ -288,6 +323,7 @@ const BUILTIN_TOOL_NAMES: &[&str] = &[
     SCHEMA_TOOL,
     MANIFEST_TOOL,
     BUDGET_TOOL,
+    VALIDATE_PROCESS_TOOL,
 ];
 
 fn builtin_tool_input_schema(name: &str) -> Value {
@@ -306,6 +342,7 @@ fn builtin_tool_description(name: &str) -> &'static str {
         XERO_TOOL => "Xero integration: contacts, accounts, invoices, and entity linking",
         EVIDENCE_TOOL => "Evidence provenance: trace transactions and identify gaps",
         BUDGET_TOOL => "GPU-training cloud budget reconciliation: AWS, GCP, Azure, HuggingFace Jobs",
+        VALIDATE_PROCESS_TOOL => "SHACL validation of SysML-v2 process graphs against kr0ki process-model shapes",
         _ => "Ledgerr MCP tool",
     }
 }

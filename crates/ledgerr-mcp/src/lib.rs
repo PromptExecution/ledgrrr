@@ -41,6 +41,8 @@ pub mod providers;
 pub mod reconciliation;
 pub mod schema;
 pub mod shape_tool;
+pub mod validate_process;
+pub use validate_process::{validate_process_graph, GraphFormat, ProcessValidationResult, Violation};
 pub mod au_rd;
 pub mod coverage;
 pub mod crypto;

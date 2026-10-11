@@ -1,0 +1,35 @@
+# Fixture: a conformant 3-step process (receive → pick → ship).
+# All shapes in process_model.ttl should pass against this data.
+
+@prefix sysml: <https://sysml.org/v2#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+
+<urn:example:process:order-fulfillment>
+    a sysml:ProcessUsage ;
+    sysml:name "OrderFulfillment" ;
+    sysml:ownedMember
+        <urn:example:action:receive>,
+        <urn:example:action:pick>,
+        <urn:example:action:ship> .
+
+<urn:example:action:receive>
+    a sysml:ActionUsage ;
+    sysml:name "ReceiveOrder" .
+
+<urn:example:action:pick>
+    a sysml:ActionUsage ;
+    sysml:name "PickItems" .
+
+<urn:example:action:ship>
+    a sysml:ActionUsage ;
+    sysml:name "ShipPackage" .
+
+<urn:example:flow:receive-to-pick>
+    a sysml:SuccessionFlowUsage ;
+    sysml:source <urn:example:action:receive> ;
+    sysml:target <urn:example:action:pick> .
+
+<urn:example:flow:pick-to-ship>
+    a sysml:SuccessionFlowUsage ;
+    sysml:source <urn:example:action:pick> ;
+    sysml:target <urn:example:action:ship> .

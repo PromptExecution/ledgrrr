@@ -38,6 +38,7 @@ pub const SHAPE_TOOL: &str = "get_document_shape";
 pub const SCHEMA_TOOL: &str = "ledgerr_schema";
 pub const MANIFEST_TOOL: &str = "ledgerr_manifest";
 pub const BUDGET_TOOL: &str = "ledgerr_budget";
+pub const VALIDATE_PROCESS_TOOL: &str = "ledgerr_validate_process";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolContractSpec {
@@ -62,9 +63,10 @@ pub const TOOL_REGISTRY: &[&str] = &[
     SCHEMA_TOOL,
     MANIFEST_TOOL,
     BUDGET_TOOL,
+    VALIDATE_PROCESS_TOOL,
 ];
 
-pub const PUBLISHED_TOOLS: [ToolContractSpec; 13] = [
+pub const PUBLISHED_TOOLS: [ToolContractSpec; 14] = [
     ToolContractSpec {
         name: DOCUMENTS_TOOL,
         purpose: "document intake (PDF, image, CSV), tagging, filesystem metadata sync",
@@ -199,6 +201,11 @@ pub const PUBLISHED_TOOLS: [ToolContractSpec; 13] = [
         name: BUDGET_TOOL,
         purpose: "GPU-training cloud budget reconciliation across AWS, GCP, Azure, and HuggingFace Jobs",
         actions: &["reconcile"],
+    },
+    ToolContractSpec {
+        name: VALIDATE_PROCESS_TOOL,
+        purpose: "SHACL validation of SysML-v2 process graphs against kr0ki process-model shapes (ledgrrr#255)",
+        actions: &["validate"],
     },
 ];
 

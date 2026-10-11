@@ -408,6 +408,11 @@ test-fast:
     cargo test --workspace --all-targets --all-features \
         -- --skip phi4_produces_output --skip phi4_mistral_produces_output
 
+# Validate SysML-v2 process-model SHACL shapes against all fixtures (ledgrrr#254).
+# Requires: pyshacl (pip install pyshacl) and rdflib.
+validate-process-shapes:
+    python3 -m pytest ontology/sysml-v2/tests/ -v
+
 # Cocogitto release recipe (major|minor|patch, defaults to patch).
 #
 # Odd/even minor version policy (Ubuntu-style):
