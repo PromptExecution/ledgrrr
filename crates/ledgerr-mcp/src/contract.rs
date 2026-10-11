@@ -111,7 +111,7 @@ pub const PUBLISHED_TOOLS: [ToolContractSpec; 14] = [
     ToolContractSpec {
         name: WORKFLOW_TOOL,
         purpose: "lifecycle/HSM orchestration plus relocated plugin ops",
-        actions: &["status", "transition", "resume", "plugin_info"],
+        actions: &["status", "transition", "resume", "plugin_info", "task_status"],
     },
     ToolContractSpec {
         name: AUDIT_TOOL,
@@ -653,6 +653,10 @@ pub enum WorkflowArgs {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         note: Option<String>,
     },
+    /// Return the current per-stage PM task status derived from statechart hooks.
+    /// Stages: ingest, normalize, validate, reconcile, commit, summarize.
+    /// Statuses: pending, blocked, ready, complete.
+    TaskStatus,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]

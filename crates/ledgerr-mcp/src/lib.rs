@@ -43,6 +43,7 @@ pub mod mcp_adapter;
 pub mod ontology;
 pub mod openmetadata;
 pub mod plugin_info;
+pub mod pm_hooks;
 #[cfg(feature = "b00t")]
 pub mod provider;
 #[cfg(feature = "b00t")]
@@ -76,6 +77,7 @@ pub use event_bus::{
     ProjectEvent, ProjectEventBus, ProjectHookFn, RegisterProjectHookRequest,
     RegisterProjectHookResponse,
 };
+pub use pm_hooks::{PmHookEvent, StageStatus, TaskStatusStore};
 pub use feie::{FeieInput, FeieOutcome, ForeignResidenceTest};
 pub use hsm::{
     HsmMachine, HsmResumeRequest, HsmResumeResponse, HsmStatusRequest, HsmStatusResponse,
@@ -554,6 +556,9 @@ pub struct TurboLedgerService {
     /// "lifecycle_transition" entry actions to drive ProjectEventBus dispatch.
     /// None on chart-def failure (graceful degradation to direct dispatch).
     hsm_chart: Mutex<Option<hsm::HsmChart>>,
+    /// Shared task-status projection — updated by TaskStatusPmHookHandler via
+    /// the project_event_bus. Queryable via the `task_status` MCP action.
+    pub(crate) task_status_store: pm_hooks::TaskStatusStore,
     #[cfg(feature = "xero")]
     xero: XeroService,
     #[cfg(feature = "llm")]
@@ -723,13 +728,21 @@ impl TurboLedgerService {
             persisted_state_path(service_path).with_extension("evidence.json")
         };
 
+        let project_event_bus = Arc::new(ProjectEventBus::default());
+        let task_status_store = pm_hooks::TaskStatusStore::new();
+        pm_hooks::PmHookDispatcher::new(vec![
+            Box::new(pm_hooks::LoggingPmHookHandler),
+            Box::new(pm_hooks::TaskStatusPmHookHandler::new(task_status_store.clone())),
+        ])
+        .register_on_bus(&project_event_bus);
+
         Ok(Self {
             manifest,
             ingest_state: Mutex::new(persisted.ingest_state),
             classification_state: Mutex::new(persisted.classification_state),
             lifecycle_events: Mutex::new(persisted.lifecycle_events),
             hsm_state: Mutex::new(persisted.hsm_state),
-            project_event_bus: Arc::new(ProjectEventBus::default()),
+            project_event_bus,
             document_registry: Mutex::new(registry),
             evidence: Mutex::new(
                 arc_kit_au::EvidenceStore::new(initial_evidence_path)
@@ -738,6 +751,7 @@ impl TurboLedgerService {
             ),
             task_store: Mutex::new(BTreeMap::new()),
             hsm_chart: Mutex::new(hsm::HsmChart::new().ok()),
+            task_status_store,
             #[cfg(feature = "xero")]
             xero,
             #[cfg(feature = "llm")]
@@ -1021,6 +1035,12 @@ impl TurboLedgerService {
             .lock()
             .map_err(|_| ToolError::Internal("hsm lock poisoned".to_string()))?;
         Ok(hsm::status_response(hsm.current, Vec::new()))
+    }
+
+    /// Return current per-stage task status derived from PM hooks.
+    /// The map is sorted (BTreeMap) for deterministic MCP output.
+    pub fn task_status_tool(&self) -> std::collections::BTreeMap<String, String> {
+        self.task_status_store.snapshot()
     }
 
     pub fn hsm_resume_tool(

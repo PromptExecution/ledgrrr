@@ -1445,6 +1445,15 @@ pub fn handle_workflow_tool(service: &TurboLedgerService, arguments: &Value) -> 
             service.fire_tool_event("ledgerr_workflow", "task_update", true);
             json!({"content":[text_content(json!({"updated": name, "status": status}))], "isError": false})
         }
+
+        WorkflowArgs::TaskStatus => {
+            let snapshot = service.task_status_tool();
+            service.fire_tool_event("ledgerr_workflow", "task_status", true);
+            json!({
+                "content": [text_content(serde_json::to_value(snapshot).unwrap_or(serde_json::Value::Null))],
+                "isError": false
+            })
+        }
     }
 }
 
