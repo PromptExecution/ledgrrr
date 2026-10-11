@@ -123,10 +123,10 @@ pub fn tool_descriptors() -> Vec<Value> {
 ///
 /// For `Standard` / `Restricted` / `Sandboxed`, a tool is visible if its
 /// name is in `msft_agent_gov_ledgrrr::rings::CORE_TOOL_FAMILIES` (always
-/// visible, any ring) or in `ring_visible_tool_families(ring)`. External
-/// provider tools (from `external_tool_descriptors()`) are not part of
-/// either set today, so they are hidden whenever ring filtering is active —
-/// see the design doc's open-questions section for follow-up.
+/// visible, any ring), in `ring_visible_tool_families(ring)`, or is an
+/// external provider tool (name does not start with `ledgerr_`) shown to
+/// Standard+ rings (issue #230 decision: Standard agents are trusted to see
+/// b00t-registered operational tools; Restricted and Sandboxed do not).
 ///
 /// This function only affects what `tools/list` reports; it does not gate
 /// `tools/call` dispatch, which is unchanged by this increment.
@@ -144,11 +144,16 @@ pub fn filter_tools_for_ring(
     }
 
     let visible = rings::ring_visible_tool_families(ring);
+    let standard_or_above = ring == Ring::Standard;
     tools
         .into_iter()
         .filter(|t| {
             let name = t["name"].as_str().unwrap_or("");
-            rings::CORE_TOOL_FAMILIES.contains(&name) || visible.contains(name)
+            let is_core = rings::CORE_TOOL_FAMILIES.contains(&name);
+            let is_ring_visible = visible.contains(name);
+            // External providers: non-ledgerr_ tools visible to Standard+
+            let is_external = !name.starts_with("ledgerr_") && standard_or_above;
+            is_core || is_ring_visible || is_external
         })
         .collect()
 }
