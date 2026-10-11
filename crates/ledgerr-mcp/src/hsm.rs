@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -110,6 +112,62 @@ pub struct HsmResumeResponse {
     pub resume_from: String,
     pub resume_hint: String,
     pub blockers: Vec<String>,
+}
+
+/// Payload delivered to every registered hook on a lifecycle transition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransitionHookEvent {
+    /// State before the transition.
+    pub from: LifecycleNode,
+    /// State after the transition.
+    pub to: LifecycleNode,
+}
+
+/// A registered hook callback — `Send + Sync` so it can be called from any thread.
+pub type HookFn = Arc<dyn Fn(&TransitionHookEvent) + Send + Sync + 'static>;
+
+/// Registry of hooks that fire on every successful lifecycle transition.
+///
+/// Each `hsm_transition_tool` or `hsm_resume_tool` call that advances state
+/// calls `fire()` synchronously before returning. This is the "hooks for
+/// each time" mechanism (issue #259 Phase 2 / project-management hooks).
+#[derive(Default)]
+pub struct HsmHookRegistry {
+    hooks: Mutex<Vec<HookFn>>,
+}
+
+impl HsmHookRegistry {
+    /// Register a new hook. Hooks fire in registration order.
+    pub fn register(&self, hook: HookFn) {
+        self.hooks
+            .lock()
+            .expect("HsmHookRegistry lock poisoned")
+            .push(hook);
+    }
+
+    /// Fire all hooks synchronously with `event`.
+    pub fn fire(&self, event: &TransitionHookEvent) {
+        for hook in self
+            .hooks
+            .lock()
+            .expect("HsmHookRegistry lock poisoned")
+            .iter()
+        {
+            hook(event);
+        }
+    }
+
+    /// Number of registered hooks.
+    pub fn len(&self) -> usize {
+        self.hooks
+            .lock()
+            .expect("HsmHookRegistry lock poisoned")
+            .len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -321,6 +379,51 @@ pub fn lifecycle_chart_def() -> Result<lazily::statechart::ChartDef, String> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn hook_registry_starts_empty() {
+        let reg = HsmHookRegistry::default();
+        assert!(reg.is_empty());
+        assert_eq!(reg.len(), 0);
+    }
+
+    #[test]
+    fn hook_fires_on_transition_event() {
+        let reg = HsmHookRegistry::default();
+        let fired: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let fired_clone = Arc::clone(&fired);
+        reg.register(Arc::new(move |evt: &TransitionHookEvent| {
+            fired_clone
+                .lock()
+                .unwrap()
+                .push(format!("{}→{}", evt.from.token(), evt.to.token()));
+        }));
+        assert_eq!(reg.len(), 1);
+
+        let from = LifecycleNode { state: LifecycleState::Ingest, substate: LifecycleSubstate::Pending };
+        let to   = LifecycleNode { state: LifecycleState::Normalize, substate: LifecycleSubstate::Ready };
+        reg.fire(&TransitionHookEvent { from, to });
+
+        let log = fired.lock().unwrap();
+        assert_eq!(log.as_slice(), &["ingest.pending→normalize.ready"]);
+    }
+
+    #[test]
+    fn multiple_hooks_fire_in_registration_order() {
+        let reg = HsmHookRegistry::default();
+        let order: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+        for i in 0u8..3 {
+            let order_clone = Arc::clone(&order);
+            reg.register(Arc::new(move |_| { order_clone.lock().unwrap().push(i); }));
+        }
+        let from = LifecycleNode { state: LifecycleState::Ingest, substate: LifecycleSubstate::Pending };
+        let to   = LifecycleNode { state: LifecycleState::Normalize, substate: LifecycleSubstate::Ready };
+        reg.fire(&TransitionHookEvent { from, to });
+        assert_eq!(*order.lock().unwrap(), vec![0, 1, 2]);
+    }
+
     #[cfg(feature = "statechart")]
     use super::lifecycle_chart_def;
 
