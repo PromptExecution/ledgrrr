@@ -71,8 +71,9 @@ pub use fbar::{
 };
 pub use feie::{FeieInput, FeieOutcome, ForeignResidenceTest};
 pub use hsm::{
-    HookFn, HsmHookRegistry, HsmMachine, HsmResumeRequest, HsmResumeResponse, HsmStatusRequest,
-    HsmStatusResponse, HsmTransitionRequest, HsmTransitionResponse, TransitionHookEvent,
+    BuiltInHook, HookFn, HsmHookRegistry, HsmMachine, HsmResumeRequest, HsmResumeResponse,
+    HsmStatusRequest, HsmStatusResponse, HsmTransitionRequest, HsmTransitionResponse,
+    RegisterHookRequest, RegisterHookResponse, TransitionHookEvent,
 };
 pub use ontology::{
     content_hash, edge_content_hash, entity_content_hash, load_store, persist_store,
@@ -730,6 +731,28 @@ impl TurboLedgerService {
     /// `hsm_resume_tool`). Hooks are called in registration order.
     pub fn register_hsm_hook(&self, hook: HookFn) {
         self.hsm_hooks.register(hook);
+    }
+
+    /// MCP-facing: register a named built-in hook (`on_ingest`, `on_validate`,
+    /// `on_commit`). Returns an error for unknown hook names.
+    pub fn register_hook_tool(
+        &self,
+        request: hsm::RegisterHookRequest,
+    ) -> Result<hsm::RegisterHookResponse, ToolError> {
+        let built_in = hsm::BuiltInHook::from_str(&request.hook_name).ok_or_else(|| {
+            ToolError::InvalidInput(format!(
+                "unknown hook '{}'; valid values: on_ingest, on_validate, on_commit",
+                request.hook_name
+            ))
+        })?;
+        let fires_on = built_in.fires_on().to_string();
+        self.hsm_hooks.register(built_in.into_hook_fn());
+        Ok(hsm::RegisterHookResponse {
+            registered: true,
+            hook_name: request.hook_name,
+            fires_on,
+            reason: None,
+        })
     }
 
     fn state_sidecar_path(&self) -> PathBuf {

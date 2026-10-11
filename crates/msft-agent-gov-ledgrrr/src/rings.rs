@@ -56,6 +56,8 @@ fn standard_action_patterns() -> Vec<String> {
         "ledgerr_workflow.classify_ingested".to_string(),
         "ledgerr_workflow.query_flags".to_string(),
         "ledgerr_workflow.classify_transaction".to_string(),
+        "ledgerr_workflow.register_hook".to_string(),
+        "ledgerr_workflow.status".to_string(),
         "ledgerr_audit.query_audit_log".to_string(),
         "ledgerr_tax.get_schedule_summary".to_string(),
         "ledgerr_tax.export_cpa_workbook".to_string(),
