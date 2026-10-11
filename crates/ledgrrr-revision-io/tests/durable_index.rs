@@ -1,6 +1,6 @@
 use ledgrrr_revision_io::*;
 use std::collections::BTreeMap;
-use ufo_types::revision::{ArtifactPath, PortableModel, RevisionContext, RevisionGraphDescriptor};
+use ledgrrr_revision_io::revision::{ArtifactPath, PortableModel, RevisionContext, RevisionGraphDescriptor};
 
 fn a() -> ActorId {
     ActorId::new("owner").unwrap()

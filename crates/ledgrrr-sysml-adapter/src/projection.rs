@@ -12,7 +12,7 @@ use oxigraph::{
 };
 use serde_json::Value;
 use std::collections::BTreeSet;
-use ufo_types::revision::{
+use ledgrrr_revision_io::revision::{
     ArtifactDigest, IndexCheckpoint, PortableBundle, ProjectId, RevisionGraphDescriptor, RevisionId,
 };
 
@@ -145,10 +145,10 @@ impl Builder<'_> {
     fn type_ref(
         &mut self,
         n: &NamedNode,
-        t: &ufo_types::revision::TypeRef,
+        t: &ledgrrr_revision_io::revision::TypeRef,
         element: &impl Fn(&str) -> NamedNode,
     ) -> Result<(), ProjectionError> {
-        use ufo_types::revision::TypeRef;
+        use ledgrrr_revision_io::revision::TypeRef;
         match t {
             TypeRef::Element(id) => {
                 self.text(n, "type_kind", "element")?;
@@ -180,10 +180,10 @@ impl Builder<'_> {
     fn typed_value(
         &mut self,
         n: &NamedNode,
-        v: &ufo_types::revision::TypedValue,
+        v: &ledgrrr_revision_io::revision::TypedValue,
         element: &impl Fn(&str) -> NamedNode,
     ) -> Result<(), ProjectionError> {
-        use ufo_types::revision::TypedValue;
+        use ledgrrr_revision_io::revision::TypedValue;
         match v {
             TypedValue::Boolean(v) => {
                 self.text(n, "value_kind", "boolean")?;
@@ -228,7 +228,7 @@ impl Builder<'_> {
     fn evidence(
         &mut self,
         owner: &NamedNode,
-        anchors: &[ufo_types::revision::SourceEvidence],
+        anchors: &[ledgrrr_revision_io::revision::SourceEvidence],
         bundle: &PortableBundle,
     ) -> Result<(), ProjectionError> {
         for (i, e) in anchors.iter().enumerate() {
@@ -487,27 +487,27 @@ fn check_json_depth(v: &Value, d: usize, max: usize) -> Result<(), ProjectionErr
     Ok(())
 }
 fn check_type_depth(
-    v: &ufo_types::revision::TypeRef,
+    v: &ledgrrr_revision_io::revision::TypeRef,
     d: usize,
     max: usize,
 ) -> Result<(), ProjectionError> {
     if d > max {
         return Err(ProjectionError::Limit("depth"));
     }
-    if let ufo_types::revision::TypeRef::List(t) = v {
+    if let ledgrrr_revision_io::revision::TypeRef::List(t) = v {
         check_type_depth(t, d + 1, max)?;
     }
     Ok(())
 }
 fn check_value_depth(
-    v: &ufo_types::revision::TypedValue,
+    v: &ledgrrr_revision_io::revision::TypedValue,
     d: usize,
     max: usize,
 ) -> Result<(), ProjectionError> {
     if d > max {
         return Err(ProjectionError::Limit("depth"));
     }
-    if let ufo_types::revision::TypedValue::List(values) = v {
+    if let ledgrrr_revision_io::revision::TypedValue::List(values) = v {
         for v in values {
             check_value_depth(v, d + 1, max)?;
         }

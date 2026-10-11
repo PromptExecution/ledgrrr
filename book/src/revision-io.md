@@ -23,7 +23,7 @@ requirements, source symbols, typed values, relations and binary attachments.
 ```rust
 use ledgrrr_revision_io::*;
 use std::collections::BTreeMap;
-use ufo_types::revision::{PortableModel, RevisionContext};
+use ledgrrr_revision_io::revision::{PortableModel, RevisionContext};
 
 let dir = tempfile::tempdir()?;
 let path = dir.path().join("revisions.sqlite");

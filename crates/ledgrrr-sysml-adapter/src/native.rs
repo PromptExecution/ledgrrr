@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
-use ufo_types::revision::{
+use ledgrrr_revision_io::revision::{
     canonical_bytes, ArtifactDigest, FidelityIssue, FidelityKind, FidelityReport, PortableBundle,
 };
 use ufo_types::{ElementKind, Relation};
@@ -90,7 +90,7 @@ pub enum Error {
     #[error("invalid native protocol: {0}")]
     Protocol(String),
     #[error(transparent)]
-    Revision(#[from] ufo_types::revision::RevisionError),
+    Revision(#[from] ledgrrr_revision_io::revision::RevisionError),
     #[error(transparent)]
     Json(#[from] serde_json::Error),
 }
@@ -202,14 +202,12 @@ fn supported_element(kind: ElementKind) -> bool {
             | ElementKind::PartUsage
             | ElementKind::RequirementDefinition
             | ElementKind::RequirementUsage
-            | ElementKind::VerificationCaseDefinition
-            | ElementKind::VerificationCaseUsage
     )
 }
 fn native_feature(kind: ElementKind) -> bool {
     matches!(
         kind,
-        ElementKind::PartUsage | ElementKind::RequirementUsage | ElementKind::VerificationCaseUsage
+        ElementKind::PartUsage | ElementKind::RequirementUsage
     )
 }
 
@@ -268,12 +266,10 @@ pub fn emit(bundle: &PortableBundle, marker: &OperationMarker) -> Result<Project
             ));
         }
     }
-    let mut typed_features = BTreeSet::new();
     for (id, r) in &bundle.model.relations {
         let allowed = match &r.relation {
-            Relation::Verify { requirement, by } => {
+            Relation::Verify { requirement, .. } => {
                 bundle.model.elements[requirement.as_str()].kind == ElementKind::RequirementUsage
-                    && bundle.model.elements[by.as_str()].kind == ElementKind::VerificationCaseUsage
             }
             Relation::Satisfy {
                 requirement,
@@ -289,11 +285,6 @@ pub fn emit(bundle: &PortableBundle, marker: &OperationMarker) -> Result<Project
             Relation::FeatureMembership { owner, member } => {
                 bundle.model.elements[owner.as_str()].kind == ElementKind::Package
                     && native_feature(bundle.model.elements[member.as_str()].kind)
-            }
-            Relation::FeatureTyping { feature, type_ } => {
-                let compatible = bundle.model.elements[feature.as_str()].kind.definition_of()
-                    == Some(bundle.model.elements[type_.as_str()].kind);
-                compatible && typed_features.insert(feature.as_str())
             }
             Relation::Specialization { .. } => false,
             Relation::Dependency { .. } => true,
@@ -374,28 +365,6 @@ pub fn emit(bundle: &PortableBundle, marker: &OperationMarker) -> Result<Project
                     .insert("membershipOwningNamespace".into(), json!(native_ref(owner)));
                 row.fields
                     .insert("memberElement".into(), json!(native_ref(member)));
-            }
-            Relation::FeatureTyping { feature, type_ } => {
-                row.fields
-                    .insert("typedFeature".into(), json!(native_ref(feature)));
-                row.fields.insert("type".into(), json!(native_ref(type_)));
-                let usage = rows
-                    .get_mut(feature.as_str())
-                    .ok_or_else(|| loss(id, "missing typed usage"))?;
-                match bundle.model.elements[feature.as_str()].kind {
-                    ElementKind::RequirementUsage => {
-                        usage.requirement_definition = Some(native_ref(type_))
-                    }
-                    ElementKind::VerificationCaseUsage => {
-                        usage.verification_case_definition = Some(native_ref(type_))
-                    }
-                    ElementKind::PartUsage => {
-                        usage
-                            .fields
-                            .insert("partDefinition".into(), json!([native_ref(type_)]));
-                    }
-                    _ => return Err(loss(id, "unsupported native typed usage")),
-                }
             }
             _ => return Err(loss(id, "unsupported relation")),
         }

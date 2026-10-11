@@ -29,7 +29,7 @@ use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt},
     sync::Semaphore,
 };
-use ufo_types::revision::{
+use ledgrrr_revision_io::revision::{
     QueryUnavailableReason, RdfTerm, RevisionGraphDescriptor, RevisionQueryRequest,
     RevisionQueryResults, RevisionQuerySelector, MAX_REVISION_QUERY_BYTES,
     MAX_REVISION_QUERY_RESULT_BYTES, MAX_REVISION_QUERY_ROWS, MAX_REVISION_QUERY_VARIABLES,
