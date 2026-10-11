@@ -43,7 +43,11 @@ pub fn load(path: &Path) -> Result<KermDomain, Box<dyn std::error::Error>> {
 pub fn codegen(domain: &KermDomain) -> String {
     let mut out = String::new();
 
-    writeln!(out, "// @generated — do not edit. Source: types/domain.kerm").unwrap();
+    writeln!(
+        out,
+        "// @generated — do not edit. Source: types/domain.kerm"
+    )
+    .unwrap();
     writeln!(out, "// Regenerate with: just gen-kerm").unwrap();
     writeln!(
         out,

@@ -303,14 +303,8 @@ fn ontology_core_snapshot_conversion_preserves_legacy_ids() {
 
     assert_eq!(store.artifacts.len(), 2);
     assert_eq!(store.relations.len(), 1);
-    assert!(store
-        .artifacts
-        .iter()
-        .any(|artifact| artifact.id == doc_id));
-    assert!(store
-        .artifacts
-        .iter()
-        .any(|artifact| artifact.id == tx_id));
+    assert!(store.artifacts.iter().any(|artifact| artifact.id == doc_id));
+    assert!(store.artifacts.iter().any(|artifact| artifact.id == tx_id));
     assert_eq!(store.relations[0].relation, "documents_transaction");
 }
 

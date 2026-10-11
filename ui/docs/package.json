@@ -4,8 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
+    "sync-bindings": "node scripts/sync-bindings.mjs",
+    "dev": "npm run sync-bindings && vite",
+    "build": "npm run sync-bindings && tsc && vite build",
     "preview": "vite preview"
   },
   "devDependencies": {
@@ -13,6 +14,7 @@
     "vite": "^5.2.0"
   },
   "dependencies": {
-    "@huggingface/transformers": "^3.0.0"
+    "@huggingface/transformers": "^3.0.0",
+    "@tauri-apps/api": "^2.9.0"
   }
 }

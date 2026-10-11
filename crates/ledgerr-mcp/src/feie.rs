@@ -6,8 +6,14 @@ use std::str::FromStr;
 use crate::ToolError;
 
 pub enum ForeignResidenceTest {
-    BonaFideResidence { start: String, end: Option<String> },
-    PhysicalPresence { qualifying_days: u16, window: (String, String) },
+    BonaFideResidence {
+        start: String,
+        end: Option<String>,
+    },
+    PhysicalPresence {
+        qualifying_days: u16,
+        window: (String, String),
+    },
 }
 
 pub struct FeieInput {
@@ -41,8 +47,7 @@ pub fn compute_feie(input: &FeieInput) -> FeieOutcome {
     let days_qualified = Decimal::from(input.days_qualified);
     let pro_rated_limit = limit * days_qualified / days_in_year;
 
-    let foreign_income =
-        Decimal::from_str(&input.foreign_earned_income).unwrap_or(Decimal::ZERO);
+    let foreign_income = Decimal::from_str(&input.foreign_earned_income).unwrap_or(Decimal::ZERO);
 
     let excluded_amount = foreign_income.min(pro_rated_limit);
     let income_subject_to_income_tax = foreign_income - excluded_amount;
@@ -81,9 +86,7 @@ pub fn compute_feie_from_json(args: &serde_json::Value) -> Result<FeieOutcome, T
                 .get("test_start")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| {
-                    ToolError::InvalidInput(
-                        "missing `test_start` for bona_fide test".to_string(),
-                    )
+                    ToolError::InvalidInput("missing `test_start` for bona_fide test".to_string())
                 })?
                 .to_string(),
             end: args
@@ -132,9 +135,7 @@ pub fn compute_feie_from_json(args: &serde_json::Value) -> Result<FeieOutcome, T
     let foreign_earned_income = args
         .get("foreign_earned_income")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            ToolError::InvalidInput("missing `foreign_earned_income`".to_string())
-        })?
+        .ok_or_else(|| ToolError::InvalidInput("missing `foreign_earned_income`".to_string()))?
         .to_string();
 
     let days_qualified = args
@@ -189,9 +190,7 @@ pub fn handle_compute_feie(
             };
             let we = match window_end {
                 Some(s) => s.to_string(),
-                None => {
-                    return json!({ "error": "window_end required for physical_presence test" })
-                }
+                None => return json!({ "error": "window_end required for physical_presence test" }),
             };
             ForeignResidenceTest::PhysicalPresence {
                 qualifying_days: qd,

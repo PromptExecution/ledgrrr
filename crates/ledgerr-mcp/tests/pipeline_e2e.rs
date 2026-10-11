@@ -5,8 +5,8 @@ use std::path::Path;
 
 use ledgerr_mcp::{
     IngestStatementRowsRequest, OntologyEdgeInput, OntologyEntityInput, OntologyEntityKind,
-    OntologyStore, OntologyUpsertEdgesRequest, OntologyUpsertEntitiesRequest,
-    SchemaStore, TaxAssistRequest, TurboLedgerService, TurboLedgerTools,
+    OntologyStore, OntologyUpsertEdgesRequest, OntologyUpsertEntitiesRequest, SchemaStore,
+    TaxAssistRequest, TurboLedgerService, TurboLedgerTools,
 };
 
 fn service() -> TurboLedgerService {
@@ -139,10 +139,7 @@ fn pipe_ingest_classify_ontology_flow_produces_deterministic_results() {
 
     // Step 3: Verify ontology was populated by ingest
     let store = OntologyStore::load(&ontology_path).expect("load ontology");
-    assert!(
-        !store.artifacts.is_empty(),
-        "ontology should have entities"
-    );
+    assert!(!store.artifacts.is_empty(), "ontology should have entities");
     let document_entities: Vec<_> = store
         .artifacts
         .iter()
@@ -158,11 +155,7 @@ fn pipe_ingest_classify_ontology_flow_produces_deterministic_results() {
         .iter()
         .filter(|e| e.kind == OntologyEntityKind::Transaction)
         .collect();
-    assert_eq!(
-        tx_entities.len(),
-        1,
-        "one transaction entity from ingest"
-    );
+    assert_eq!(tx_entities.len(), 1, "one transaction entity from ingest");
     assert_eq!(
         store.relations.len(),
         1,
@@ -288,7 +281,9 @@ fn pipe_tax_assist_requires_reconciliation_before_proceeding() {
         .expect("tax assist with mismatch");
     assert_eq!(blocked.status, "blocked");
     assert!(
-        blocked.blocked_reasons.contains(&"totals_mismatch".to_string()),
+        blocked
+            .blocked_reasons
+            .contains(&"totals_mismatch".to_string()),
         "expected totals_mismatch in blocked reasons: {:?}",
         blocked.blocked_reasons
     );

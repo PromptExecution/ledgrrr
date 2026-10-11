@@ -1,0 +1,11 @@
+{
+  "request":{"project":"p","branch":"b","selector":{"kind":"current","allow_older":false},"query":"ASK {}","deadline_ms":250},
+  "invalid":[
+    {"field":"actor","value":"owner"},
+    {"field":"project","value":"wrong-project"},
+    {"field":"branch","value":"wrong-branch"},
+    {"field":"deadline_ms","value":5001},
+    {"field":"deadline_ms","value":0},
+    {"field":"selector","value":{"kind":"unbounded"}}
+  ]
+}

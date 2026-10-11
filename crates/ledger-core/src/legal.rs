@@ -1,22 +1,20 @@
 //! Z3-capable legal rule verification for tax compliance.
 //! Encodes hard legal predicates as satisfiability checks over transaction facts.
 
-use serde::{Deserialize, Serialize};
+use crate::attest::{AttestationSpec, Attested};
 use ledger_attest::attested;
-use crate::attest::{Attested, AttestationSpec};
+use serde::{Deserialize, Serialize};
 #[cfg(feature = "legal-z3")]
 use z3::{ast::Bool, Config, Context, SatResult, Solver};
 
 /// Jurisdiction for tax rule evaluation (US, AU, UK, etc.)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum Jurisdiction {
     #[default]
     US,
     AU,
     UK,
 }
-
 
 impl Jurisdiction {
     pub fn code(&self) -> &'static str {

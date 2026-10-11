@@ -135,7 +135,9 @@ fn validate_rejects_edge_to_unknown_node() {
 #[test]
 fn ooda_learning_is_a_deterministic_authorized_state_machine() {
     let model = load_fixture("b00t-learn-ooda.json");
-    model.validate().expect("OODA authorization boundary is valid");
+    model
+        .validate()
+        .expect("OODA authorization boundary is valid");
 
     let rendered = render::render(&model, "state-machine").expect("render state machine");
     assert!(rendered.starts_with("stateDiagram-v2\n"));
@@ -145,7 +147,10 @@ fn ooda_learning_is_a_deterministic_authorized_state_machine() {
     let trace = simulate::simulate(&model, simulate::DETERMINISTIC_PROFILE).expect("simulate");
     assert_eq!(trace.steps.len(), 6);
     assert_eq!(trace.steps[1].outcome, "observation_captured");
-    assert_eq!(trace.steps[1].execution_role.as_deref(), Some("governance-agent"));
+    assert_eq!(
+        trace.steps[1].execution_role.as_deref(),
+        Some("governance-agent")
+    );
     assert_eq!(trace.steps[1].capability.as_deref(), Some("b00t.learn"));
     assert_eq!(trace.steps[3].status, StepStatus::Executed);
     assert_eq!(trace.steps[4].outcome, "learning_memo_recorded");
@@ -154,10 +159,10 @@ fn ooda_learning_is_a_deterministic_authorized_state_machine() {
 #[test]
 fn role_cannot_exceed_declared_b00t_capabilities() {
     let mut model = load_fixture("b00t-learn-ooda.json");
-    model.role_authorizations[0]
-        .capabilities
-        .clear();
-    let error = model.validate().expect_err("missing grant must fail closed");
+    model.role_authorizations[0].capabilities.clear();
+    let error = model
+        .validate()
+        .expect_err("missing grant must fail closed");
     assert!(matches!(
         error,
         ledgerr_desktop_agent::playbook::PlaybookError::UnauthorizedRole { node_id, role, capability }
@@ -169,7 +174,9 @@ fn role_cannot_exceed_declared_b00t_capabilities() {
 fn process_cannot_invoke_an_undeclared_b00t_capability() {
     let mut model = load_fixture("b00t-learn-ooda.json");
     model.capability_refs.clear();
-    let error = model.validate().expect_err("undeclared capability must fail closed");
+    let error = model
+        .validate()
+        .expect_err("undeclared capability must fail closed");
     assert!(matches!(
         error,
         ledgerr_desktop_agent::playbook::PlaybookError::UndeclaredCapability { node_id, capability }

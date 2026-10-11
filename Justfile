@@ -17,18 +17,21 @@ mcp-stop:
     pkill -f ledgerr-mcp-server || true
 
 # Build the Windows host binaries from WSL via PowerShell. This is the canonical
-# path for `host-tray.exe` and `host-tauri.exe`.
+# path for `host-tauri.exe` — `host-tray.exe` was retired (see
+# docs/superpowers/specs/2026-08-29-tray-tauri-integration-design.md);
+# host-tauri.exe's own tray now has full feature parity with it.
 wsl2-pwsh-build:
-    powershell.exe -NoProfile -Command '$env:PATH = "C:\Users\wendy\.cargo\bin;C:\msys64\mingw64\bin;" + $env:PATH; Set-Location "D:\Projects\l3dg3rr"; cargo build -p ledgerr-host --bin host-tray --bin host-tauri'
+    powershell.exe -NoProfile -Command '$env:PATH = "C:\Users\wendy\.cargo\bin;C:\msys64\mingw64\bin;" + $env:PATH; Set-Location "D:\Projects\l3dg3rr"; cargo build -p ledgerr-host --bin host-tauri'
 
 # Full local install: build host binaries, MCP server, and docs.
 # Run this from WSL after any code change to get a fresh Windows build.
 wsl2-pwsh-install:
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '$env:PATH = "C:\Users\wendy\.cargo\bin;C:\msys64\mingw64\bin;" + $env:PATH; Set-Location "D:\Projects\l3dg3rr"; Write-Host "[1/3] Building ledgerr-host bins..."; cargo build -p ledgerr-host --bin host-tray --bin host-tauri; if ($LASTEXITCODE -ne 0) { throw "host build failed" }; Write-Host "[2/3] Building MCP server..."; cargo build -p ledgerr-mcp --bin ledgerr-mcp-server; if ($LASTEXITCODE -ne 0) { throw "MCP server build failed" }; Write-Host "[3/3] Build complete."; Write-Host ""; Write-Host "Installed binaries:"; Get-Item "target\debug\host-tray.exe","target\debug\host-tauri.exe","target\debug\ledgerr-mcp-server.exe" | ForEach-Object { "  " + $_.FullName + "  (" + [math]::Round($_.Length/1KB, 1) + " KB)" }'
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '$env:PATH = "C:\Users\wendy\.cargo\bin;C:\msys64\mingw64\bin;" + $env:PATH; Set-Location "D:\Projects\l3dg3rr"; Write-Host "[1/3] Building ledgerr-host bins..."; cargo build -p ledgerr-host --bin host-tauri; if ($LASTEXITCODE -ne 0) { throw "host build failed" }; Write-Host "[2/3] Building MCP server..."; cargo build -p ledgerr-mcp --bin ledgerr-mcp-server; if ($LASTEXITCODE -ne 0) { throw "MCP server build failed" }; Write-Host "[3/3] Build complete."; Write-Host ""; Write-Host "Installed binaries:"; Get-Item "target\debug\host-tauri.exe","target\debug\ledgerr-mcp-server.exe" | ForEach-Object { "  " + $_.FullName + "  (" + [math]::Round($_.Length/1KB, 1) + " KB)" }'
 
-# Rebuild and launch the tray host on Windows.
+# Rebuild and launch the tray host on Windows (host-tauri.exe — the retired
+# standalone host-tray.exe's tray is now built into it).
 wsl2-pwsh-run-tray:
-    powershell.exe -NoProfile -Command '$env:PATH = "C:\Users\wendy\.cargo\bin;C:\msys64\mingw64\bin;" + $env:PATH; Set-Location "D:\Projects\l3dg3rr"; cargo build -p ledgerr-host --bin host-tray | Out-Null; Get-Process host-tray -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep -Milliseconds 250; Start-Process -FilePath "D:\Projects\l3dg3rr\target\debug\host-tray.exe" -WorkingDirectory "D:\Projects\l3dg3rr"'
+    powershell.exe -NoProfile -Command '$env:PATH = "C:\Users\wendy\.cargo\bin;C:\msys64\mingw64\bin;" + $env:PATH; Set-Location "D:\Projects\l3dg3rr"; cargo build -p ledgerr-host --bin host-tauri | Out-Null; Get-Process host-tauri -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep -Milliseconds 250; Start-Process -FilePath "D:\Projects\l3dg3rr\target\debug\host-tauri.exe" -WorkingDirectory "D:\Projects\l3dg3rr"'
 
 # Rebuild and launch the Tauri desktop host on Windows (no local LLM).
 # The internal endpoint falls back to the deterministic Phi-4 stub.
@@ -97,6 +100,14 @@ test:
     cargo test --workspace --all-targets --all-features
     cargo build -p ledgerr-mcp --bin mcp-outcome-test
     ./target/debug/mcp-outcome-test
+
+# Test the provider-neutral durable revision owner.
+revision-io-test:
+    cargo test -p ledgrrr-revision-io
+
+# Check the revision owner and its tests with warnings denied.
+revision-io-check:
+    cargo clippy -p ledgrrr-revision-io --all-targets -- -D warnings
 
 # ─── Tauri build (Windows host) ─────────────────────────────────────────────────
 
@@ -777,3 +788,39 @@ env-docs-check:
 # Timed b00t maintenance probe for version/task/focus/audit surfaces.
 b00t-maintenance-check budget="":
     bash scripts/check-b00t-maintenance.sh {{ if budget == "" { "" } else { "--budget " + budget } }}
+
+# Native codec + durable owner checks. Live infrastructure has a separate gate.
+sysml-revision-test:
+    cargo test -p ledgrrr-revision-io -p ledgrrr-sysml-adapter --locked
+
+sysml-revision-check:
+    cargo clippy -p ledgrrr-revision-io -p ledgrrr-sysml-adapter --all-targets --locked -- -D warnings
+
+# Durable accepted-revision projection, fenced publication and bounded queries.
+sysml-index-test:
+    cargo test -p ledgrrr-revision-io --test durable_index --locked
+    cargo test -p ledgrrr-sysml-adapter --test revision_projection --test revision_queries --test index_owner_routes --locked
+
+sysml-index-check:
+    cargo clippy -p ledgrrr-revision-io -p ledgrrr-sysml-adapter --all-targets --locked -- -D warnings
+
+# Requires the preserving private owner runtime; never resets provider state.
+sysml-index-live:
+    python3 scripts/sysml-index-live-probe.py --output /tmp/sysml-index-c9d-live-report.json
+
+sysml-owner-build:
+    cargo build -p ledgrrr-sysml-adapter --bin revision-owner --locked
+
+# New private provider pod only; retained pex-sysml-reference is never restarted.
+sysml-owner-up: sysml-owner-build
+    bash scripts/sysml-owner-runtime.sh up
+
+# Real HTTP acceptance; unavailable infrastructure reports Unknown and exits 2.
+sysml-owner-live:
+    python3 scripts/sysml-owner-live-probe.py --output /tmp/sysml-owner-c9d-live-report.json
+
+# P2 gate: fetch→emit→OMG server→fetch→hydrate semantic digest roundtrip.
+# Requires the disposable reference server: export SYSML_API_URL=http://127.0.0.1:19000
+sysml-p2-live:
+    SYSML_API_URL="${SYSML_API_URL:-http://127.0.0.1:19000}" \
+    cargo test -p ledgrrr-sysml-adapter --test live_roundtrip --locked -- --test-threads=1 --nocapture

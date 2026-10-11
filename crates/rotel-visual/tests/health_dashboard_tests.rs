@@ -29,23 +29,20 @@ async fn test_dashboard_endpoint() {
     let _app = rotel_visual::create_app().expect("create_app failed");
 
     let response = _app
-        .oneshot(
-            Request::builder()
-                .uri("/")
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
         .await
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    assert!(response
-        .headers()
-        .get("content-type")
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .starts_with("text/html"));
+    assert!(
+        response
+            .headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .starts_with("text/html")
+    );
 }
 
 #[tokio::test]

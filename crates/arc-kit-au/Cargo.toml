@@ -15,7 +15,7 @@ chrono = { workspace = true, features = ["serde"] }
 rust_decimal = { workspace = true, features = ["serde"] }
 tracing.workspace = true
 ordered-float.workspace = true
-sysml-derive = { path = "../sysml-derive" }
+sysml-derive = { git = "https://github.com/PromptExecution/sysml-derive.git", rev = "3340ece" }
 
 [dev-dependencies]
 tempfile.workspace = true

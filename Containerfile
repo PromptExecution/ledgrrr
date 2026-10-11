@@ -20,11 +20,18 @@ COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY xtask ./xtask
 COPY kani-proofs ./kani-proofs
+COPY vendor ./vendor
 RUN cargo chef prepare --recipe-path recipe.json
 
 # ── build ─────────────────────────────────────────────────────────────────────
 FROM chef AS builder
 COPY --from=planner /app/recipe.json recipe.json
+# vendor/ holds [patch.crates-io] path targets (not workspace members), so
+# cargo-chef's recipe.json doesn't virtualize them the way it does for
+# crates/xtask/kani-proofs — cargo still reads their real Cargo.toml off
+# disk even during the synthetic `cook` step, so vendor/ must be present
+# *before* cook runs, not just before the later real source COPY block.
+COPY vendor ./vendor
 RUN cargo chef cook --release --recipe-path recipe.json
 
 COPY Cargo.toml Cargo.lock ./

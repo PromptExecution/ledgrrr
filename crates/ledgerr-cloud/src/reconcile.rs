@@ -165,14 +165,18 @@ mod tests {
                 auth_result: match &self.auth_result {
                     Ok(()) => Ok(()),
                     Err(ProviderError::NoApi) => Err(ProviderError::NoApi),
-                    Err(ProviderError::AuthRequired(s)) => Err(ProviderError::AuthRequired(s.clone())),
+                    Err(ProviderError::AuthRequired(s)) => {
+                        Err(ProviderError::AuthRequired(s.clone()))
+                    }
                     Err(ProviderError::Parse(s)) => Err(ProviderError::Parse(s.clone())),
                     Err(ProviderError::Io(_)) => Err(ProviderError::Parse("io".to_string())),
                 },
                 budget_result: match &self.budget_result {
                     Ok(v) => Ok(v.clone()),
                     Err(ProviderError::NoApi) => Err(ProviderError::NoApi),
-                    Err(ProviderError::AuthRequired(s)) => Err(ProviderError::AuthRequired(s.clone())),
+                    Err(ProviderError::AuthRequired(s)) => {
+                        Err(ProviderError::AuthRequired(s.clone()))
+                    }
                     Err(ProviderError::Parse(s)) => Err(ProviderError::Parse(s.clone())),
                     Err(ProviderError::Io(_)) => Err(ProviderError::Parse("io".to_string())),
                 },
@@ -185,7 +189,9 @@ mod tests {
             let result = self.clone().auth_result;
             async move { result }
         }
-        fn fetch_budget(&self) -> impl Future<Output = Result<Option<BudgetInfo>, ProviderError>> + Send {
+        fn fetch_budget(
+            &self,
+        ) -> impl Future<Output = Result<Option<BudgetInfo>, ProviderError>> + Send {
             let result = self.clone().budget_result;
             async move { result }
         }

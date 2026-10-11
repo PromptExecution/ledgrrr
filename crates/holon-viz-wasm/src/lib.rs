@@ -17,7 +17,10 @@ fn parse_graph(json: &str) -> Result<CytoscapeGraph, JsValue> {
     serde_json::from_str(json).map_err(|e| JsError::new(&format!("invalid graph JSON: {e}")).into())
 }
 
-fn connected_node_ids(edges: &[holon_viz::CytoscapeEdge], matched_ids: &BTreeSet<String>) -> BTreeSet<String> {
+fn connected_node_ids(
+    edges: &[holon_viz::CytoscapeEdge],
+    matched_ids: &BTreeSet<String>,
+) -> BTreeSet<String> {
     let mut result = matched_ids.clone();
     for edge in edges {
         if result.contains(&edge.data.source) || result.contains(&edge.data.target) {
@@ -81,7 +84,10 @@ pub fn filter_nodes_by_z_layer(graph_json: &str, z_layer: &str) -> Result<String
 }
 
 #[wasm_bindgen]
-pub fn filter_nodes_by_semantic_type(graph_json: &str, semantic_type: &str) -> Result<String, JsValue> {
+pub fn filter_nodes_by_semantic_type(
+    graph_json: &str,
+    semantic_type: &str,
+) -> Result<String, JsValue> {
     let graph = parse_graph(graph_json)?;
     let matched: BTreeSet<String> = graph
         .nodes

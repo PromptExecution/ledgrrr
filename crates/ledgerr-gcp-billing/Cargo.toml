@@ -1,0 +1,21 @@
+[package]
+name = "ledgerr-gcp-billing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "GCP BigQuery Billing Export (FOCUS-conformant) ingestion — shells out to `bq`, no cloud SDK dependencies."
+
+[dependencies]
+tokio = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+rust_decimal = { workspace = true }
+thiserror = { workspace = true }
+blake3 = { workspace = true }
+ledgerr-focus = { workspace = true }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+tempfile = { workspace = true }

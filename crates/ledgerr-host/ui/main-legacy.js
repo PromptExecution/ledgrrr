@@ -159,6 +159,69 @@ function setBusy(busy){
   if(saveBtn)saveBtn.textContent=busy?'Working…':'Save';
 }
 
+// Blocking-style confirmation popup for one pending mutation tool call
+// (l3dg3rr#208 follow-up: classify_transaction / batch_classify /
+// bulk_resolve_flags). `item` is a PendingConfirmationPayload:
+// {id, name, arguments_json, card_text}. Calls confirm_pending_tool_call on
+// Approve/Reject; the popup only reflects that decision -- it is the
+// backend's chat_tools::is_mutation_tool gate (chat.rs) that actually
+// withholds dispatch until every pending id is resolved.
+function showToolConfirmationPopup(item){
+  var overlay=document.createElement('div');
+  overlay.className='tool-confirm-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;';
+
+  var card=document.createElement('div');
+  card.className='tool-confirm-card';
+  card.style.cssText='background:#1c1c1c;color:#f0f0f0;border:1px solid #666;border-radius:8px;padding:20px;max-width:640px;width:90%;max-height:80vh;overflow:auto;box-shadow:0 8px 32px rgba(0,0,0,0.6);';
+
+  var heading=document.createElement('div');
+  heading.textContent='Confirmation required before this action runs';
+  heading.style.cssText='font-weight:600;margin-bottom:12px;font-size:1.05em;';
+  card.appendChild(heading);
+
+  var body=document.createElement('pre');
+  body.textContent=item.card_text||(item.name+'\n'+item.arguments_json);
+  body.style.cssText='white-space:pre-wrap;font-family:monospace;font-size:0.92em;margin:0 0 16px 0;';
+  card.appendChild(body);
+
+  var btnRow=document.createElement('div');
+  btnRow.style.cssText='display:flex;gap:12px;justify-content:flex-end;';
+
+  var rejectBtn=document.createElement('button');
+  rejectBtn.textContent='Reject';
+  rejectBtn.style.cssText='padding:8px 18px;background:#5a1f1f;color:#fff;border:1px solid #a33;border-radius:4px;cursor:pointer;';
+
+  var approveBtn=document.createElement('button');
+  approveBtn.textContent='Approve';
+  approveBtn.style.cssText='padding:8px 18px;background:#1f5a2b;color:#fff;border:1px solid #3a3;border-radius:4px;cursor:pointer;';
+
+  function respond(approved){
+    approveBtn.disabled=true;rejectBtn.disabled=true;
+    invoke('confirm_pending_tool_call',{callId:item.id,approved:approved}).then(function(status){
+      var note=document.createElement('div');
+      note.style.cssText='margin-top:10px;font-size:0.85em;opacity:0.85;';
+      note.textContent=status;
+      card.appendChild(note);
+      setTimeout(function(){overlay.remove();},900);
+    }).catch(function(err){
+      var note=document.createElement('div');
+      note.style.cssText='margin-top:10px;color:#f88;';
+      note.textContent='Error: '+(err&&err.message?err.message:err);
+      card.appendChild(note);
+      approveBtn.disabled=false;rejectBtn.disabled=false;
+    });
+  }
+  approveBtn.addEventListener('click',function(){respond(true)});
+  rejectBtn.addEventListener('click',function(){respond(false)});
+
+  btnRow.appendChild(rejectBtn);
+  btnRow.appendChild(approveBtn);
+  card.appendChild(btnRow);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+}
+
 function applySettings(p){
   setVal('input-endpoint',p.endpoint_text);
   setVal('input-model',p.model_text);
@@ -196,6 +259,17 @@ document.addEventListener('DOMContentLoaded',function(){
     setVal('draft-input',d.draft_message_text);
     setTextSafe(document.getElementById('status-bar'),d.status_text);
     setBusy(!!d.busy);
+  }).catch(function(){});
+
+  // Listen for tool-confirmation-required events -- mutation tool calls
+  // (classify_transaction / batch_classify / bulk_resolve_flags) that are
+  // blocked pending explicit operator approval (l3dg3rr#208 follow-up). The
+  // backend never dispatches a pending call until confirm_pending_tool_call
+  // resolves it, regardless of what happens to this popup -- this UI is a
+  // convenience for responding, not the enforcement point.
+  listen('tool-confirmation-required',function(ev){
+    var pending=(ev.payload&&ev.payload.pending)||[];
+    pending.forEach(showToolConfirmationPopup);
   }).catch(function(){});
 
   // Sidebar collapse

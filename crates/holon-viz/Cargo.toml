@@ -27,11 +27,7 @@ tempfile.workspace = true
 # grammar (see docs/sysml-v2-parser-spike.md). Dev-dependency only, since
 # ufo-types' sysml-v2-parser dependency is not wasm32-compatible and
 # holon-viz-wasm must never pull it in.
-# PR #3 (feat/ledger-ontology-modules -- stereotype/satisfies/iso
-# consolidation, sysml module, MBSE export) is merged and published as
-# ufo-types 0.11.0; this now tracks the real crates.io release instead of
-# a pre-merge git rev.
-ufo-types = { version = "0.11", features = ["sysml"] }
+ufo-types = { workspace = true, features = ["sysml"] }
 # CDP integration test dependency — only required when TEST_WEBVIEW=1 is set
 # cargo test --test holon_viz_visual_e2e      # e2e with live Tauri WebView2
 # cargo test                                    # unit + integration (no webview)

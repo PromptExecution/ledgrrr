@@ -1,12 +1,12 @@
 use std::path::{Path, PathBuf};
 
-use rust_xlsxwriter::{Workbook, Worksheet, DataValidation, Format};
-use calamine::{Reader, open_workbook, Xlsx, Data};
+use calamine::{open_workbook, Data, Reader, Xlsx};
+use rust_xlsxwriter::{DataValidation, Format, Workbook, Worksheet};
 use serde::{Deserialize, Serialize};
 
-use crate::classify::{TaxCategory, Flag};
+use crate::attest::{AttestationSpec, Attested};
+use crate::classify::{Flag, TaxCategory};
 use crate::validation::{CommitGate, Disposition, Issue, MetaCtx};
-use crate::attest::{Attested, AttestationSpec};
 use ledger_attest::attested;
 use strum::VariantArray;
 
@@ -51,7 +51,17 @@ impl<'a> TransactionRow<'a> {
         needs_review: bool,
         flag: Option<&'a str>,
     ) -> Self {
-        Self { tx_id, date, vendor, account, amount, category, confidence, needs_review, flag }
+        Self {
+            tx_id,
+            date,
+            vendor,
+            account,
+            amount,
+            category,
+            confidence,
+            needs_review,
+            flag,
+        }
     }
 }
 
@@ -70,7 +80,7 @@ pub fn initialize_workbook(path: &Path) -> Result<(), rust_xlsxwriter::XlsxError
     let mut workbook = Workbook::new();
     for sheet_name in REQUIRED_SHEETS {
         let worksheet = workbook.add_worksheet().set_name(*sheet_name)?;
-        
+
         if *sheet_name == TRANSACTIONS_SHEET {
             setup_transactions_sheet(worksheet)?;
         } else if *sheet_name == "AUDIT.log" {
@@ -94,7 +104,10 @@ fn setup_transactions_sheet(worksheet: &mut Worksheet) -> Result<(), rust_xlsxwr
     let text_format = Format::new().set_num_format("@");
     worksheet.set_column_format(4, &text_format)?;
 
-    let categories: Vec<String> = TaxCategory::VARIANTS.iter().map(|c| c.to_string()).collect();
+    let categories: Vec<String> = TaxCategory::VARIANTS
+        .iter()
+        .map(|c| c.to_string())
+        .collect();
     let validation = DataValidation::new().allow_list_strings(&categories)?;
     worksheet.add_data_validation(1, 5, 1000, 5, &validation)?;
 
@@ -137,7 +150,9 @@ impl WorkbookWriter {
         Ok(range.height() as u32)
     }
 
-    pub fn get_existing_tx_ids(&self) -> Result<std::collections::HashSet<String>, Box<dyn std::error::Error>> {
+    pub fn get_existing_tx_ids(
+        &self,
+    ) -> Result<std::collections::HashSet<String>, Box<dyn std::error::Error>> {
         let mut workbook: Xlsx<_> = open_workbook(&self.path)?;
         let range = workbook.worksheet_range("TRANSACTIONS")?;
         let mut tx_ids = std::collections::HashSet::new();
@@ -157,8 +172,13 @@ impl WorkbookWriter {
     ) -> Result<(), rust_xlsxwriter::XlsxError> {
         for (r_idx, row) in range.rows().enumerate() {
             for (c_idx, cell) in row.iter().enumerate() {
-                let should_skip = matches!(cell,
-                    Data::Empty | Data::DateTime(_) | Data::DateTimeIso(_) | Data::DurationIso(_) | Data::Error(_)
+                let should_skip = matches!(
+                    cell,
+                    Data::Empty
+                        | Data::DateTime(_)
+                        | Data::DateTimeIso(_)
+                        | Data::DurationIso(_)
+                        | Data::Error(_)
                 );
 
                 if should_skip {
@@ -167,7 +187,9 @@ impl WorkbookWriter {
 
                 match cell {
                     Data::String(s) => worksheet.write_string(r_idx as u32, c_idx as u16, s)?,
-                    Data::Int(i) => worksheet.write_number(r_idx as u32, c_idx as u16, *i as f64)?,
+                    Data::Int(i) => {
+                        worksheet.write_number(r_idx as u32, c_idx as u16, *i as f64)?
+                    }
                     Data::Float(f) => worksheet.write_number(r_idx as u32, c_idx as u16, *f)?,
                     Data::Bool(b) => worksheet.write_boolean(r_idx as u32, c_idx as u16, *b)?,
                     _ => unreachable!(),
@@ -182,7 +204,7 @@ impl WorkbookWriter {
         new_workbook: &mut Workbook,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut workbook: Xlsx<_> = open_workbook(&self.path)?;
-        
+
         for sheet_name in REQUIRED_SHEETS {
             let worksheet = new_workbook.add_worksheet().set_name(*sheet_name)?;
             if *sheet_name == TRANSACTIONS_SHEET {
@@ -194,7 +216,7 @@ impl WorkbookWriter {
                 Self::copy_sheet_data(worksheet, &range)?;
             }
         }
-        
+
         Ok(())
     }
 
@@ -202,18 +224,21 @@ impl WorkbookWriter {
         workbook: &'a mut Workbook,
         name: &str,
     ) -> Option<&'a mut Worksheet> {
-        workbook.worksheets_mut().iter_mut().find(|w| w.name() == name)
+        workbook
+            .worksheets_mut()
+            .iter_mut()
+            .find(|w| w.name() == name)
     }
 
     pub fn append_row(&self, row: TransactionRow<'_>) -> Result<(), Box<dyn std::error::Error>> {
         let row_count = self.get_row_count(TRANSACTIONS_SHEET)?;
-        
+
         let mut new_workbook = Workbook::new();
         self.copy_all_sheets(&mut new_workbook)?;
 
         let worksheet = Self::find_worksheet_by_name(&mut new_workbook, TRANSACTIONS_SHEET)
             .ok_or("TRANSACTIONS sheet not found")?;
-        
+
         worksheet.write_string(row_count, 0, row.tx_id)?;
         worksheet.write_string(row_count, 1, row.date)?;
         worksheet.write_string(row_count, 2, row.vendor)?;
@@ -227,7 +252,15 @@ impl WorkbookWriter {
         }
 
         new_workbook.save(&self.path)?;
-        self.append_mutation_internal(None, "append_row", row.tx_id, "agent", "workflow", "", &format!("Added transaction {}", row.tx_id))?;
+        self.append_mutation_internal(
+            None,
+            "append_row",
+            row.tx_id,
+            "agent",
+            "workflow",
+            "",
+            &format!("Added transaction {}", row.tx_id),
+        )?;
         Ok(())
     }
 
@@ -244,13 +277,13 @@ impl WorkbookWriter {
         flagged_by: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let row = self.get_row_count("FLAGS.open")?;
-        
+
         let mut new_workbook = Workbook::new();
         self.copy_all_sheets(&mut new_workbook)?;
 
         let worksheet = Self::find_worksheet_by_name(&mut new_workbook, "FLAGS.open")
             .ok_or("FLAGS.open sheet not found")?;
-        
+
         worksheet.write_string(row, 0, tx_id)?;
         worksheet.write_string(row, 1, date)?;
         worksheet.write_string(row, 2, vendor)?;
@@ -262,14 +295,19 @@ impl WorkbookWriter {
         worksheet.write_string(row, 8, flagged_by)?;
 
         new_workbook.save(&self.path)?;
-        self.append_mutation_internal(None, "append_flag", tx_id, "agent", "workflow", "", &format!("Flagged: {}", flag_reason))?;
+        self.append_mutation_internal(
+            None,
+            "append_flag",
+            tx_id,
+            "agent",
+            "workflow",
+            "",
+            &format!("Flagged: {}", flag_reason),
+        )?;
         Ok(())
     }
 
-    pub fn append_audit_row(
-        &self,
-        row: &AuditRow,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn append_audit_row(&self, row: &AuditRow) -> Result<(), Box<dyn std::error::Error>> {
         let row_idx = self.get_row_count("AUDIT.log")?;
 
         let mut new_workbook = Workbook::new();
@@ -305,7 +343,15 @@ impl WorkbookWriter {
         if timestamp.is_empty() {
             return Err("timestamp cannot be empty".into());
         }
-        self.append_mutation_internal(Some(timestamp), action, tx_id, agent_id, ring, before, after)
+        self.append_mutation_internal(
+            Some(timestamp),
+            action,
+            tx_id,
+            agent_id,
+            ring,
+            before,
+            after,
+        )
     }
 
     /// Convenience wrapper: construct a [`MutationRecord`] and pass it here instead of 7 `&str` args.
@@ -335,7 +381,7 @@ impl WorkbookWriter {
         after: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let row = self.get_row_count("MUTATION_HISTORY")?;
-        
+
         let mut new_workbook = Workbook::new();
         self.copy_all_sheets(&mut new_workbook)?;
 
@@ -344,7 +390,7 @@ impl WorkbookWriter {
             .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
         let worksheet = Self::find_worksheet_by_name(&mut new_workbook, "MUTATION_HISTORY")
             .ok_or("MUTATION_HISTORY sheet not found")?;
-        
+
         worksheet.write_string(row, 0, &timestamp)?;
         worksheet.write_string(row, 1, tx_id)?;
         worksheet.write_string(row, 2, agent_id)?;
@@ -405,8 +451,8 @@ impl AuditRow {
             .map(|d| format!("{d:?}").to_ascii_lowercase())
             .unwrap_or_else(|| "ok".to_string());
 
-        let stage_trace_json = serde_json::to_string(&meta.stage_trace)
-            .unwrap_or_else(|_| "[]".to_string());
+        let stage_trace_json =
+            serde_json::to_string(&meta.stage_trace).unwrap_or_else(|_| "[]".to_string());
 
         let flags = meta
             .flags
@@ -502,13 +548,16 @@ mod tests {
     fn test_initialize_workbook_creates_required_sheets() {
         let temp_file = NamedTempFile::new().unwrap();
         let path = temp_file.path();
-        
+
         initialize_workbook(path).unwrap();
-        
+
         let mut workbook: Xlsx<_> = open_workbook(path).unwrap();
         for sheet_name in REQUIRED_SHEETS {
-            assert!(workbook.worksheet_range(sheet_name).is_ok(),
-                "Sheet {} should exist", sheet_name);
+            assert!(
+                workbook.worksheet_range(sheet_name).is_ok(),
+                "Sheet {} should exist",
+                sheet_name
+            );
         }
     }
 
@@ -516,12 +565,12 @@ mod tests {
     fn test_transactions_sheet_has_headers_and_validation() {
         let temp_file = NamedTempFile::new().unwrap();
         let path = temp_file.path();
-        
+
         initialize_workbook(path).unwrap();
-        
+
         let mut workbook: Xlsx<_> = open_workbook(path).unwrap();
         let range = workbook.worksheet_range("TRANSACTIONS").unwrap();
-        
+
         assert_eq!(range.get((0, 0)).unwrap().to_string(), "tx_id");
         assert_eq!(range.get((0, 1)).unwrap().to_string(), "date");
         assert_eq!(range.get((0, 5)).unwrap().to_string(), "category");
@@ -532,25 +581,27 @@ mod tests {
     fn test_append_row_writes_transaction_data() {
         let temp_file = NamedTempFile::new().unwrap();
         let path = temp_file.path();
-        
+
         initialize_workbook(path).unwrap();
-        
+
         let writer = WorkbookWriter::new(path);
-        writer.append_row(TransactionRow::new(
-            "tx_001",
-            "2023-01-15",
-            "Acme Corp",
-            "CHK-001",
-            "1234.56",
-            "office_supplies",
-            0.95,
-            false,
-            None,
-        )).unwrap();
-        
+        writer
+            .append_row(TransactionRow::new(
+                "tx_001",
+                "2023-01-15",
+                "Acme Corp",
+                "CHK-001",
+                "1234.56",
+                "office_supplies",
+                0.95,
+                false,
+                None,
+            ))
+            .unwrap();
+
         let mut workbook: Xlsx<_> = open_workbook(path).unwrap();
         let range = workbook.worksheet_range("TRANSACTIONS").unwrap();
-        
+
         assert_eq!(range.get((1, 0)).unwrap().to_string(), "tx_001");
         assert_eq!(range.get((1, 1)).unwrap().to_string(), "2023-01-15");
         assert_eq!(range.get((1, 2)).unwrap().to_string(), "Acme Corp");
@@ -565,37 +616,41 @@ mod tests {
     fn test_append_row_twice_creates_two_rows() {
         let temp_file = NamedTempFile::new().unwrap();
         let path = temp_file.path();
-        
+
         initialize_workbook(path).unwrap();
-        
+
         let writer = WorkbookWriter::new(path);
-        writer.append_row(TransactionRow::new(
-            "tx_001",
-            "2023-01-15",
-            "Acme Corp",
-            "CHK-001",
-            "1234.56",
-            "office_supplies",
-            0.95,
-            false,
-            None,
-        )).unwrap();
-        
-        writer.append_row(TransactionRow::new(
-            "tx_002",
-            "2023-01-16",
-            "Beta Inc",
-            "CHK-001",
-            "789.00",
-            "travel",
-            0.88,
-            true,
-            Some("unusual_amount"),
-        )).unwrap();
-        
+        writer
+            .append_row(TransactionRow::new(
+                "tx_001",
+                "2023-01-15",
+                "Acme Corp",
+                "CHK-001",
+                "1234.56",
+                "office_supplies",
+                0.95,
+                false,
+                None,
+            ))
+            .unwrap();
+
+        writer
+            .append_row(TransactionRow::new(
+                "tx_002",
+                "2023-01-16",
+                "Beta Inc",
+                "CHK-001",
+                "789.00",
+                "travel",
+                0.88,
+                true,
+                Some("unusual_amount"),
+            ))
+            .unwrap();
+
         let mut workbook: Xlsx<_> = open_workbook(path).unwrap();
         let range = workbook.worksheet_range("TRANSACTIONS").unwrap();
-        
+
         assert_eq!(range.get((1, 0)).unwrap().to_string(), "tx_001");
         assert_eq!(range.get((2, 0)).unwrap().to_string(), "tx_002");
     }
@@ -604,27 +659,32 @@ mod tests {
     fn test_append_flag_writes_to_flags_sheet() {
         let temp_file = NamedTempFile::new().unwrap();
         let path = temp_file.path();
-        
+
         initialize_workbook(path).unwrap();
-        
+
         let writer = WorkbookWriter::new(path);
-        writer.append_flag(
-            "tx_001",
-            "2023-01-15",
-            "Acme Corp",
-            "CHK-001",
-            "99999.99",
-            "other",
-            0.5,
-            "Unusually large amount",
-            "agent-001",
-        ).unwrap();
-        
+        writer
+            .append_flag(
+                "tx_001",
+                "2023-01-15",
+                "Acme Corp",
+                "CHK-001",
+                "99999.99",
+                "other",
+                0.5,
+                "Unusually large amount",
+                "agent-001",
+            )
+            .unwrap();
+
         let mut workbook: Xlsx<_> = open_workbook(path).unwrap();
         let range = workbook.worksheet_range("FLAGS.open").unwrap();
-        
+
         assert_eq!(range.get((0, 0)).unwrap().to_string(), "tx_001");
-        assert_eq!(range.get((0, 7)).unwrap().to_string(), "Unusually large amount");
+        assert_eq!(
+            range.get((0, 7)).unwrap().to_string(),
+            "Unusually large amount"
+        );
         assert_eq!(range.get((0, 8)).unwrap().to_string(), "agent-001");
     }
 
@@ -632,39 +692,46 @@ mod tests {
     fn test_mutation_history_is_append_only() {
         let temp_file = NamedTempFile::new().unwrap();
         let path = temp_file.path();
-        
+
         initialize_workbook(path).unwrap();
-        
+
         let writer = WorkbookWriter::new(path);
-        writer.append_row(TransactionRow::new(
-            "tx_001",
-            "2023-01-15",
-            "Acme Corp",
-            "CHK-001",
-            "1234.56",
-            "office_supplies",
-            0.95,
-            false,
-            None,
-        )).unwrap();
-        
-        writer.append_row(TransactionRow::new(
-            "tx_002",
-            "2023-01-16",
-            "Beta Inc",
-            "CHK-001",
-            "789.00",
-            "travel",
-            0.88,
-            true,
-            None,
-        )).unwrap();
-        
+        writer
+            .append_row(TransactionRow::new(
+                "tx_001",
+                "2023-01-15",
+                "Acme Corp",
+                "CHK-001",
+                "1234.56",
+                "office_supplies",
+                0.95,
+                false,
+                None,
+            ))
+            .unwrap();
+
+        writer
+            .append_row(TransactionRow::new(
+                "tx_002",
+                "2023-01-16",
+                "Beta Inc",
+                "CHK-001",
+                "789.00",
+                "travel",
+                0.88,
+                true,
+                None,
+            ))
+            .unwrap();
+
         let mut workbook: Xlsx<_> = open_workbook(path).unwrap();
         let range = workbook.worksheet_range("MUTATION_HISTORY").unwrap();
-        
+
         let row_count = range.height();
-        assert!(row_count >= 2, "Should have at least 2 mutation history entries");
+        assert!(
+            row_count >= 2,
+            "Should have at least 2 mutation history entries"
+        );
     }
 
     #[test]
@@ -675,20 +742,25 @@ mod tests {
         initialize_workbook(path).unwrap();
 
         let writer = WorkbookWriter::new(path);
-        writer.append_mutation(
-            "2026-05-10T11:43:55Z",
-            "tx_001",
-            "agent-001",
-            "workflow",
-            "adjust_transaction",
-            "before",
-            "after",
-        ).unwrap();
+        writer
+            .append_mutation(
+                "2026-05-10T11:43:55Z",
+                "tx_001",
+                "agent-001",
+                "workflow",
+                "adjust_transaction",
+                "before",
+                "after",
+            )
+            .unwrap();
 
         let mut workbook: Xlsx<_> = open_workbook(path).unwrap();
         let range = workbook.worksheet_range("MUTATION_HISTORY").unwrap();
 
-        assert_eq!(range.get((0, 0)).unwrap().to_string(), "2026-05-10T11:43:55Z");
+        assert_eq!(
+            range.get((0, 0)).unwrap().to_string(),
+            "2026-05-10T11:43:55Z"
+        );
         assert_eq!(range.get((0, 4)).unwrap().to_string(), "adjust_transaction");
     }
 
@@ -714,25 +786,27 @@ mod tests {
     fn test_amount_column_is_text_format() {
         let temp_file = NamedTempFile::new().unwrap();
         let path = temp_file.path();
-        
+
         initialize_workbook(path).unwrap();
-        
+
         let writer = WorkbookWriter::new(path);
-        writer.append_row(TransactionRow::new(
-            "tx_001",
-            "2023-01-15",
-            "Acme Corp",
-            "CHK-001",
-            "1234.56",
-            "office_supplies",
-            0.95,
-            false,
-            None,
-        )).unwrap();
-        
+        writer
+            .append_row(TransactionRow::new(
+                "tx_001",
+                "2023-01-15",
+                "Acme Corp",
+                "CHK-001",
+                "1234.56",
+                "office_supplies",
+                0.95,
+                false,
+                None,
+            ))
+            .unwrap();
+
         let mut workbook: Xlsx<_> = open_workbook(path).unwrap();
         let range = workbook.worksheet_range("TRANSACTIONS").unwrap();
-        
+
         let amount_cell = range.get((1, 4)).unwrap();
         let amount_str = amount_cell.to_string();
         assert_eq!(amount_str, "1234.56");
@@ -746,29 +820,33 @@ mod tests {
         initialize_workbook(path).unwrap();
 
         let writer = WorkbookWriter::new(path);
-        writer.append_row(TransactionRow::new(
-            "tx_001",
-            "2023-01-15",
-            "Acme Corp",
-            "CHK-001",
-            "1234.56",
-            "office_supplies",
-            0.95,
-            false,
-            None,
-        )).unwrap();
+        writer
+            .append_row(TransactionRow::new(
+                "tx_001",
+                "2023-01-15",
+                "Acme Corp",
+                "CHK-001",
+                "1234.56",
+                "office_supplies",
+                0.95,
+                false,
+                None,
+            ))
+            .unwrap();
 
-        writer.append_row(TransactionRow::new(
-            "tx_002",
-            "2023-01-16",
-            "Beta Inc",
-            "CHK-001",
-            "789.00",
-            "travel",
-            0.88,
-            true,
-            Some("unusual_amount"),
-        )).unwrap();
+        writer
+            .append_row(TransactionRow::new(
+                "tx_002",
+                "2023-01-16",
+                "Beta Inc",
+                "CHK-001",
+                "789.00",
+                "travel",
+                0.88,
+                true,
+                Some("unusual_amount"),
+            ))
+            .unwrap();
 
         let mut workbook: Xlsx<_> = open_workbook(path).unwrap();
         assert!(workbook.worksheet_range("TRANSACTIONS").is_ok());
@@ -788,17 +866,19 @@ mod tests {
         let amount_str = amount.to_string();
 
         let writer = WorkbookWriter::new(path);
-        writer.append_row(TransactionRow::new(
-            "tx_001",
-            "2023-01-15",
-            "Test Vendor",
-            "CHK-001",
-            &amount_str,
-            "office_supplies",
-            0.95,
-            false,
-            None,
-        )).unwrap();
+        writer
+            .append_row(TransactionRow::new(
+                "tx_001",
+                "2023-01-15",
+                "Test Vendor",
+                "CHK-001",
+                &amount_str,
+                "office_supplies",
+                0.95,
+                false,
+                None,
+            ))
+            .unwrap();
 
         let mut workbook: Xlsx<_> = open_workbook(path).unwrap();
         let range = workbook.worksheet_range("TRANSACTIONS").unwrap();
@@ -822,7 +902,9 @@ mod tests {
             source: IssueSource::TypeCheck,
         }];
         let meta = MetaCtx::default();
-        let gate = CommitGate::Blocked { issues: issues.clone() };
+        let gate = CommitGate::Blocked {
+            issues: issues.clone(),
+        };
         let row = AuditRow::new("doc1", "WF--BH--2026-01", 0.0, &issues, &meta, true, &gate);
         assert_eq!(row.legal_result, "legal_violation");
         assert_eq!(row.commit_gate, "Blocked");

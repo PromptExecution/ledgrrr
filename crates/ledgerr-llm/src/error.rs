@@ -25,6 +25,11 @@ pub enum LlmError {
 
     #[error("Unsupported MIME type: {0}")]
     UnsupportedMime(String),
+
+    /// b00t-server API key resolution/minting failed (l3dg3rr#212). Never
+    /// silently swallowed into an empty api_key — callers must surface this.
+    #[error("b00t-server key provisioning failed: {0}")]
+    KeyProvisioning(String),
 }
 
 pub type LlmResult<T> = Result<T, LlmError>;

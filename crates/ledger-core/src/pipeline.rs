@@ -1,10 +1,10 @@
 //! Ledger Pipeline: A typed domain language for financial document processing.
 //! Uses statig HSM + type-state pattern + generics for compile-time safety.
 
+use crate::attest::{AttestationSpec, Attested};
+use ledger_attest::attested;
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
-use ledger_attest::attested;
-use crate::attest::{Attested, AttestationSpec};
 
 // ============================================================================
 // TYPE-STATE: Compile-time valid transitions
@@ -40,7 +40,9 @@ impl Attested for DocumentFields {
         AttestationSpec {
             invariant: "document_fields_decimal_safe",
             z3_predicate: None,
-            kasuari_description: Some("amount: Option<Decimal> — parsed via Decimal::from_str, never f64"),
+            kasuari_description: Some(
+                "amount: Option<Decimal> — parsed via Decimal::from_str, never f64",
+            ),
             kani_module: None,
         }
     }
@@ -333,8 +335,7 @@ impl LedgerPipeline {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum State {
     #[default]
     Ingested,
@@ -344,7 +345,6 @@ pub enum State {
     Committed,
     NeedsReview,
 }
-
 
 pub fn init() -> State {
     State::Ingested
@@ -723,12 +723,10 @@ mod tests {
             ),
         };
         assert_eq!(ok_state.confidence, 1.0);
-        assert!(
-            !ok_state
-                .issues
-                .iter()
-                .any(|i| i.code == "legal_unknown" || i.code == "legal_violation")
-        );
+        assert!(!ok_state
+            .issues
+            .iter()
+            .any(|i| i.code == "legal_unknown" || i.code == "legal_violation"));
 
         // US SaaS with INPUT → legal gate fails → Err(NeedsReview)
         let state = PipelineState::<Ingested>::new("doc2", "WF--BH--2026-01")
@@ -746,13 +744,8 @@ mod tests {
             ),
             Err(state) => state,
         };
-        assert!(
-            err_state
-                .issues
-                .iter()
-                .any(|i| i.code == "legal_violation"
-                    && i.disposition == crate::validation::Disposition::Unrecoverable)
-        );
+        assert!(err_state.issues.iter().any(|i| i.code == "legal_violation"
+            && i.disposition == crate::validation::Disposition::Unrecoverable));
         assert!(!err_state.issues.iter().any(|i| i.code == "legal_unknown"));
     }
 

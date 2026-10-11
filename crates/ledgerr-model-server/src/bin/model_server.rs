@@ -42,8 +42,7 @@ fn config_from_env() -> Result<ModelServerConfig> {
         .parse()
         .context("MODEL_SERVER_PORT must be a valid u16")?;
 
-    let model_path = std::env::var("MODEL_SERVER_PATH")
-        .context("MODEL_SERVER_PATH is required")?;
+    let model_path = std::env::var("MODEL_SERVER_PATH").context("MODEL_SERVER_PATH is required")?;
 
     let context_window: usize = std::env::var("MODEL_SERVER_CTX")
         .unwrap_or_else(|_| "4096".to_string())

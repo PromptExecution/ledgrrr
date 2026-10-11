@@ -22,12 +22,18 @@ use ledgerr_llm::{LlmClient, LlmConfig};
 #[cfg(feature = "xero")]
 use xero_service::XeroService;
 
-pub mod beankeeper_import;
 pub mod batch_executor;
+pub mod beankeeper_import;
 use crate::batch_executor::BatchExecutor;
+pub mod au_rd;
 pub mod calendar_tool;
+pub mod capital_loss;
 pub mod contract;
+pub mod coverage;
+pub mod crypto;
 pub mod events;
+pub mod fbar;
+pub mod feie;
 pub mod focus_tool;
 pub mod hsm;
 pub mod mcp_adapter;
@@ -39,24 +45,15 @@ pub mod provider;
 #[cfg(feature = "b00t")]
 pub mod providers;
 pub mod reconciliation;
+pub mod schedule_e;
 pub mod schema;
 pub mod shape_tool;
 pub mod validate_process;
 pub use validate_process::{validate_process_graph, GraphFormat, ProcessValidationResult, Violation};
-pub mod au_rd;
-pub mod coverage;
-pub mod crypto;
-pub mod capital_loss;
-pub mod feie;
-pub mod schedule_e;
-pub mod fbar;
 pub mod tax_assist;
 pub mod us_rdc;
 pub mod xero_service;
 pub use calendar_tool::{list_calendar_events, CalendarEventRow, ListCalendarEventsRequest};
-pub use coverage::{
-    AccountPeriodCoverage, CoverageReport, CoverageRequest, Discontinuity,
-};
 pub use contract::{
     AmountRange, ApplyMappingBulkRequest, ApplyMappingBulkResponse, BatchClassifyRequest,
     BatchClassifyResponse, BatchItemResult, BatchItemStatus, BatchMode, BatchResolveFlagsRequest,
@@ -65,10 +62,16 @@ pub use contract::{
     QueueStatus, SimilarityMatchType, SortDirection, SortField, SortSpec, TransactionFilters,
     TransactionRow as TransactionRowResponse,
 };
+pub use coverage::{AccountPeriodCoverage, CoverageReport, CoverageRequest, Discontinuity};
 pub use events::{
     AppendEventResult, EventHistoryFilter, EventHistoryResponse, InMemoryLifecycleEventStore,
     LifecycleEvent, LifecycleEventStore, ReplayProjection,
 };
+pub use fbar::{
+    compute_fbar, DailyBalance, FbarDetermination, FbarInput, ForeignAccountInput,
+    ForeignAccountYear,
+};
+pub use feie::{FeieInput, FeieOutcome, ForeignResidenceTest};
 pub use hsm::{
     HsmMachine, HsmResumeRequest, HsmResumeResponse, HsmStatusRequest, HsmStatusResponse,
     HsmTransitionRequest, HsmTransitionResponse,
@@ -87,15 +90,10 @@ pub use reconciliation::{
 };
 pub use schema::{CustomKind, KindInfo, SchemaKinds, SchemaStore};
 pub use shape_tool::{get_document_shape, GetDocumentShapeRequest};
-pub use feie::{FeieInput, FeieOutcome, ForeignResidenceTest};
 pub use tax_assist::{
     TaxAmbiguityRecord, TaxAmbiguityReviewRequest, TaxAmbiguityReviewResponse, TaxAssistRequest,
     TaxAssistResponse, TaxAssistSummary, TaxEvidenceChainRequest, TaxEvidenceChainResponse,
     TaxEvidenceCurrentState, TaxEvidenceEvent, TaxEvidenceRow, TaxEvidenceSource,
-};
-pub use fbar::{
-    compute_fbar, DailyBalance, FbarDetermination, FbarInput, ForeignAccountInput,
-    ForeignAccountYear,
 };
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccountSummary {
@@ -685,8 +683,16 @@ impl TurboLedgerService {
             XeroService::new(config, token_path)
         };
 
+        // l3dg3rr#212: LlmConfig::provision() resolves a real b00t-server API
+        // key (OPENAI_API_KEY → LEDGERR_B00T_SERVER_KEY → stored key →
+        // lazily minted via `b00t server key create`) rather than sending
+        // requests with an empty bearer token. `.ok()` keeps the existing
+        // graceful-degradation behavior: any provisioning or client-build
+        // failure just leaves `llm` as `None`, and `extract_with_llm` then
+        // fails with a clear "LLM backend is not configured" error instead
+        // of panicking or silently sending unauthenticated requests.
         #[cfg(feature = "llm")]
-        let llm = LlmClient::new(LlmConfig::from_env()).ok();
+        let llm = LlmConfig::provision().and_then(LlmClient::new).ok();
 
         let initial_evidence_path = {
             let service_path = std::path::Path::new(&manifest.session.workbook_path);

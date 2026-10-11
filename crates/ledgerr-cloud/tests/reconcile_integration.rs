@@ -27,7 +27,11 @@ async fn reconcile_report_is_always_well_formed() {
         report.providers
     );
 
-    let names: Vec<&str> = report.providers.iter().map(|p| p.provider.as_str()).collect();
+    let names: Vec<&str> = report
+        .providers
+        .iter()
+        .map(|p| p.provider.as_str())
+        .collect();
     assert_eq!(names, ["aws", "gcp", "azure", "hf"]);
 
     for p in &report.providers {

@@ -5,7 +5,12 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum NotificationBackend {
     Auto,
-    PowerShell,
+    /// Native Windows toast via `windows::UI::Notifications` (or the
+    /// stderr fallback on non-Windows). `#[serde(alias)]` keeps reading
+    /// settings persisted before this was renamed from `PowerShell` —
+    /// this backend no longer shells out to `powershell.exe` at all.
+    #[serde(alias = "powershell")]
+    Native,
     Noop,
 }
 

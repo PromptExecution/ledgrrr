@@ -177,9 +177,7 @@ mod tests {
     #[test]
     fn unknown_step_authorization_is_rejected() {
         let mut ctrl = ProcessController::new();
-        let err = ctrl
-            .authorize_step("nonexistent", "alice", 0)
-            .unwrap_err();
+        let err = ctrl.authorize_step("nonexistent", "alice", 0).unwrap_err();
         assert!(matches!(err, HolonError::NotFound(_)));
     }
 

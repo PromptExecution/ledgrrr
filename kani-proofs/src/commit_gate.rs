@@ -50,7 +50,8 @@ mod tests {
     #[test]
     fn blocked_when_unrecoverable_issue_present() {
         let mut s = state(1.0);
-        s.issues.push(Issue::unrecoverable("AMT_NEG", "amount is negative"));
+        s.issues
+            .push(Issue::unrecoverable("AMT_NEG", "amount is negative"));
         let gate = evaluate_commit_gate(&s, 0.85);
         match gate {
             CommitGate::Blocked { issues } => assert_eq!(issues.len(), 1),
@@ -61,7 +62,8 @@ mod tests {
     #[test]
     fn blocked_takes_priority_over_low_confidence() {
         let mut s = state(0.0);
-        s.issues.push(Issue::unrecoverable("AMT_NEG", "amount is negative"));
+        s.issues
+            .push(Issue::unrecoverable("AMT_NEG", "amount is negative"));
         let gate = evaluate_commit_gate(&s, 0.85);
         assert!(matches!(gate, CommitGate::Blocked { .. }));
     }
@@ -89,14 +91,25 @@ mod tests {
             match evaluate_commit_gate(&state(confidence), THRESHOLD) {
                 CommitGate::Approved { confidence: c } => {
                     assert_eq!(c, confidence);
-                    assert!(confidence >= THRESHOLD, "Approved below threshold: {confidence}");
+                    assert!(
+                        confidence >= THRESHOLD,
+                        "Approved below threshold: {confidence}"
+                    );
                 }
-                CommitGate::PendingOperator { confidence: c, reason } => {
+                CommitGate::PendingOperator {
+                    confidence: c,
+                    reason,
+                } => {
                     assert_eq!(c, confidence);
-                    assert!(confidence < THRESHOLD, "PendingOperator at/above threshold: {confidence}");
+                    assert!(
+                        confidence < THRESHOLD,
+                        "PendingOperator at/above threshold: {confidence}"
+                    );
                     assert!(!reason.is_empty());
                 }
-                CommitGate::Blocked { .. } => panic!("unexpected Blocked with no issues, confidence={confidence}"),
+                CommitGate::Blocked { .. } => {
+                    panic!("unexpected Blocked with no issues, confidence={confidence}")
+                }
             }
 
             let mut blocked_state = state(confidence);
@@ -105,7 +118,9 @@ mod tests {
                 .push(Issue::unrecoverable("AMT_NEG", "amount is negative"));
             match evaluate_commit_gate(&blocked_state, THRESHOLD) {
                 CommitGate::Blocked { issues } => assert_eq!(issues.len(), 1),
-                other => panic!("expected Blocked regardless of confidence={confidence}, got {other:?}"),
+                other => {
+                    panic!("expected Blocked regardless of confidence={confidence}, got {other:?}")
+                }
             }
 
             checked += 2;

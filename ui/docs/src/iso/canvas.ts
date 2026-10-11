@@ -73,7 +73,6 @@ function renderTile(
   // Bottom row (y=0)
   const bbl = isoProject(x - hw, 0, z,      SCALE, ORIGIN_X, ORIGIN_Y);
   const bbr = isoProject(x + hw, 0, z,      SCALE, ORIGIN_X, ORIGIN_Y);
-  const bbrr = isoProject(x,     0, z - hd, SCALE, ORIGIN_X, ORIGIN_Y);
   const bbll = isoProject(x,     0, z + hd, SCALE, ORIGIN_X, ORIGIN_Y);
 
   const topColor   = lightenColor(color, 0.15);

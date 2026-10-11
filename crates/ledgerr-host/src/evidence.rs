@@ -202,12 +202,17 @@ mod tests {
             raised_at: Utc::now(),
             resolved: false,
         };
-        state.graph.add_node(EvidenceNode::ValidationIssue(vi)).unwrap();
+        state
+            .graph
+            .add_node(EvidenceNode::ValidationIssue(vi))
+            .unwrap();
         state.refresh_gaps();
         let queue = TodayQueue::from_state(&state, &test_settings());
         assert_eq!(queue.with_validation_issues, 1);
         // All chains are not "complete" while validation issues remain
-        assert!(!queue.last_action_summary.contains("All evidence chains are complete"));
+        assert!(!queue
+            .last_action_summary
+            .contains("All evidence chains are complete"));
     }
 
     #[test]
@@ -219,6 +224,8 @@ mod tests {
         assert_eq!(queue.with_validation_issues, 0);
         assert_eq!(queue.blocked, 0);
         assert_eq!(queue.ready_to_review, 0);
-        assert!(queue.last_action_summary.contains("All evidence chains are complete"));
+        assert!(queue
+            .last_action_summary
+            .contains("All evidence chains are complete"));
     }
 }

@@ -5,9 +5,7 @@
 
 use std::time::Instant;
 
-use crate::contract::{
-    BatchItemResult, BatchItemStatus, BatchMode, BatchSummary,
-};
+use crate::contract::{BatchItemResult, BatchItemStatus, BatchMode, BatchSummary};
 use crate::ToolError;
 
 /// Generic batch executor that applies an operation to a list of transaction IDs.
@@ -72,7 +70,9 @@ impl BatchExecutor {
                             // Stop processing on first error
                             break;
                         }
-                        BatchItemStatus::Failed { error: e.to_string() }
+                        BatchItemStatus::Failed {
+                            error: e.to_string(),
+                        }
                     }
                 }
             };
@@ -98,17 +98,15 @@ mod tests {
 
     #[test]
     fn test_execute_batch_empty_list() {
-        let summary = BatchExecutor::execute_batch(
-            vec![],
-            BatchMode::ContinueOnError,
-            false,
-            |_tx_id| Ok(BatchItemResult {
-                tx_id: "test".to_string(),
-                status: BatchItemStatus::Succeeded,
-                audit_entries: vec![],
-            }),
-        )
-        .unwrap();
+        let summary =
+            BatchExecutor::execute_batch(vec![], BatchMode::ContinueOnError, false, |_tx_id| {
+                Ok(BatchItemResult {
+                    tx_id: "test".to_string(),
+                    status: BatchItemStatus::Succeeded,
+                    audit_entries: vec![],
+                })
+            })
+            .unwrap();
 
         assert_eq!(summary.total_requested, 0);
         assert_eq!(summary.succeeded, 0);
@@ -122,11 +120,13 @@ mod tests {
             vec!["tx1".to_string(), "tx2".to_string(), "tx3".to_string()],
             BatchMode::ContinueOnError,
             false,
-            |tx_id| Ok(BatchItemResult {
-                tx_id: tx_id.to_string(),
-                status: BatchItemStatus::Succeeded,
-                audit_entries: vec![],
-            }),
+            |tx_id| {
+                Ok(BatchItemResult {
+                    tx_id: tx_id.to_string(),
+                    status: BatchItemStatus::Succeeded,
+                    audit_entries: vec![],
+                })
+            },
         )
         .unwrap();
 

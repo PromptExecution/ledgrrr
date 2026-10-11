@@ -75,7 +75,10 @@ pub fn handle_focus_tool(input: FocusToolInput) -> Result<FocusToolOutput, Strin
 
 /// Convert a `FocusToolRecord` into a `CostAndUsageRow`, returning an error if
 /// any numeric value cannot be converted to `Decimal`.
-fn record_to_row(r: &FocusToolRecord, personality: Option<&str>) -> Result<CostAndUsageRow, String> {
+fn record_to_row(
+    r: &FocusToolRecord,
+    personality: Option<&str>,
+) -> Result<CostAndUsageRow, String> {
     Ok(CostAndUsageRow {
         billing_account_id: r.billing_account_id.clone(),
         billing_account_name: None,
@@ -88,8 +91,12 @@ fn record_to_row(r: &FocusToolRecord, personality: Option<&str>) -> Result<CostA
         charge_frequency: ChargeFrequency::UsageBased,
         billed_cost: Decimal::from_f64(r.billed_cost)
             .ok_or_else(|| format!("cannot convert billed_cost {} to Decimal", r.billed_cost))?,
-        effective_cost: Decimal::from_f64(r.effective_cost)
-            .ok_or_else(|| format!("cannot convert effective_cost {} to Decimal", r.effective_cost))?,
+        effective_cost: Decimal::from_f64(r.effective_cost).ok_or_else(|| {
+            format!(
+                "cannot convert effective_cost {} to Decimal",
+                r.effective_cost
+            )
+        })?,
         service_provider_name: "ledgrrr".into(),
         service_name: r.service_name.clone(),
         sku_id: "focus-eval".into(),
@@ -162,7 +169,10 @@ fn validate_focus_record(record: &FocusToolRecord) -> Result<(), String> {
         errors.push("EffectiveCost (negative)".to_string());
     }
     if !errors.is_empty() {
-        return Err(format!("FOCUS validation failed: missing/invalid mandatory columns: {}", errors.join(", ")));
+        return Err(format!(
+            "FOCUS validation failed: missing/invalid mandatory columns: {}",
+            errors.join(", ")
+        ));
     }
     Ok(())
 }
@@ -197,20 +207,18 @@ fn initialize_store() {
         let path = focus_records_path();
         if path.exists() {
             match std::fs::read_to_string(&path) {
-                Ok(content) => {
-                    match serde_json::from_str::<Vec<FocusToolRecord>>(&content) {
-                        Ok(records) => {
-                            *guard = records;
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                path = %path.display(),
-                                err = %e,
-                                "focus_records.json parse error — starting with empty store"
-                            );
-                        }
+                Ok(content) => match serde_json::from_str::<Vec<FocusToolRecord>>(&content) {
+                    Ok(records) => {
+                        *guard = records;
                     }
-                }
+                    Err(e) => {
+                        tracing::warn!(
+                            path = %path.display(),
+                            err = %e,
+                            "focus_records.json parse error — starting with empty store"
+                        );
+                    }
+                },
                 Err(e) => {
                     tracing::warn!(
                         path = %path.display(),
@@ -362,7 +370,13 @@ fn handle_compute_delta(input: FocusToolInput) -> Result<FocusToolOutput, String
     cs.insert("roi".into(), Decimal::from_f64(0.5).unwrap());
     ts.insert("roi".into(), Decimal::from_f64(0.8).unwrap());
 
-    let delta = compute_focus_delta(&control, &treatment, &cs, &ts, input.experiment_id.as_deref().unwrap_or("?"));
+    let delta = compute_focus_delta(
+        &control,
+        &treatment,
+        &cs,
+        &ts,
+        input.experiment_id.as_deref().unwrap_or("?"),
+    );
 
     let mut dim_deltas = HashMap::new();
     for (k, v) in &delta.dimension_deltas {
@@ -389,8 +403,17 @@ fn handle_experiment_score(input: FocusToolInput) -> Result<FocusToolOutput, Str
     let personality = input
         .personality
         .as_deref()
-        .and_then(|p| PersonalityProfile::all().into_iter().find(|prof| prof.label == p))
-        .map(|_| format!("personality={}", input.personality.as_deref().unwrap_or("none")));
+        .and_then(|p| {
+            PersonalityProfile::all()
+                .into_iter()
+                .find(|prof| prof.label == p)
+        })
+        .map(|_| {
+            format!(
+                "personality={}",
+                input.personality.as_deref().unwrap_or("none")
+            )
+        });
 
     Ok(FocusToolOutput {
         spec_version: FOCUS_SPEC_VERSION,
@@ -398,7 +421,9 @@ fn handle_experiment_score(input: FocusToolInput) -> Result<FocusToolOutput, Str
         rows_written: input.records.len(),
         focus_cli: personality.unwrap_or_default(),
         delta: None,
-        experiment_summary: input.experiment_id.map(|eid| format!("scored experiment {eid}")),
+        experiment_summary: input
+            .experiment_id
+            .map(|eid| format!("scored experiment {eid}")),
     })
 }
 
@@ -426,7 +451,10 @@ mod tests {
         () => {
             let _lock = FOCUS_TEST_MUTEX.lock().unwrap();
             let _tmp = tempfile::tempdir().unwrap();
-            std::env::set_var("FOCUS_SIDECAR_PATH", _tmp.path().join("focus_records.json").to_str().unwrap());
+            std::env::set_var(
+                "FOCUS_SIDECAR_PATH",
+                _tmp.path().join("focus_records.json").to_str().unwrap(),
+            );
             reset_store_for_test();
         };
     }

@@ -1,0 +1,27 @@
+[package]
+name = "ledgrrr-sysml-adapter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Strict native SysML projection and serialized owner transport"
+
+[dependencies]
+ufo-types = { workspace = true, features = ["revision"] }
+ledgrrr-revision-io = { path = "../ledgrrr-revision-io" }
+serde.workspace = true
+serde_json = { workspace = true, features = ["raw_value"] }
+thiserror.workspace = true
+reqwest.workspace = true
+tokio.workspace = true
+blake3.workspace = true
+axum = "=0.7.9"
+oxigraph = { version = "=0.5.11", default-features = false }
+spargebra = { version = "=0.4.7", default-features = false }
+sha2 = "0.10"
+rlimit = "=0.10.2"
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -4,8 +4,8 @@ milestone: v1.2
 milestone_name: Claude Connector Interop
 status: planning
 stopped_at: Roadmap created for phases 19-21
-last_updated: "2026-03-29T21:42:28.000Z"
-last_activity: 2026-03-30
+last_updated: "2026-10-07T11:19:41.000Z"
+last_activity: 2026-10-07
 progress:
   total_phases: 3
   completed_phases: 0
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 Phase: 19 - Connector Capability Profile Contract
 Plan: Not started
 Status: Roadmap approved baseline ready for planning
-Last activity: 2026-03-30 — v1.2 roadmap created with phases 19-21
+Last activity: 2026-10-07 — Completed quick task 261006-c9d: native supported codec and private revision owner (full SysML discovery plan remains active)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -82,6 +82,14 @@ Progress: [░░░░░░░░░░] 0%
 ### Blockers/Concerns
 
 - None recorded.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Status | Directory |
+|---|---|---|---|---|---|
+| 261005-j1m | Provider-neutral durable revision I/O storage | 2026-10-05 | 50a9560 | Storage milestone verified; full SysML gates pending | [261005-j1m](./quick/261005-j1m-establish-the-provider-neutral-revision-/) |
+| 261006-c9d | Native supported codec and private revision owner | 2026-10-07 | 11fd22e | Supported owner/native milestone verified; full P0–P5 gates pending | [261006-c9d](./quick/261006-c9d-integrate-the-durable-revision-owner-wit/) |
+| 261007-ftn | Durable accepted-revision graph and bounded discovery owner | 2026-10-08 | 2ddc040 | **Complete: 64/64 sysml-index-live gates Satisfied** — four query-path fixes (exact selector guard, Pending on deadline drain, deferred read conn, is_projection_removed); PR #253 open | [261007-ftn](./quick/261007-ftn-implement-p4-durable-revision-indexed-ox/) |
 
 ## Session Continuity
 

@@ -41,7 +41,10 @@ mod tests {
             InvoiceVerification::attestation_spec().invariant,
             "invoice_arithmetic_valid"
         );
-        assert_eq!(CommitGate::attestation_spec().invariant, "commit_gate_total");
+        assert_eq!(
+            CommitGate::attestation_spec().invariant,
+            "commit_gate_total"
+        );
         assert_eq!(
             Z3Result::attestation_spec().invariant,
             "z3_result_confidence_total"
@@ -66,11 +69,17 @@ mod tests {
 
     #[test]
     fn attestation_spec_kani_modules_are_set() {
-        assert!(ConstraintEvaluation::attestation_spec().kani_module.is_some());
-        assert!(InvoiceVerification::attestation_spec().kani_module.is_some());
+        assert!(ConstraintEvaluation::attestation_spec()
+            .kani_module
+            .is_some());
+        assert!(InvoiceVerification::attestation_spec()
+            .kani_module
+            .is_some());
         assert!(CommitGate::attestation_spec().kani_module.is_some());
         assert!(Z3Result::attestation_spec().kani_module.is_some());
         assert!(MetaCtx::attestation_spec().kani_module.is_some());
-        assert!(VendorConstraintSet::attestation_spec().kani_module.is_some());
+        assert!(VendorConstraintSet::attestation_spec()
+            .kani_module
+            .is_some());
     }
 }

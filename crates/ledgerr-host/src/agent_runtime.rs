@@ -66,8 +66,10 @@ use std::sync::{Arc, Mutex};
 
 use rig::{
     client::CompletionClient,
-    completion::{AssistantContent, CompletionModel, Message},
+    completion::{AssistantContent, CompletionModel, Message, ToolDefinition},
+    message::{ToolCall as RigToolCall, ToolFunction as RigToolFunction},
     providers::openai,
+    OneOrMany,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error;
@@ -79,24 +81,76 @@ use crate::settings::ChatSettings;
 /// Turns are included in `ModelRequest::history` to give the model context from
 /// earlier in a multi-step reasoning session.  For single-shot classification tasks
 /// the history is typically empty.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ModelTurn {
     pub role: ModelRole,
     pub content: String,
+    /// Populated only on `Assistant` turns that requested tool calls.
+    pub tool_calls: Vec<ModelToolCall>,
+    /// Populated only on `Tool` turns — the id of the call this responds to.
+    pub tool_call_id: Option<String>,
+}
+
+impl ModelTurn {
+    /// An assistant turn that requested one or more tool calls (no text).
+    pub fn assistant_tool_calls(tool_calls: Vec<ModelToolCall>) -> Self {
+        Self {
+            role: ModelRole::Assistant,
+            tool_calls,
+            ..Default::default()
+        }
+    }
+
+    /// A tool-role turn reporting `content` back as the result of `call_id`.
+    pub fn tool_result(call_id: impl Into<String>, content: impl Into<String>) -> Self {
+        Self {
+            role: ModelRole::Tool,
+            content: content.into(),
+            tool_call_id: Some(call_id.into()),
+            ..Default::default()
+        }
+    }
+}
+
+/// A tool the model may call, described in OpenAI function-calling shape.
+///
+/// Kept as a plain local type — rather than re-exporting `rig`'s `ToolDefinition`
+/// directly — so callers outside this module never need a `rig` dependency to
+/// build one (see the module-level "who this module is for" note).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelToolSpec {
+    pub name: String,
+    pub description: String,
+    pub parameters: serde_json::Value,
+}
+
+/// One tool invocation the model requested, echoed back from the provider.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelToolCall {
+    /// Provider-assigned call id. Must be echoed back verbatim as the
+    /// matching tool result's `tool_call_id` (`ModelTurn::tool_result`) so
+    /// the provider can pair the two up on the next turn.
+    pub id: String,
+    pub name: String,
+    pub arguments: serde_json::Value,
 }
 
 /// Which participant in the conversation authored a turn.
 ///
 /// See the module-level documentation for what each role means and how the model
 /// uses it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ModelRole {
     /// Application-controlled background instructions.  Never shown to the end user.
+    #[default]
     System,
     /// The task or question being posed in this call.
     User,
     /// A previous reply from the model, included for multi-step reasoning continuity.
     Assistant,
+    /// A tool result being reported back to the model. The turn's `tool_call_id`
+    /// names which `ModelToolCall` this responds to.
+    Tool,
 }
 
 /// All inputs the application passes to the model for a single call.
@@ -110,9 +164,17 @@ pub struct ModelRequest {
     /// Earlier turns from this reasoning session, oldest first.  Empty for one-shot
     /// classification tasks.
     pub history: Vec<ModelTurn>,
-    /// The current user-facing question or task.
+    /// The current user-facing question or task.  Ignored when `trailing_turn`
+    /// is set — see `ModelRequest::continue_with`.
     pub user_message: String,
     pub max_tokens: Option<usize>,
+    /// Tools the model may call this turn. Empty means no tool-calling.
+    pub tools: Vec<ModelToolSpec>,
+    /// When set, this turn — not `user_message` — is the trailing/prompt
+    /// message sent to the provider, with `history` as everything before it.
+    /// Used by the tool-calling loop to resend a tool result as the "current"
+    /// turn without fabricating a fresh user utterance.
+    pub trailing_turn: Option<ModelTurn>,
 }
 
 impl ModelRequest {
@@ -122,6 +184,22 @@ impl ModelRequest {
             history: Vec::new(),
             user_message: user_message.into(),
             max_tokens: None,
+            tools: Vec::new(),
+            trailing_turn: None,
+        }
+    }
+
+    /// Build a request whose trailing/prompt message is `trailing` (e.g. a
+    /// `ModelTurn::tool_result`) rather than a fresh user utterance.
+    /// `history` is everything that came before it in the conversation.
+    pub fn continue_with(history: Vec<ModelTurn>, trailing: ModelTurn) -> Self {
+        Self {
+            system_prompt: None,
+            history,
+            user_message: String::new(),
+            max_tokens: None,
+            tools: Vec::new(),
+            trailing_turn: Some(trailing),
         }
     }
 
@@ -139,11 +217,27 @@ impl ModelRequest {
         self.max_tokens = Some(max_tokens);
         self
     }
+
+    pub fn with_tools(mut self, tools: Vec<ModelToolSpec>) -> Self {
+        self.tools = tools;
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelResponse {
     pub assistant_text: String,
+    /// Tool calls the model requested this turn. Empty for a plain-text reply.
+    pub tool_calls: Vec<ModelToolCall>,
+}
+
+impl ModelResponse {
+    pub fn text(assistant_text: impl Into<String>) -> Self {
+        Self {
+            assistant_text: assistant_text.into(),
+            tool_calls: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -347,16 +441,20 @@ impl RigAgentRuntime {
                 return Err(error.into());
             }
         };
-        let assistant_text =
-            extract_assistant_message(response.choice).ok_or_else(|| {
-                self.audit_sink
-                    .record_model_call(event_base.failed("missing_assistant_message"));
-                AgentRuntimeError::MissingAssistantMessage
-            })?;
+        let (assistant_text, tool_calls) = extract_assistant_reply(response.choice);
+        if assistant_text.is_none() && tool_calls.is_empty() {
+            self.audit_sink
+                .record_model_call(event_base.failed("missing_assistant_message"));
+            return Err(AgentRuntimeError::MissingAssistantMessage);
+        }
+        let assistant_text = assistant_text.unwrap_or_default();
         self.audit_sink
             .record_model_call(event_base.succeeded(assistant_text.chars().count()));
 
-        Ok(ModelResponse { assistant_text })
+        Ok(ModelResponse {
+            assistant_text,
+            tool_calls,
+        })
     }
 }
 
@@ -406,7 +504,12 @@ impl ModelCallEventBase {
                     .history
                     .iter()
                     .map(|turn| turn.content.chars().count())
-                    .sum::<usize>(),
+                    .sum::<usize>()
+                + request
+                    .trailing_turn
+                    .as_ref()
+                    .map(|turn| turn.content.chars().count())
+                    .unwrap_or_default(),
             history_turns: request.history.len(),
             max_tokens: request.max_tokens,
         }
@@ -449,7 +552,7 @@ fn validate_settings(settings: &ChatSettings) -> Result<(), AgentRuntimeError> {
 }
 
 fn validate_request(request: &ModelRequest) -> Result<(), AgentRuntimeError> {
-    if request.user_message.trim().is_empty() {
+    if request.trailing_turn.is_none() && request.user_message.trim().is_empty() {
         return Err(AgentRuntimeError::EmptyMessage);
     }
     Ok(())
@@ -459,7 +562,11 @@ pub(crate) fn build_completion_request<M: CompletionModel>(
     model: M,
     request: ModelRequest,
 ) -> rig::completion::CompletionRequest {
-    let mut completion = model.completion_request(Message::user(request.user_message.trim()));
+    let prompt_message = match &request.trailing_turn {
+        Some(turn) => history_message(turn),
+        None => Message::user(request.user_message.trim()),
+    };
+    let mut completion = model.completion_request(prompt_message);
 
     if let Some(system_prompt) = request.system_prompt.as_deref().map(str::trim) {
         if !system_prompt.is_empty() {
@@ -475,14 +582,61 @@ pub(crate) fn build_completion_request<M: CompletionModel>(
         completion = completion.max_tokens(max_tokens as u64);
     }
 
+    if !request.tools.is_empty() {
+        completion = completion.tools(request.tools.iter().map(tool_definition).collect());
+    }
+
     completion.build()
+}
+
+fn tool_definition(spec: &ModelToolSpec) -> ToolDefinition {
+    ToolDefinition {
+        name: spec.name.clone(),
+        description: spec.description.clone(),
+        parameters: spec.parameters.clone(),
+    }
 }
 
 fn history_message(turn: &ModelTurn) -> Message {
     match turn.role {
         ModelRole::System => Message::system(turn.content.trim()),
         ModelRole::User => Message::user(turn.content.trim()),
-        ModelRole::Assistant => Message::assistant(turn.content.trim()),
+        ModelRole::Assistant => {
+            if turn.tool_calls.is_empty() {
+                Message::assistant(turn.content.trim())
+            } else {
+                assistant_tool_call_message(turn)
+            }
+        }
+        ModelRole::Tool => Message::tool_result(
+            turn.tool_call_id.clone().unwrap_or_default(),
+            turn.content.trim(),
+        ),
+    }
+}
+
+/// Builds an assistant message carrying tool calls (plus any accompanying
+/// text). Only called when `turn.tool_calls` is non-empty.
+fn assistant_tool_call_message(turn: &ModelTurn) -> Message {
+    let mut contents: Vec<AssistantContent> = turn
+        .tool_calls
+        .iter()
+        .map(|call| {
+            AssistantContent::ToolCall(RigToolCall::new(
+                call.id.clone(),
+                RigToolFunction::new(call.name.clone(), call.arguments.clone()),
+            ))
+        })
+        .collect();
+    let trimmed = turn.content.trim();
+    if !trimmed.is_empty() {
+        contents.push(AssistantContent::text(trimmed));
+    }
+    match OneOrMany::many(contents) {
+        Ok(content) => Message::Assistant { id: None, content },
+        // Unreachable in practice: `contents` always holds at least the
+        // caller's non-empty `tool_calls`. Fall back instead of panicking.
+        Err(_) => Message::assistant(trimmed),
     }
 }
 
@@ -494,16 +648,33 @@ pub(crate) fn normalize_base_url(endpoint_url: &str) -> String {
         .to_string()
 }
 
-pub(crate) fn extract_assistant_message(
+/// Splits a provider's assistant content into plain text (joined, trimmed,
+/// `None` if there was none) and any tool calls it requested.
+pub(crate) fn extract_assistant_reply(
     contents: impl IntoIterator<Item = AssistantContent>,
-) -> Option<String> {
-    contents.into_iter().find_map(|content| match content {
-        AssistantContent::Text(text) => {
-            let trimmed = text.text.trim();
-            (!trimmed.is_empty()).then(|| trimmed.to_string())
+) -> (Option<String>, Vec<ModelToolCall>) {
+    let mut text_parts = Vec::new();
+    let mut tool_calls = Vec::new();
+    for content in contents {
+        match content {
+            AssistantContent::Text(text) => {
+                let trimmed = text.text.trim();
+                if !trimmed.is_empty() {
+                    text_parts.push(trimmed.to_string());
+                }
+            }
+            AssistantContent::ToolCall(tool_call) => {
+                tool_calls.push(ModelToolCall {
+                    id: tool_call.id,
+                    name: tool_call.function.name,
+                    arguments: tool_call.function.arguments,
+                });
+            }
+            _ => {}
         }
-        _ => None,
-    })
+    }
+    let text = (!text_parts.is_empty()).then(|| text_parts.join("\n"));
+    (text, tool_calls)
 }
 
 pub fn parse_json_response<T: DeserializeOwned>(raw: &str) -> Result<T, AgentRuntimeError> {
@@ -534,9 +705,7 @@ mod tests {
                 Some(PHI4_TYPED_JOB_SYSTEM_PROMPT)
             );
             assert_eq!(request.max_tokens, Some(256));
-            Ok(ModelResponse {
-                assistant_text: self.response.to_string(),
-            })
+            Ok(ModelResponse::text(self.response))
         }
     }
 
@@ -560,6 +729,7 @@ mod tests {
             .with_history([ModelTurn {
                 role: ModelRole::Assistant,
                 content: "Earlier answer".to_string(),
+                ..Default::default()
             }])
             .with_max_tokens(128);
 
@@ -573,12 +743,82 @@ mod tests {
     }
 
     #[test]
-    fn extract_assistant_message_prefers_text_content() {
-        let message = extract_assistant_message([
+    fn build_request_attaches_tools_when_present() {
+        let model = openai::Client::new("test-key")
+            .expect("test client")
+            .completions_api()
+            .completion_model("gpt-test");
+        let request = ModelRequest::text("What next?").with_tools(vec![ModelToolSpec {
+            name: "get_evidence_dashboard".to_string(),
+            description: "Read the evidence dashboard".to_string(),
+            parameters: serde_json::json!({"type": "object", "properties": {}}),
+        }]);
+
+        let request = build_completion_request(model, request);
+        assert_eq!(request.tools.len(), 1);
+        assert_eq!(request.tools[0].name, "get_evidence_dashboard");
+    }
+
+    #[test]
+    fn build_request_with_trailing_tool_result_places_it_last_with_matching_call_id() {
+        let model = openai::Client::new("test-key")
+            .expect("test client")
+            .completions_api()
+            .completion_model("gpt-test");
+
+        let assistant_turn = ModelTurn::assistant_tool_calls(vec![ModelToolCall {
+            id: "call_abc".to_string(),
+            name: "get_evidence_dashboard".to_string(),
+            arguments: serde_json::json!({}),
+        }]);
+        let tool_result_turn = ModelTurn::tool_result("call_abc", "{\"ok\":true}");
+
+        let request = ModelRequest::continue_with(vec![assistant_turn], tool_result_turn);
+        let request = build_completion_request(model, request);
+        let messages: Vec<_> = request.chat_history.into_iter().collect();
+
+        assert_eq!(messages.len(), 2);
+        match &messages[0] {
+            Message::Assistant { content, .. } => {
+                assert!(matches!(content.first(), AssistantContent::ToolCall(_)));
+            }
+            other => panic!("expected assistant tool-call message, got {other:?}"),
+        }
+        match &messages[1] {
+            Message::User { content } => match content.first() {
+                rig::message::UserContent::ToolResult(result) => {
+                    assert_eq!(result.id, "call_abc");
+                }
+                other => panic!("expected tool result content, got {other:?}"),
+            },
+            other => panic!("expected tool result message, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn extract_assistant_reply_prefers_text_content() {
+        let (text, tool_calls) = extract_assistant_reply([
             AssistantContent::text("  hello world  "),
             AssistantContent::reasoning("ignored"),
         ]);
-        assert_eq!(message.as_deref(), Some("hello world"));
+        assert_eq!(text.as_deref(), Some("hello world"));
+        assert!(tool_calls.is_empty());
+    }
+
+    #[test]
+    fn extract_assistant_reply_surfaces_tool_calls_instead_of_dropping_them() {
+        // Regression guard: the earlier `extract_assistant_message` only
+        // matched `AssistantContent::Text` and silently discarded
+        // `ToolCall` content. That's the bug this loop depends on being fixed.
+        let call = AssistantContent::ToolCall(RigToolCall::new(
+            "call_1".to_string(),
+            RigToolFunction::new("get_evidence_dashboard".to_string(), serde_json::json!({})),
+        ));
+        let (text, tool_calls) = extract_assistant_reply([call]);
+        assert_eq!(text, None);
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].id, "call_1");
+        assert_eq!(tool_calls[0].name, "get_evidence_dashboard");
     }
 
     #[test]
@@ -723,6 +963,7 @@ mod tests {
             .with_history([ModelTurn {
                 role: ModelRole::Assistant,
                 content: "earlier response".to_string(),
+                ..Default::default()
             }])
             .with_max_tokens(64);
         let base = ModelCallEventBase::new(&test_settings(), &request);

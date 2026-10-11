@@ -133,10 +133,7 @@ impl ComplianceStore {
             blake3_hex: blake3_hex.to_string(),
             timestamp_utc: unix_secs_now(),
         };
-        let mut guard = self
-            .inner
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         guard.registered.insert(control_id.to_string());
         guard.satisfied.insert(control_id.to_string());
         guard.attestations.push(attestation);
@@ -156,10 +153,7 @@ impl ComplianceStore {
     /// - `Partial`  — some (not all) controls satisfied
     /// - `Full`     — all registered controls satisfied
     pub fn ledgrrr_report(&self) -> LedgrrComplianceReport {
-        let guard = self
-            .inner
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
 
         let mut satisfied: Vec<String> = guard.satisfied.iter().cloned().collect();
         satisfied.sort();
@@ -234,7 +228,9 @@ mod tests {
         store.attest("soc2-cc6.1", "abc123def");
         let report = store.ledgrrr_report();
         assert!(
-            report.controls_satisfied.contains(&"soc2-cc6.1".to_string()),
+            report
+                .controls_satisfied
+                .contains(&"soc2-cc6.1".to_string()),
             "attested control must appear in controls_satisfied"
         );
         assert_eq!(

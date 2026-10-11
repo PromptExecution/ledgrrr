@@ -1,6 +1,5 @@
 use ledgerr_host::notify::{
-    NotificationBackend, NotificationSettings, NotificationStatus, Notifier,
-    PowerShellBurntToastNotifier,
+    NativeToastNotifier, NotificationBackend, NotificationSettings, NotificationStatus, Notifier,
 };
 use ledgerr_host::settings::{default_settings_path, SettingsStore};
 
@@ -15,7 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--backend" => {
                 let value = args.next().unwrap_or_else(|| "auto".to_string());
                 backend_override = Some(match value.as_str() {
-                    "powershell" => NotificationBackend::PowerShell,
+                    "native" | "powershell" => NotificationBackend::Native,
                     "noop" => NotificationBackend::Noop,
                     _ => NotificationBackend::Auto,
                 });
@@ -42,19 +41,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "status": "disabled",
             "message": "noop backend selected"
         }),
-        NotificationBackend::Auto | NotificationBackend::PowerShell => {
+        NotificationBackend::Auto | NotificationBackend::Native => {
             let notify_settings = NotificationSettings {
                 enabled: settings.toast_enabled,
                 backend: settings.toast_backend_preference,
                 last_test_result: settings.last_test_result.clone(),
             };
-            let notifier = PowerShellBurntToastNotifier::new(notify_settings);
+            let notifier = NativeToastNotifier::new(notify_settings);
             match notifier.test(&title, &body) {
                 Ok(result) => {
                     settings.last_test_result = Some(result.clone());
                     store.save(&settings)?;
                     serde_json::json!({
-                        "backend": "powershell",
+                        "backend": "native",
                         "status": match result.status {
                             NotificationStatus::Disabled => "disabled",
                             NotificationStatus::Unknown => "unknown",
@@ -67,7 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 Err(err) => {
                     serde_json::json!({
-                        "backend": "powershell",
+                        "backend": "native",
                         "status": "failed",
                         "error": err.to_string(),
                     })

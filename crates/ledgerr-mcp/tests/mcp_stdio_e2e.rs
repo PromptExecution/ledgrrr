@@ -155,7 +155,12 @@ fn doc_01_mcp_only_ingest_via_tools_call() {
         .iter()
         .filter_map(|entry| entry.get("name").and_then(Value::as_str))
         .collect::<Vec<_>>();
-    assert_eq!(tool_names.len(), 13);
+    // Derived from the single source of truth (`contract::PUBLISHED_TOOLS`)
+    // rather than a hardcoded literal — see contract.rs's own module doc.
+    assert_eq!(
+        tool_names.len(),
+        ledgerr_mcp::contract::PUBLISHED_TOOLS.len()
+    );
     assert!(tool_names.contains(&"ledgerr_documents"));
 
     let tempdir = tempfile::tempdir().expect("tempdir");

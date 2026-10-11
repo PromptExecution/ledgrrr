@@ -18,8 +18,7 @@ pub fn parse_ofx_to_rows(
     config: &ConversionConfig,
 ) -> Result<Vec<TransactionInput>, ImportOfxError> {
     let content = std::fs::read_to_string(ofx_path)?;
-    let doc = ofx_rs::parse(&content)
-        .map_err(|e| ImportOfxError::OfxParse(e.to_string()))?;
+    let doc = ofx_rs::parse(&content).map_err(|e| ImportOfxError::OfxParse(e.to_string()))?;
 
     let mut rows: Vec<TransactionInput> = Vec::new();
     let source_ref = ofx_path.to_string_lossy().to_string();
@@ -190,10 +189,7 @@ NEWFILEUID:NONE
             offset_name: "Revenue".into(),
             offset_kind: OffsetKind::Revenue,
         };
-        let result = parse_ofx_to_rows(
-            Path::new("/nonexistent/ofx_file.qfx"),
-            &config,
-        );
+        let result = parse_ofx_to_rows(Path::new("/nonexistent/ofx_file.qfx"), &config);
         assert!(result.is_err());
     }
 }

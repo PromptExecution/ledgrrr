@@ -39,6 +39,7 @@ pub const SCHEMA_TOOL: &str = "ledgerr_schema";
 pub const MANIFEST_TOOL: &str = "ledgerr_manifest";
 pub const BUDGET_TOOL: &str = "ledgerr_budget";
 pub const VALIDATE_PROCESS_TOOL: &str = "ledgerr_validate_process";
+pub const GCP_BILLING_TOOL: &str = "ledgerr_gcp_billing";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolContractSpec {
@@ -64,9 +65,10 @@ pub const TOOL_REGISTRY: &[&str] = &[
     MANIFEST_TOOL,
     BUDGET_TOOL,
     VALIDATE_PROCESS_TOOL,
+    GCP_BILLING_TOOL,
 ];
 
-pub const PUBLISHED_TOOLS: [ToolContractSpec; 14] = [
+pub const PUBLISHED_TOOLS: [ToolContractSpec; 15] = [
     ToolContractSpec {
         name: DOCUMENTS_TOOL,
         purpose: "document intake (PDF, image, CSV), tagging, filesystem metadata sync",
@@ -206,6 +208,11 @@ pub const PUBLISHED_TOOLS: [ToolContractSpec; 14] = [
         name: VALIDATE_PROCESS_TOOL,
         purpose: "SHACL validation of SysML-v2 process graphs against kr0ki process-model shapes (ledgrrr#255)",
         actions: &["validate"],
+    },
+    ToolContractSpec {
+        name: GCP_BILLING_TOOL,
+        purpose: "GCP BigQuery Billing Export (FOCUS-conformant) ingestion into ledgerr_focus::CostAndUsageRow",
+        actions: &["ingest_since", "query_last_run", "dry_run_map_row"],
     },
 ];
 
@@ -1032,6 +1039,38 @@ pub fn parse_budget(arguments: &Value) -> Result<BudgetArgs, ToolError> {
     parse_args(arguments)
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "action", deny_unknown_fields)]
+pub enum GcpBillingArgs {
+    /// Query and ingest every row from the configured GCP BigQuery Billing
+    /// Export (FOCUS-conformant) table charged on or after `since`, mapping
+    /// each into a `ledgerr_focus::CostAndUsageRow` (see
+    /// `ledgerr_gcp_billing::BigQueryFocusSource`).
+    #[serde(rename = "ingest_since")]
+    IngestSince {
+        /// RFC 3339 timestamp; only rows with `ChargePeriodStart >= since`
+        /// are ingested.
+        since: String,
+    },
+    /// Report metadata about the most recent `ingest_since` run.
+    #[serde(rename = "query_last_run")]
+    QueryLastRun,
+    /// Map a single raw `bq query --format=json` row object into a FOCUS
+    /// `CostAndUsageRow` without querying BigQuery at all — useful for
+    /// validating field-name guesses against a hand-pasted sample row
+    /// before wiring up a real export.
+    #[serde(rename = "dry_run_map_row")]
+    DryRunMapRow {
+        /// One row object, shaped like a single element of `bq query
+        /// --format=json`'s output array.
+        raw_row_json: Value,
+    },
+}
+
+pub fn parse_gcp_billing(arguments: &Value) -> Result<GcpBillingArgs, ToolError> {
+    parse_args(arguments)
+}
+
 fn parse_args<T>(arguments: &Value) -> Result<T, ToolError>
 where
     T: for<'de> Deserialize<'de>,
@@ -1054,6 +1093,7 @@ pub fn tool_input_schema(name: &str) -> Value {
         EVIDENCE_TOOL => root_schema_to_value(schema_for!(EvidenceArgs)),
         SCHEMA_TOOL => root_schema_to_value(schema_for!(SchemaArgs)),
         BUDGET_TOOL => root_schema_to_value(schema_for!(BudgetArgs)),
+        GCP_BILLING_TOOL => root_schema_to_value(schema_for!(GcpBillingArgs)),
         _ => json!({ "type": "object" }),
     }
 }
@@ -1257,7 +1297,7 @@ Open design/roadmap gaps are tracked in:\n\
 }
 
 pub fn generated_agent_runbook_markdown() -> String {
-    format!(
+    let mut runbook = format!(
         "# Agent MCP Runbook (Generated)\n\n\
 This file is generated from `crates/ledgerr-mcp/src/contract.rs`.\n\n\
 Agent workflows must use `initialize`, `notifications/initialized`, `tools/list`, and `tools/call` over stdio.\n\n\
@@ -1321,7 +1361,31 @@ Expected blocked outcomes:\n\n\
             AUDIT_TOOL,
             json!({"action":"event_history","time_start":"2026-12-31","time_end":"2026-01-01"})
         ),
-    )
+    );
+    runbook
+        .push_str("\n## `ledgerr_gcp_billing` — GCP BigQuery Billing Export (FOCUS) ingestion\n\n");
+    runbook.push_str("Environment (all optional; sane defaults):\n\n");
+    runbook.push_str("| Var | Default | Purpose |\n");
+    runbook.push_str("|---|---|---|\n");
+    runbook.push_str("| `GCP_BILLING_PROJECT_ID` / `GCP_BILLING_DATASET` / `GCP_BILLING_TABLE` | — (required for `ingest_since`) | BigQuery billing export table location |\n");
+    runbook.push_str("| `GCP_BILLING_SIDECAR_PATH` | `~/.local/share/b00t/focus/gcp_billing_focus_rows.jsonl` | JSONL sink for mapped `CostAndUsageRow`s (content-hash deduped; atomic tmp+rename writes) |\n");
+    runbook.push_str("| `GCP_BILLING_MAX_ROWS` | `50000` | Explicit `--max_rows` for `bq query`. Never rely on bq's own default (100, silently truncated). Hitting the cap sets `truncated: true` in the response and fails the scheduled op — narrow `since` or raise the cap. |\n");
+    runbook.push_str("| `GCP_BILLING_QUERY_TIMEOUT_SECS` | `120` | Wall-clock bound on the `bq` subprocess (mirrors `PdfIngestOp`). A hang fails the call instead of stalling the MCP server. |\n\n");
+    runbook.push_str("First-run validation against a real export (the row-shape mapping in\n");
+    runbook.push_str("`ledgerr-gcp-billing` was written against Google's published FOCUS column\n");
+    runbook.push_str("names, not a live export — see its crate docs):\n\n");
+    runbook.push_str("```bash\n");
+    runbook.push_str("bq query --use_legacy_sql=false --max_rows=5 --format=json \\\n");
+    runbook
+        .push_str("  'SELECT * FROM `PROJECT.DATASET.TABLE` ORDER BY ChargePeriodStart DESC' \\\n");
+    runbook.push_str("  > /tmp/real_rows.json\n");
+    runbook.push_str("# then for each row object, call:\n");
+    runbook.push_str("#   {\"name\":\"ledgerr_gcp_billing\",\"arguments\":{\"action\":\"dry_run_map_row\",\"raw_row_json\":{...}}}\n");
+    runbook
+        .push_str("# a clean map confirms the field-name guesses; a MissingField/InvalidValue\n");
+    runbook.push_str("# error names exactly which column guess needs correction.\n");
+    runbook.push_str("```\n");
+    runbook
 }
 
 pub fn generated_mcp_cli_demo_script() -> String {

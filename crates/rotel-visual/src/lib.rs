@@ -1,22 +1,25 @@
 use axum::{
-    extract::{State, ws::{WebSocket, WebSocketUpgrade}},
+    Json, Router,
+    extract::{
+        State,
+        ws::{WebSocket, WebSocketUpgrade},
+    },
     response::IntoResponse,
     routing::{get, post},
-    Json, Router,
 };
 use b00t_iface::metric::MetricRegistry;
 use b00t_iface::sarif::check_otel_logic_slo_as_sarif;
 use ledger_core::observability::{
-    otlp_json, ClassifiedJournalArtifact, LogShapeClassifier, OTelLogRecord,
-    OTelSeverityNumber, TelemetryArrowBatch,
+    ClassifiedJournalArtifact, LogShapeClassifier, OTelLogRecord, OTelSeverityNumber,
+    TelemetryArrowBatch, otlp_json,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
     Arc,
+    atomic::{AtomicU64, Ordering},
 };
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 use tracing::{error, info, instrument};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -630,7 +633,13 @@ async fn otlp_traces_handler(
         .iter()
         .flat_map(|resource_spans| resource_spans.scope_spans.iter())
         .flat_map(|scope_spans| scope_spans.spans.iter())
-        .map(|span| (span.trace_id.as_str(), span.span_id.as_str(), span.name.as_str()))
+        .map(|span| {
+            (
+                span.trace_id.as_str(),
+                span.span_id.as_str(),
+                span.name.as_str(),
+            )
+        })
         .collect();
 
     state.metrics.inc_traces_ingested(span_records.len() as u64);
@@ -657,9 +666,7 @@ struct EvaluateSloRequest {
 }
 
 #[instrument]
-async fn evaluate_slo_handler(
-    Json(req): Json<EvaluateSloRequest>,
-) -> impl IntoResponse {
+async fn evaluate_slo_handler(Json(req): Json<EvaluateSloRequest>) -> impl IntoResponse {
     let mut registry = MetricRegistry::new();
     let report = check_otel_logic_slo_as_sarif(
         &mut registry,
@@ -742,14 +749,12 @@ pub async fn run_server() -> Result<(), anyhow::Error> {
     }
 
     let addr = format!("0.0.0.0:{port}");
-    let listener = tokio::net::TcpListener::bind(&addr)
-        .await
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "Failed to bind to {addr}: {e}. \
+    let listener = tokio::net::TcpListener::bind(&addr).await.map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to bind to {addr}: {e}. \
                  Port may be in use. Set ROTEL_PORT env var to use a different port."
-            )
-        })?;
+        )
+    })?;
     info!("Rotel Visual OTel Surface starting on {addr}");
 
     axum::serve(listener, create_app()?)

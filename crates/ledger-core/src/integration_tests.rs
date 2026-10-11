@@ -105,8 +105,8 @@ mod integration {
     #[cfg(feature = "cedar-policy")]
     #[test]
     fn test_cedar_gate_with_full_compliance() {
-        use std::sync::Arc;
         use crate::ledger_ops::{CedarGateOp, LedgerOperation, OperationContext};
+        use std::sync::Arc;
 
         // Create gateway with default policy
         let gw = msft_agent_gov_ledgrrr::LedgrrAgtGateway::new("test-agent").unwrap();
@@ -132,8 +132,8 @@ mod integration {
     #[cfg(feature = "cedar-policy")]
     #[test]
     fn test_cedar_gate_with_partial_compliance() {
-        use std::sync::Arc;
         use crate::ledger_ops::{CedarGateOp, LedgerOperation, OperationContext};
+        use std::sync::Arc;
 
         // Create gateway and register multiple controls but only attest one
         let gw = msft_agent_gov_ledgrrr::LedgrrAgtGateway::new("test-agent").unwrap();
@@ -161,8 +161,8 @@ mod integration {
     #[cfg(feature = "cedar-policy")]
     #[test]
     fn test_cedar_gate_with_unknown_compliance() {
-        use std::sync::Arc;
         use crate::ledger_ops::{CedarGateOp, LedgerOperation, OperationContext};
+        use std::sync::Arc;
 
         // Create gateway with no attestations
         let gw = msft_agent_gov_ledgrrr::LedgrrAgtGateway::new("test-agent").unwrap();

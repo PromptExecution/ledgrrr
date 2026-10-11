@@ -1,0 +1,150 @@
+/* ============================================================================
+   Foundry Local — status + install-assist panel, fixed top-right
+   ============================================================================ */
+
+#foundry-local {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 1000;
+}
+
+.fl-panel {
+  width: 260px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 11px;
+  color: #cbd5e1;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+
+.fl-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.fl-panel__title {
+  font-weight: 600;
+  font-size: 12px;
+  color: #f1f5f9;
+}
+
+.fl-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.fl-status--loading {
+  color: #94a3b8;
+}
+
+.fl-status--error {
+  color: #fca5a5;
+}
+
+.fl-status--ok {
+  color: #86efac;
+}
+
+.fl-status__sep {
+  width: 8px;
+}
+
+.fl-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.fl-dot--ok {
+  background: #22c55e;
+}
+
+.fl-dot--off {
+  background: #64748b;
+}
+
+.fl-install {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fl-btn {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #f1f5f9;
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.fl-btn:hover:not(:disabled) {
+  background: #334155;
+}
+
+.fl-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.fl-btn--primary {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+.fl-btn--primary:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.fl-btn--icon {
+  padding: 2px 6px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.fl-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.fl-plan__action {
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.fl-plan__blocked {
+  color: #fbbf24;
+}
+
+.fl-plan__command {
+  display: block;
+  background: #020617;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 10px;
+  color: #93c5fd;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.fl-plan__buttons {
+  display: flex;
+  gap: 6px;
+}

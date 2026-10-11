@@ -102,7 +102,10 @@ mod tests {
     fn render_contains_cytoscape_cdn() {
         let graph = two_node_graph();
         let html = HtmlRenderer::render(&graph);
-        assert!(html.contains("cytoscape.min.js"), "missing Cytoscape CDN link");
+        assert!(
+            html.contains("cytoscape.min.js"),
+            "missing Cytoscape CDN link"
+        );
     }
 
     #[test]

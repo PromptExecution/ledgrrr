@@ -59,7 +59,10 @@ fn feie_03_partial_year_pro_rata() {
 
     // 184/365 * 126500 with Decimal precision
     assert_eq!(outcome.excluded_amount, "63769.86301369863013698630137");
-    assert_eq!(outcome.income_subject_to_income_tax, "16230.13698630136986301369863");
+    assert_eq!(
+        outcome.income_subject_to_income_tax,
+        "16230.13698630136986301369863"
+    );
     // Hard guard still applies
     assert_eq!(outcome.income_subject_to_se_tax, "80000");
 }

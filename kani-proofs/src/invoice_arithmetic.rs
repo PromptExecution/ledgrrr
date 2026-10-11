@@ -94,6 +94,9 @@ mod tests {
             }
         }
         println!("invoice_required_pass exhaustive grid: checked {checked} combinations");
-        assert!(checked > 20_000_000, "grid shrank unexpectedly: only {checked} combinations");
+        assert!(
+            checked > 20_000_000,
+            "grid shrank unexpectedly: only {checked} combinations"
+        );
     }
 }

@@ -156,6 +156,12 @@ impl LocalCandelRuntime {
                 ModelRole::System => (CHAT_START_SYS, turn.content.trim()),
                 ModelRole::User => (CHAT_START_USER, turn.content.trim()),
                 ModelRole::Assistant => (CHAT_START_ASST, turn.content.trim()),
+                // This candle backend has no tool-call/tool-result prompt
+                // template — fold a tool turn back in as user-visible text
+                // rather than failing to compile. Unreachable in practice via
+                // the normal chat path (see the matching comment in
+                // `local_llm_mistral.rs::build_messages`).
+                ModelRole::Tool => (CHAT_START_USER, turn.content.trim()),
             };
             buf.push_str(start);
             buf.push_str(content);
@@ -309,6 +315,6 @@ impl AgentRuntime for LocalCandelRuntime {
         let tokenizer = self.load_tokenizer()?;
         let prompt = self.format_prompt(&request);
         let assistant_text = self.run_inference(&prompt, &tokenizer)?;
-        Ok(ModelResponse { assistant_text })
+        Ok(ModelResponse::text(assistant_text))
     }
 }

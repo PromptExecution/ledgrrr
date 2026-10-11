@@ -6,7 +6,7 @@ use ledgerr_host::tray::{tray_menu_labels, TrayCommand, TrayState};
 fn tray_default_state_is_sane() {
     let state = TrayState::default();
     assert!(state.toast_enabled);
-    assert_eq!(state.notification_backend, NotificationBackend::PowerShell);
+    assert_eq!(state.notification_backend, NotificationBackend::Native);
     assert_eq!(state.notification_status, NotificationStatus::Unknown);
 }
 

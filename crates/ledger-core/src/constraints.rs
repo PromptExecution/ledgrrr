@@ -1,9 +1,9 @@
 //! Kasuari-based constraint solving for data plausibility.
 //! Uses the Cassowary algorithm to evaluate constraints against transaction populations.
 
-use serde::{Deserialize, Serialize};
+use crate::attest::{AttestationSpec, Attested};
 use ledger_attest::attested;
-use crate::attest::{Attested, AttestationSpec};
+use serde::{Deserialize, Serialize};
 
 /// Constraint strength levels (matching Kasuari).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -110,7 +110,6 @@ pub struct InvoiceVerification {
     pub audit_note: String,
 }
 
-
 impl Attested for ConstraintEvaluation {
     fn attestation_spec() -> AttestationSpec {
         AttestationSpec {
@@ -171,7 +170,9 @@ impl Attested for VendorConstraintSet {
         AttestationSpec {
             invariant: "vendor_constraint_bounds_ordered",
             z3_predicate: None,
-            kasuari_description: Some("evaluate() strong_ratio in [0.0, 1.0] for all finite f64 inputs"),
+            kasuari_description: Some(
+                "evaluate() strong_ratio in [0.0, 1.0] for all finite f64 inputs",
+            ),
             kani_module: Some("kani_proofs::vendor_constraints"),
         }
     }
@@ -240,7 +241,6 @@ impl LayoutSolver {
         Self { _private: () }
     }
 }
-
 
 impl Attested for InvoiceVerification {
     fn attestation_spec() -> AttestationSpec {

@@ -54,9 +54,8 @@ impl ToastNotifier {
 
     /// Build a ToastGeneric XML template with title and body.
     fn build_toast_xml(title: &str, body: &str) -> Result<XmlDocument, NotificationError> {
-        let doc = XmlDocument::new().map_err(|e| {
-            NotificationError::Failed(format!("failed to create XmlDocument: {e}"))
-        })?;
+        let doc = XmlDocument::new()
+            .map_err(|e| NotificationError::Failed(format!("failed to create XmlDocument: {e}")))?;
 
         let title_escaped = escape_xml(title);
         let body_escaped = escape_xml(body);
@@ -84,9 +83,8 @@ impl ToastNotifier {
         body: &str,
         actions: &[(&str, &str)],
     ) -> Result<XmlDocument, NotificationError> {
-        let doc = XmlDocument::new().map_err(|e| {
-            NotificationError::Failed(format!("failed to create XmlDocument: {e}"))
-        })?;
+        let doc = XmlDocument::new()
+            .map_err(|e| NotificationError::Failed(format!("failed to create XmlDocument: {e}")))?;
 
         let title_escaped = escape_xml(title);
         let body_escaped = escape_xml(body);
@@ -121,7 +119,9 @@ impl ToastNotifier {
     }
 
     /// Internal: create a ToastNotifier from the manager, trying AUMID first.
-    fn create_notifier(&self) -> Result<windows::UI::Notifications::ToastNotifier, NotificationError> {
+    fn create_notifier(
+        &self,
+    ) -> Result<windows::UI::Notifications::ToastNotifier, NotificationError> {
         match ToastNotificationManager::CreateToastNotifierWithId(&self.app_id) {
             Ok(n) => Ok(n),
             Err(_first) => ToastNotificationManager::CreateToastNotifier().map_err(|e| {

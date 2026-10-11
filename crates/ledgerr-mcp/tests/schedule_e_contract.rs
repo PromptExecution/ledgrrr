@@ -16,7 +16,10 @@ fn sed_01_twentyseven_point_five_year_straight_line_mid_month() {
     let expected_first_year = expected_annual * 11.5 / 12.0;
     let current: f64 = result.current_year.parse().unwrap();
     let diff = (current - expected_first_year).abs();
-    assert!(diff < 0.02, "current_year {current} differs from {expected_first_year} by {diff}");
+    assert!(
+        diff < 0.02,
+        "current_year {current} differs from {expected_first_year} by {diff}"
+    );
     assert_eq!(result.accumulated_prior, "0.00");
     assert_eq!(result.accumulated_end, result.current_year);
     assert_eq!(result.remaining_life_months, 318);
@@ -36,7 +39,10 @@ fn sed_02_land_excluded_from_depreciable_basis() {
     let expected_depreciation = 400000.00 / 27.5 / 12.0 * 6.5;
     let current: f64 = result.current_year.parse().unwrap();
     let diff = (current - expected_depreciation).abs();
-    assert!(diff < 0.02, "current_year {current} differs from {expected_depreciation} by {diff}");
+    assert!(
+        diff < 0.02,
+        "current_year {current} differs from {expected_depreciation} by {diff}"
+    );
 }
 
 #[test]
@@ -61,7 +67,10 @@ fn sed_03_cross_year_accumulated_continuity() {
     let year2_expected = 330000.00 / 27.5;
     let y2_current: f64 = year2.current_year.parse().unwrap();
     let diff = (y2_current - year2_expected).abs();
-    assert!(diff < 0.02, "year 2 current {y2_current} differs from full-year {year2_expected} by {diff}");
+    assert!(
+        diff < 0.02,
+        "year 2 current {y2_current} differs from full-year {year2_expected} by {diff}"
+    );
     let y2_end: f64 = year2.accumulated_end.parse().unwrap();
     let expected_end = acc_end + y2_current;
     assert!((y2_end - expected_end).abs() < 0.02);
@@ -84,7 +93,10 @@ fn sed_04_capital_improvement_mid_chain() {
     let expected_current = base_current + imp_current;
     let current: f64 = result.current_year.parse().unwrap();
     let diff = (current - expected_current).abs();
-    assert!(diff < 0.02, "current_year {current} differs from {expected_current} by {diff}");
+    assert!(
+        diff < 0.02,
+        "current_year {current} differs from {expected_current} by {diff}"
+    );
     let expected_end = 12800.00 + current;
     let end: f64 = result.accumulated_end.parse().unwrap();
     assert!((end - expected_end).abs() < 0.02);

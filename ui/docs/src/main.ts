@@ -2,6 +2,7 @@ import './styles/main.css';
 
 import { TaskbarManager } from './taskbar/manager.js';
 import { taskbarBus } from './taskbar/bus.js';
+import { FoundryLocalManager } from './foundry-local/manager.js';
 import { loadScene } from './iso/scene.js';
 import { generate } from './llm/session.js';
 import { probeLocalService } from './llm/probe.js';
@@ -15,6 +16,16 @@ if (!taskbarEl) throw new Error('#taskbar element not found');
 const taskbar = new TaskbarManager(taskbarEl);
 // Initial render so the bar appears even when empty
 taskbar.render();
+
+// ---- 1b. Bootstrap Foundry Local status + install-assist -----------------
+
+const foundryLocalEl = document.getElementById('foundry-local');
+if (!foundryLocalEl) throw new Error('#foundry-local element not found');
+
+const foundryLocal = new FoundryLocalManager(foundryLocalEl);
+foundryLocal.refreshStatus().catch(err => {
+  console.error('Failed to load Foundry Local status:', err);
+});
 
 // ---- 2. Probe for local service (async, non-blocking) -------------------
 

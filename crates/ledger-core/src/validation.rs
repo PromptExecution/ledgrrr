@@ -2,10 +2,10 @@
 //! These types provide a carry-forward validation context that accumulates
 //! confidence and issues through each pipeline stage.
 
-use std::fmt;
-use serde::{Deserialize, Serialize};
+use crate::attest::{AttestationSpec, Attested};
 use ledger_attest::attested;
-use crate::attest::{Attested, AttestationSpec};
+use serde::{Deserialize, Serialize};
+use std::fmt;
 
 /// Disposition classifies how an issue should be handled by the pipeline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -199,7 +199,7 @@ where
     let issues = next.issues.clone();
     let _issue_count = issues.len();
     let meta = next.meta.advance(stage, next.confidence, &issues);
-    
+
     StageResult {
         data: next.data,
         confidence: next.confidence,
@@ -332,7 +332,6 @@ pub mod verbs {
             .with_access(AccessCriteria::RequiresApproval(ApprovalGate::Tray))
     }
 }
-
 
 impl Attested for MetaCtx {
     fn attestation_spec() -> AttestationSpec {

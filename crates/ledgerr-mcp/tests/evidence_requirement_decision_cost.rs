@@ -61,7 +61,11 @@ fn import_requirement_then_list_nodes_and_node_detail() {
     );
     let text = list["content"][0]["text"].as_str().unwrap();
     let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
-    assert_eq!(parsed["count"], json!(1), "re-import must not duplicate the node");
+    assert_eq!(
+        parsed["count"],
+        json!(1),
+        "re-import must not duplicate the node"
+    );
 
     let detail = handle_evidence_tool(
         &svc,

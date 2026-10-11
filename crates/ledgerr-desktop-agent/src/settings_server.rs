@@ -49,14 +49,17 @@ fn route_request(raw: &[u8], store: &SettingsStore) -> String {
     let request_line = headers.lines().next().unwrap_or_default();
     let body = &raw[header_end + 4..];
 
-    if request_line.starts_with("GET /settings ") || request_line.starts_with("GET /settings HTTP") {
+    if request_line.starts_with("GET /settings ") || request_line.starts_with("GET /settings HTTP")
+    {
         return match store.load() {
             Ok(settings) => json_response(200, &settings),
             Err(error) => json_response(500, &serde_json::json!({ "error": error.to_string() })),
         };
     }
 
-    if request_line.starts_with("POST /settings ") || request_line.starts_with("POST /settings HTTP") {
+    if request_line.starts_with("POST /settings ")
+        || request_line.starts_with("POST /settings HTTP")
+    {
         let settings: AppSettings = match serde_json::from_slice(body) {
             Ok(settings) => settings,
             Err(error) => {
@@ -129,9 +132,18 @@ pub fn accept_once(listener: &TcpListener, store: &SettingsStore) {
 mod tests {
     use super::*;
 
+    /// `SettingsStore::new`'s registry backend (on Windows) ignores its
+    /// `path` argument and always targets the one fixed production key —
+    /// correct for real callers, but it would make every test here share
+    /// one mutable global registry key. Use an explicit `JsonFileBackend`
+    /// over a tempdir instead, for genuine per-test isolation.
     fn store_with_defaults() -> SettingsStore {
         let dir = tempfile::tempdir().unwrap();
-        SettingsStore::new(dir.path().join("settings.json"))
+        let path = dir.path().join("settings.json");
+        SettingsStore::with_backend(
+            path.clone(),
+            Box::new(ledgrrr_settings::backend::JsonFileBackend::new(path)),
+        )
     }
 
     #[test]

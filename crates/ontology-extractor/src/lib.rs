@@ -85,8 +85,16 @@ impl RustAstExtractor {
             // name in different Rust namespaces (e.g. `struct Foo` and `fn Foo()`)
             // are preserved as distinct entries.
             terms.sort_unstable_by(|left, right| {
-                (left.file.as_str(), left.name.as_str(), left.classification.kind())
-                    .cmp(&(right.file.as_str(), right.name.as_str(), right.classification.kind()))
+                (
+                    left.file.as_str(),
+                    left.name.as_str(),
+                    left.classification.kind(),
+                )
+                    .cmp(&(
+                        right.file.as_str(),
+                        right.name.as_str(),
+                        right.classification.kind(),
+                    ))
             });
             terms.dedup_by(|left, right| {
                 left.file == right.file

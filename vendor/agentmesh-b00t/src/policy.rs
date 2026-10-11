@@ -1,0 +1,1259 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
+//! YAML-based policy evaluation engine with four-way decisions:
+//! allow, deny, requires-approval, and rate-limit.
+
+use crate::protocol_facets::extract_protocol_facets;
+use crate::types::{
+    CandidateDecision, ConflictResolutionStrategy, PolicyDecision, PolicyScope, ResolutionResult,
+};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::{Mutex, RwLock};
+use std::time::Instant;
+
+/// A single rule inside a policy profile.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PolicyRule {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub rule_type: String,
+    #[serde(default)]
+    pub allowed_actions: Vec<String>,
+    #[serde(default)]
+    pub denied_actions: Vec<String>,
+    #[serde(default)]
+    pub actions: Vec<String>,
+    #[serde(default)]
+    pub min_approvals: u32,
+    #[serde(default)]
+    pub max_calls: u32,
+    #[serde(default)]
+    pub window: String,
+    #[serde(default)]
+    pub conditions: HashMap<String, serde_yaml::Value>,
+    /// Rule priority — higher values are evaluated first.
+    #[serde(default)]
+    pub priority: u32,
+    /// The scope at which this rule applies.
+    #[serde(default)]
+    pub scope: PolicyScope,
+}
+
+/// A loaded policy profile parsed from YAML.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PolicyProfile {
+    pub version: String,
+    pub agent: String,
+    pub policies: Vec<PolicyRule>,
+}
+
+/// Policy evaluation engine.
+///
+/// Rules are evaluated in order; first match wins.
+/// When no profile is loaded, all actions are allowed.
+pub struct PolicyEngine {
+    profile: RwLock<Option<PolicyProfile>>,
+    rate_counters: Mutex<HashMap<String, (u64, Instant)>>,
+    conflict_strategy: ConflictResolutionStrategy,
+}
+
+impl PolicyEngine {
+    /// Create an empty policy engine (allows everything) with default
+    /// [`ConflictResolutionStrategy::PriorityFirstMatch`].
+    pub fn new() -> Self {
+        Self {
+            profile: RwLock::new(None),
+            rate_counters: Mutex::new(HashMap::new()),
+            conflict_strategy: ConflictResolutionStrategy::PriorityFirstMatch,
+        }
+    }
+
+    /// Create a policy engine with a specific conflict resolution strategy.
+    pub fn with_strategy(strategy: ConflictResolutionStrategy) -> Self {
+        Self {
+            profile: RwLock::new(None),
+            rate_counters: Mutex::new(HashMap::new()),
+            conflict_strategy: strategy,
+        }
+    }
+
+    /// Return the active conflict resolution strategy.
+    pub fn strategy(&self) -> ConflictResolutionStrategy {
+        self.conflict_strategy
+    }
+
+    /// Resolve conflicts among multiple candidate decisions using the
+    /// configured strategy.
+    ///
+    /// Returns a [`ResolutionResult`] describing which decision won,
+    /// whether a conflict was detected, and how many candidates were
+    /// evaluated.
+    pub fn resolve_conflicts(&self, candidates: &[CandidateDecision]) -> ResolutionResult {
+        if candidates.is_empty() {
+            return ResolutionResult {
+                winning_decision: PolicyDecision::Allow,
+                strategy_used: self.conflict_strategy,
+                conflict_detected: false,
+                candidates_evaluated: 0,
+            };
+        }
+
+        if candidates.len() == 1 {
+            return ResolutionResult {
+                winning_decision: candidates[0].decision.clone(),
+                strategy_used: self.conflict_strategy,
+                conflict_detected: false,
+                candidates_evaluated: 1,
+            };
+        }
+
+        let has_allow = candidates.iter().any(|c| c.decision.is_allowed());
+        let has_deny = candidates
+            .iter()
+            .any(|c| matches!(c.decision, PolicyDecision::Deny(_)));
+        let conflict_detected = has_allow && has_deny;
+
+        let mut sorted = candidates.to_vec();
+
+        let winning = match self.conflict_strategy {
+            ConflictResolutionStrategy::DenyOverrides => {
+                sorted.sort_by_key(|candidate| std::cmp::Reverse(candidate.priority));
+                match sorted
+                    .iter()
+                    .find(|c| matches!(c.decision, PolicyDecision::Deny(_)))
+                {
+                    Some(d) => d.clone(),
+                    None => sorted[0].clone(),
+                }
+            }
+            ConflictResolutionStrategy::AllowOverrides => {
+                sorted.sort_by_key(|candidate| std::cmp::Reverse(candidate.priority));
+                match sorted.iter().find(|c| c.decision.is_allowed()) {
+                    Some(a) => a.clone(),
+                    None => sorted[0].clone(),
+                }
+            }
+            ConflictResolutionStrategy::PriorityFirstMatch => {
+                sorted.sort_by_key(|candidate| std::cmp::Reverse(candidate.priority));
+                sorted[0].clone()
+            }
+            ConflictResolutionStrategy::MostSpecificWins => {
+                sorted.sort_by(|a, b| {
+                    b.scope
+                        .specificity()
+                        .cmp(&a.scope.specificity())
+                        .then(b.priority.cmp(&a.priority))
+                });
+                sorted[0].clone()
+            }
+        };
+
+        ResolutionResult {
+            winning_decision: winning.decision,
+            strategy_used: self.conflict_strategy,
+            conflict_detected,
+            candidates_evaluated: candidates.len(),
+        }
+    }
+
+    /// Whether a policy profile is loaded.
+    pub fn is_loaded(&self) -> bool {
+        self.profile
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_some()
+    }
+
+    /// Load a policy profile from a YAML string.
+    ///
+    /// Rejects profiles whose `rate_limit` rules carry a malformed `window`
+    /// so configuration mistakes surface at load time rather than being
+    /// papered over by a silent fallback during evaluation.
+    pub fn load_from_yaml(&self, yaml: &str) -> Result<(), PolicyError> {
+        let profile: PolicyProfile =
+            serde_yaml::from_str(yaml).map_err(PolicyError::InvalidYaml)?;
+        for rule in &profile.policies {
+            if rule.rule_type == "rate_limit" && rule.max_calls > 0 {
+                parse_duration(&rule.window).map_err(|reason| PolicyError::InvalidDuration {
+                    rule: rule.name.clone(),
+                    window: rule.window.clone(),
+                    reason,
+                })?;
+            }
+        }
+        *self.profile.write().unwrap_or_else(|e| e.into_inner()) = Some(profile);
+        Ok(())
+    }
+
+    /// Load a policy profile from a YAML file on disk.
+    ///
+    /// The path is canonicalized to prevent directory-traversal via
+    /// `..` segments. Relative paths are resolved against the current
+    /// working directory.
+    pub fn load_from_file(&self, path: &str) -> Result<(), PolicyError> {
+        let requested = std::path::Path::new(path);
+
+        // Reject paths that contain traversal components before resolution
+        for component in requested.components() {
+            if matches!(component, std::path::Component::ParentDir) {
+                return Err(PolicyError::Validation(format!(
+                    "Policy path '{}' contains directory traversal",
+                    path
+                )));
+            }
+        }
+
+        let canonical = std::fs::canonicalize(requested).map_err(PolicyError::Io)?;
+        let yaml = std::fs::read_to_string(&canonical).map_err(PolicyError::Io)?;
+        self.load_from_yaml(&yaml)
+    }
+
+    /// Evaluate an action against the loaded policy.
+    ///
+    /// If no profile is loaded, returns [`PolicyDecision::Allow`].
+    /// An optional `context` map is matched against rule conditions.
+    pub fn evaluate(
+        &self,
+        action: &str,
+        context: Option<&HashMap<String, serde_yaml::Value>>,
+    ) -> PolicyDecision {
+        // Enrich a copy of the context with wire-protocol facets (sql.*, k8s.*)
+        // so existing condition matching can reference protocol-level fields
+        // without any rule-schema changes. We never mutate the caller's map.
+        let enriched: Option<HashMap<String, serde_yaml::Value>> = context.map(|c| {
+            let mut owned = c.clone();
+            extract_protocol_facets(&mut owned);
+            owned
+        });
+        let effective_ctx = enriched.as_ref().or(context);
+
+        let guard = self.profile.read().unwrap_or_else(|e| e.into_inner());
+        let profile = match guard.as_ref() {
+            Some(p) => p,
+            None => return PolicyDecision::Allow,
+        };
+
+        for rule in &profile.policies {
+            if !conditions_match(&rule.conditions, effective_ctx) {
+                continue;
+            }
+
+            match rule.rule_type.as_str() {
+                "capability" => {
+                    // Deny list takes precedence
+                    for denied in &rule.denied_actions {
+                        if action_matches(action, denied) {
+                            return PolicyDecision::Deny(format!(
+                                "Blocked by policy '{}': action '{}' is denied",
+                                rule.name, action
+                            ));
+                        }
+                    }
+                    // Allow list: if the action matches an allow pattern, permit it.
+                    // If the list is non-empty but no pattern matches, deny only
+                    // when the action matches a deny-list prefix (scoped deny).
+                    // Actions outside the rule's scope fall through to later rules.
+                    if !rule.allowed_actions.is_empty() {
+                        if rule
+                            .allowed_actions
+                            .iter()
+                            .any(|a| action_matches(action, a))
+                        {
+                            return PolicyDecision::Allow;
+                        }
+                        // Only deny if action is in scope (matches a denied prefix
+                        // or shares a namespace with an allowed action)
+                        let in_scope = rule.denied_actions.iter().any(|d| {
+                            let ns = d.trim_end_matches('*').trim_end_matches(':');
+                            action.starts_with(ns)
+                        }) || rule.allowed_actions.iter().any(|a| {
+                            let ns = a.split('.').next().unwrap_or("");
+                            action.starts_with(ns)
+                        });
+                        if in_scope {
+                            return PolicyDecision::Deny(format!(
+                                "Blocked by policy '{}': action '{}' not in allowlist",
+                                rule.name, action
+                            ));
+                        }
+                    }
+                }
+                "approval" => {
+                    for pattern in &rule.actions {
+                        if action_matches(action, pattern) {
+                            return PolicyDecision::RequiresApproval(format!(
+                                "Policy '{}' requires {} approval(s) for '{}'",
+                                rule.name, rule.min_approvals, action
+                            ));
+                        }
+                    }
+                }
+                "rate_limit" if rule.max_calls > 0 => {
+                    for pattern in &rule.actions {
+                        if action_matches(action, pattern) {
+                            return self.check_rate_limit(&rule.name, rule.max_calls, &rule.window);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        PolicyDecision::Allow
+    }
+
+    fn check_rate_limit(&self, name: &str, max_calls: u32, window: &str) -> PolicyDecision {
+        let window_secs = match parse_duration(window) {
+            Ok(secs) => secs,
+            Err(reason) => {
+                return PolicyDecision::Deny(format!(
+                    "Policy '{}' has invalid rate-limit window '{}': {}",
+                    name, window, reason
+                ));
+            }
+        };
+        let mut counters = self.rate_counters.lock().unwrap_or_else(|e| e.into_inner());
+        let entry = counters
+            .entry(name.to_string())
+            .or_insert((0, Instant::now()));
+
+        if entry.1.elapsed().as_secs() > window_secs {
+            *entry = (1, Instant::now());
+            PolicyDecision::Allow
+        } else if entry.0 >= max_calls as u64 {
+            let retry_after = window_secs.saturating_sub(entry.1.elapsed().as_secs());
+            PolicyDecision::RateLimited {
+                retry_after_secs: retry_after,
+            }
+        } else {
+            entry.0 += 1;
+            PolicyDecision::Allow
+        }
+    }
+}
+
+impl Default for PolicyEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Errors returned by policy operations.
+#[derive(Debug, thiserror::Error)]
+pub enum PolicyError {
+    #[error("invalid YAML: {0}")]
+    InvalidYaml(serde_yaml::Error),
+    #[error("I/O error: {0}")]
+    Io(std::io::Error),
+    #[error("validation error: {0}")]
+    Validation(String),
+    #[error("rule '{rule}' has invalid duration '{window}': {reason}")]
+    InvalidDuration {
+        rule: String,
+        window: String,
+        reason: String,
+    },
+}
+
+/// Glob-style pattern matching: `shell:*` matches `shell:ls`.
+fn action_matches(action: &str, pattern: &str) -> bool {
+    if pattern == "*" {
+        return true;
+    }
+    if let Some(prefix) = pattern.strip_suffix(".*") {
+        return action.starts_with(&format!("{}.", prefix));
+    }
+    if let Some(prefix) = pattern.strip_suffix('*') {
+        return action.starts_with(prefix);
+    }
+    action == pattern
+}
+
+fn conditions_match(
+    conditions: &HashMap<String, serde_yaml::Value>,
+    context: Option<&HashMap<String, serde_yaml::Value>>,
+) -> bool {
+    // Condition matching is **case-sensitive** for both keys and values.
+    // Wire-protocol extractors (`protocol_facets`) emit canonical casing:
+    // SQL verbs are uppercase (`SELECT`, `DROP`, ...) while Kubernetes
+    // verbs are lowercase (`get`, `list`, `watch`, ...). Policy authors
+    // must match that casing exactly — e.g.
+    //     sql.verb: DROP            # matches
+    //     sql.verb: drop            # does NOT match
+    //     k8s.verb: get             # matches
+    //     k8s.verb: GET             # does NOT match
+    // If the rule expresses the expected value as a YAML sequence the same
+    // case-sensitive comparison is applied to each element.
+    if conditions.is_empty() {
+        return true;
+    }
+    let ctx = match context {
+        Some(c) => c,
+        None => return false,
+    };
+    for (key, expected) in conditions {
+        let actual = match ctx.get(key) {
+            Some(v) => v,
+            None => return false,
+        };
+        // If the rule expresses the expected value as a sequence (YAML list),
+        // treat the comparison as set membership (`actual in expected`).
+        // Otherwise fall back to strict equality. This is the minimal
+        // surface needed for wire-protocol rules like
+        //   sql.verb: [DROP, TRUNCATE, DELETE]
+        // while preserving existing exact-match semantics.
+        if let serde_yaml::Value::Sequence(seq) = expected {
+            if !seq.iter().any(|v| v == actual) {
+                return false;
+            }
+        } else if actual != expected {
+            return false;
+        }
+    }
+    true
+}
+
+/// Parse a duration string of the form `<digits>[s|m|h]` (bare digits = seconds).
+///
+/// Returns an error rather than silently substituting a fallback when the
+/// input is not a recognised shape, so callers can reject the configuration
+/// instead of inheriting an arbitrary default (e.g. `"5x"` previously became
+/// 60s, `"abch"` became 3600s — both silent).
+fn parse_duration(s: &str) -> Result<u64, String> {
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return Err("empty duration".to_string());
+    }
+    let (num_str, multiplier) = if let Some(v) = trimmed.strip_suffix('s') {
+        (v, 1u64)
+    } else if let Some(v) = trimmed.strip_suffix('m') {
+        (v, 60u64)
+    } else if let Some(v) = trimmed.strip_suffix('h') {
+        (v, 3600u64)
+    } else {
+        (trimmed, 1u64)
+    };
+    let n: u64 = num_str.parse().map_err(|_| {
+        format!(
+            "expected non-negative integer with optional s/m/h suffix, got '{}'",
+            s
+        )
+    })?;
+    n.checked_mul(multiplier)
+        .ok_or_else(|| format!("duration '{}' overflows u64 seconds", s))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const POLICY_YAML: &str = r#"
+version: "1.0"
+agent: test-agent
+policies:
+  - name: capability-gate
+    type: capability
+    allowed_actions:
+      - "data.read"
+      - "data.write"
+    denied_actions:
+      - "shell:*"
+  - name: deploy-approval
+    type: approval
+    actions:
+      - "deploy.*"
+    min_approvals: 2
+  - name: api-rate-limit
+    type: rate_limit
+    actions:
+      - "api.call"
+    max_calls: 3
+    window: "60s"
+"#;
+
+    #[test]
+    fn test_allow_listed_action() {
+        let engine = PolicyEngine::new();
+        engine.load_from_yaml(POLICY_YAML).unwrap();
+        assert_eq!(engine.evaluate("data.read", None), PolicyDecision::Allow);
+    }
+
+    #[test]
+    fn test_deny_shell() {
+        let engine = PolicyEngine::new();
+        engine.load_from_yaml(POLICY_YAML).unwrap();
+        let decision = engine.evaluate("shell:rm", None);
+        assert!(matches!(decision, PolicyDecision::Deny(_)));
+    }
+
+    #[test]
+    fn test_not_in_allowlist_in_scope() {
+        let engine = PolicyEngine::new();
+        engine.load_from_yaml(POLICY_YAML).unwrap();
+        // "data.delete" shares the "data" namespace with allowed "data.read"/"data.write"
+        let decision = engine.evaluate("data.delete", None);
+        assert!(matches!(decision, PolicyDecision::Deny(_)));
+    }
+
+    #[test]
+    fn test_out_of_scope_falls_through() {
+        let engine = PolicyEngine::new();
+        engine.load_from_yaml(POLICY_YAML).unwrap();
+        // "admin.delete" is outside the capability rule's scope, falls through to Allow
+        let decision = engine.evaluate("admin.delete", None);
+        assert_eq!(decision, PolicyDecision::Allow);
+    }
+
+    #[test]
+    fn test_approval_required() {
+        let engine = PolicyEngine::new();
+        engine.load_from_yaml(POLICY_YAML).unwrap();
+        let decision = engine.evaluate("deploy.production", None);
+        assert!(matches!(decision, PolicyDecision::RequiresApproval(_)));
+    }
+
+    #[test]
+    fn test_rate_limiting() {
+        let engine = PolicyEngine::new();
+        engine.load_from_yaml(POLICY_YAML).unwrap();
+        // First 3 calls should be allowed
+        for _ in 0..3 {
+            assert_eq!(engine.evaluate("api.call", None), PolicyDecision::Allow);
+        }
+        // 4th call should be rate-limited
+        let decision = engine.evaluate("api.call", None);
+        assert!(matches!(decision, PolicyDecision::RateLimited { .. }));
+    }
+
+    #[test]
+    fn test_no_profile_allows_all() {
+        let engine = PolicyEngine::new();
+        assert_eq!(engine.evaluate("anything", None), PolicyDecision::Allow);
+    }
+
+    #[test]
+    fn test_action_matches() {
+        assert!(action_matches("shell:ls", "shell:*"));
+        assert!(action_matches("data.read", "data.*"));
+        assert!(action_matches("deploy.staging", "deploy.*"));
+        assert!(!action_matches("data.read", "shell:*"));
+        assert!(action_matches("anything", "*"));
+        assert!(action_matches("data.read", "data.read"));
+        assert!(!action_matches("data.write", "data.read"));
+    }
+
+    #[test]
+    fn test_with_strategy_constructor() {
+        let engine = PolicyEngine::with_strategy(ConflictResolutionStrategy::DenyOverrides);
+        assert_eq!(engine.strategy(), ConflictResolutionStrategy::DenyOverrides);
+    }
+
+    #[test]
+    fn test_default_strategy_is_priority_first_match() {
+        let engine = PolicyEngine::new();
+        assert_eq!(
+            engine.strategy(),
+            ConflictResolutionStrategy::PriorityFirstMatch
+        );
+    }
+
+    #[test]
+    fn test_resolve_conflicts_empty() {
+        let engine = PolicyEngine::new();
+        let result = engine.resolve_conflicts(&[]);
+        assert_eq!(result.winning_decision, PolicyDecision::Allow);
+        assert!(!result.conflict_detected);
+        assert_eq!(result.candidates_evaluated, 0);
+    }
+
+    #[test]
+    fn test_resolve_conflicts_single() {
+        let engine = PolicyEngine::new();
+        let candidates = vec![CandidateDecision {
+            decision: PolicyDecision::Deny("blocked".into()),
+            priority: 1,
+            scope: PolicyScope::Global,
+            rule_name: "rule-1".into(),
+        }];
+        let result = engine.resolve_conflicts(&candidates);
+        assert!(matches!(result.winning_decision, PolicyDecision::Deny(_)));
+        assert!(!result.conflict_detected);
+        assert_eq!(result.candidates_evaluated, 1);
+    }
+
+    #[test]
+    fn test_resolve_conflicts_deny_overrides() {
+        let engine = PolicyEngine::with_strategy(ConflictResolutionStrategy::DenyOverrides);
+        let candidates = vec![
+            CandidateDecision {
+                decision: PolicyDecision::Allow,
+                priority: 10,
+                scope: PolicyScope::Global,
+                rule_name: "allow-rule".into(),
+            },
+            CandidateDecision {
+                decision: PolicyDecision::Deny("no".into()),
+                priority: 5,
+                scope: PolicyScope::Global,
+                rule_name: "deny-rule".into(),
+            },
+        ];
+        let result = engine.resolve_conflicts(&candidates);
+        assert!(matches!(result.winning_decision, PolicyDecision::Deny(_)));
+        assert!(result.conflict_detected);
+    }
+
+    #[test]
+    fn test_resolve_conflicts_allow_overrides() {
+        let engine = PolicyEngine::with_strategy(ConflictResolutionStrategy::AllowOverrides);
+        let candidates = vec![
+            CandidateDecision {
+                decision: PolicyDecision::Deny("blocked".into()),
+                priority: 10,
+                scope: PolicyScope::Global,
+                rule_name: "deny-rule".into(),
+            },
+            CandidateDecision {
+                decision: PolicyDecision::Allow,
+                priority: 5,
+                scope: PolicyScope::Global,
+                rule_name: "allow-rule".into(),
+            },
+        ];
+        let result = engine.resolve_conflicts(&candidates);
+        assert_eq!(result.winning_decision, PolicyDecision::Allow);
+        assert!(result.conflict_detected);
+    }
+
+    #[test]
+    fn test_resolve_conflicts_priority_first_match() {
+        let engine = PolicyEngine::with_strategy(ConflictResolutionStrategy::PriorityFirstMatch);
+        let candidates = vec![
+            CandidateDecision {
+                decision: PolicyDecision::Deny("low".into()),
+                priority: 1,
+                scope: PolicyScope::Global,
+                rule_name: "low-rule".into(),
+            },
+            CandidateDecision {
+                decision: PolicyDecision::Allow,
+                priority: 10,
+                scope: PolicyScope::Global,
+                rule_name: "high-rule".into(),
+            },
+        ];
+        let result = engine.resolve_conflicts(&candidates);
+        assert_eq!(result.winning_decision, PolicyDecision::Allow);
+        assert!(result.conflict_detected);
+    }
+
+    #[test]
+    fn test_resolve_conflicts_most_specific_wins() {
+        let engine = PolicyEngine::with_strategy(ConflictResolutionStrategy::MostSpecificWins);
+        let candidates = vec![
+            CandidateDecision {
+                decision: PolicyDecision::Allow,
+                priority: 100,
+                scope: PolicyScope::Global,
+                rule_name: "global-allow".into(),
+            },
+            CandidateDecision {
+                decision: PolicyDecision::Deny("agent-deny".into()),
+                priority: 1,
+                scope: PolicyScope::Agent,
+                rule_name: "agent-deny".into(),
+            },
+        ];
+        let result = engine.resolve_conflicts(&candidates);
+        assert!(matches!(result.winning_decision, PolicyDecision::Deny(_)));
+        assert!(result.conflict_detected);
+    }
+
+    #[test]
+    fn test_resolve_conflicts_most_specific_tiebreaker() {
+        let engine = PolicyEngine::with_strategy(ConflictResolutionStrategy::MostSpecificWins);
+        let candidates = vec![
+            CandidateDecision {
+                decision: PolicyDecision::Deny("low".into()),
+                priority: 1,
+                scope: PolicyScope::Tenant,
+                rule_name: "tenant-low".into(),
+            },
+            CandidateDecision {
+                decision: PolicyDecision::Allow,
+                priority: 10,
+                scope: PolicyScope::Tenant,
+                rule_name: "tenant-high".into(),
+            },
+        ];
+        let result = engine.resolve_conflicts(&candidates);
+        assert_eq!(result.winning_decision, PolicyDecision::Allow);
+    }
+
+    #[test]
+    fn test_policy_rule_priority_and_scope_defaults() {
+        let yaml = r#"
+version: "1.0"
+agent: test
+policies:
+  - name: simple-rule
+    type: capability
+    allowed_actions:
+      - "data.read"
+"#;
+        let profile: PolicyProfile = serde_yaml::from_str(yaml).unwrap();
+        let rule = &profile.policies[0];
+        assert_eq!(rule.priority, 0);
+        assert_eq!(rule.scope, PolicyScope::Global);
+    }
+
+    #[test]
+    fn test_policy_rule_with_priority_and_scope() {
+        let yaml = r#"
+version: "1.0"
+agent: test
+policies:
+  - name: agent-rule
+    type: capability
+    allowed_actions:
+      - "data.read"
+    priority: 10
+    scope: agent
+"#;
+        let profile: PolicyProfile = serde_yaml::from_str(yaml).unwrap();
+        let rule = &profile.policies[0];
+        assert_eq!(rule.priority, 10);
+        assert_eq!(rule.scope, PolicyScope::Agent);
+    }
+
+    #[test]
+    fn test_no_conflict_when_all_same_decision() {
+        let engine = PolicyEngine::with_strategy(ConflictResolutionStrategy::DenyOverrides);
+        let candidates = vec![
+            CandidateDecision {
+                decision: PolicyDecision::Allow,
+                priority: 5,
+                scope: PolicyScope::Global,
+                rule_name: "r1".into(),
+            },
+            CandidateDecision {
+                decision: PolicyDecision::Allow,
+                priority: 10,
+                scope: PolicyScope::Tenant,
+                rule_name: "r2".into(),
+            },
+        ];
+        let result = engine.resolve_conflicts(&candidates);
+        assert!(!result.conflict_detected);
+        assert_eq!(result.winning_decision, PolicyDecision::Allow);
+    }
+
+    #[test]
+    fn test_multiple_capability_rules_first_match_wins() {
+        let yaml = r#"
+version: "1.0"
+agent: test
+policies:
+  - name: deny-first
+    type: capability
+    denied_actions:
+      - "data.read"
+  - name: allow-second
+    type: capability
+    allowed_actions:
+      - "data.read"
+"#;
+        let engine = PolicyEngine::new();
+        engine.load_from_yaml(yaml).unwrap();
+        // First rule denies data.read, so it should be denied
+        let decision = engine.evaluate("data.read", None);
+        assert!(matches!(decision, PolicyDecision::Deny(_)));
+    }
+
+    #[test]
+    fn test_policy_with_only_deny_rules() {
+        let yaml = r#"
+version: "1.0"
+agent: test
+policies:
+  - name: deny-only
+    type: capability
+    denied_actions:
+      - "shell:*"
+      - "admin.*"
+"#;
+        let engine = PolicyEngine::new();
+        engine.load_from_yaml(yaml).unwrap();
+        assert!(matches!(
+            engine.evaluate("shell:ls", None),
+            PolicyDecision::Deny(_)
+        ));
+        assert!(matches!(
+            engine.evaluate("admin.delete", None),
+            PolicyDecision::Deny(_)
+        ));
+        // Actions outside denied scope are allowed
+        assert_eq!(engine.evaluate("data.read", None), PolicyDecision::Allow);
+    }
+
+    #[test]
+    fn test_policy_with_only_allow_rules() {
+        let yaml = r#"
+version: "1.0"
+agent: test
+policies:
+  - name: allow-only
+    type: capability
+    allowed_actions:
+      - "data.read"
+      - "data.write"
+"#;
+        let engine = PolicyEngine::new();
+        engine.load_from_yaml(yaml).unwrap();
+        assert_eq!(engine.evaluate("data.read", None), PolicyDecision::Allow);
+        assert_eq!(engine.evaluate("data.write", None), PolicyDecision::Allow);
+        // In-scope but not in allowlist
+        assert!(matches!(
+            engine.evaluate("data.delete", None),
+            PolicyDecision::Deny(_)
+        ));
+    }
+
+    #[test]
+    fn test_conditions_matching() {
+        let yaml = r#"
+version: "1.0"
+agent: test
+policies:
+  - name: env-gate
+    type: capability
+    denied_actions:
+      - "deploy.*"
+    conditions:
+      environment: "production"
+"#;
+        let engine = PolicyEngine::new();
+        engine.load_from_yaml(yaml).unwrap();
+        let mut context = HashMap::new();
+        context.insert(
+            "environment".to_string(),
+            serde_yaml::Value::String("production".to_string()),
+        );
+        let decision = engine.evaluate("deploy.app", Some(&context));
+        assert!(matches!(decision, PolicyDecision::Deny(_)));
+    }
+
+    #[test]
+    fn test_conditions_not_matching() {
+        let yaml = r#"
+version: "1.0"
+agent: test
+policies:
+  - name: env-gate
+    type: capability
+    denied_actions:
+      - "deploy.*"
+    conditions:
+      environment: "production"
+"#;
+        let engine = PolicyEngine::new();
+        engine.load_from_yaml(yaml).unwrap();
+        let mut context = HashMap::new();
+        context.insert(
+            "environment".to_string(),
+            serde_yaml::Value::String("staging".to_string()),
+        );
+        // Conditions don't match, rule is skipped, falls through to Allow
+        let decision = engine.evaluate("deploy.app", Some(&context));
+        assert_eq!(decision, PolicyDecision::Allow);
+    }
+
+    #[test]
+    fn test_conditions_no_context_skips_rule() {
+        let yaml = r#"
+version: "1.0"
+agent: test
+policies:
+  - name: env-gate
+    type: capability
+    denied_actions:
+      - "deploy.*"
+    conditions:
+      environment: "production"
+"#;
+        let engine = PolicyEngine::new();
+        engine.load_from_yaml(yaml).unwrap();
+        // No context provided - conditions require it, rule is skipped
+        let decision = engine.evaluate("deploy.app", None);
+        assert_eq!(decision, PolicyDecision::Allow);
+    }
+
+    #[test]
+    fn test_loading_invalid_yaml_returns_error() {
+        let engine = PolicyEngine::new();
+        let result = engine.load_from_yaml("{{not valid yaml");
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), PolicyError::InvalidYaml(_)));
+    }
+
+    #[test]
+    fn test_loading_from_temp_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("policy.yaml");
+        std::fs::write(&path, POLICY_YAML).unwrap();
+        let engine = PolicyEngine::new();
+        engine.load_from_file(path.to_str().unwrap()).unwrap();
+        assert!(engine.is_loaded());
+        assert_eq!(engine.evaluate("data.read", None), PolicyDecision::Allow);
+    }
+
+    #[test]
+    fn test_loading_from_missing_file_returns_io_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing-policy.yaml");
+        let engine = PolicyEngine::new();
+        let result = engine.load_from_file(path.to_str().unwrap());
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), PolicyError::Io(_)));
+        assert!(!engine.is_loaded());
+    }
+
+    #[test]
+    fn test_multiple_rate_limit_rules_for_different_actions() {
+        let yaml = r#"
+version: "1.0"
+agent: test
+policies:
+  - name: api-limit
+    type: rate_limit
+    actions:
+      - "api.call"
+    max_calls: 2
+    window: "60s"
+  - name: db-limit
+    type: rate_limit
+    actions:
+      - "db.query"
+    max_calls: 1
+    window: "60s"
+"#;
+        let engine = PolicyEngine::new();
+        engine.load_from_yaml(yaml).unwrap();
+        // api.call: 2 allowed
+        assert_eq!(engine.evaluate("api.call", None), PolicyDecision::Allow);
+        assert_eq!(engine.evaluate("api.call", None), PolicyDecision::Allow);
+        assert!(matches!(
+            engine.evaluate("api.call", None),
+            PolicyDecision::RateLimited { .. }
+        ));
+        // db.query: 1 allowed (independent counter)
+        assert_eq!(engine.evaluate("db.query", None), PolicyDecision::Allow);
+        assert!(matches!(
+            engine.evaluate("db.query", None),
+            PolicyDecision::RateLimited { .. }
+        ));
+    }
+
+    #[test]
+    fn test_rate_limit_resets_after_window() {
+        let yaml = r#"
+version: "1.0"
+agent: test
+policies:
+  - name: fast-limit
+    type: rate_limit
+    actions:
+      - "api.call"
+    max_calls: 1
+    window: "0s"
+"#;
+        let engine = PolicyEngine::new();
+        engine.load_from_yaml(yaml).unwrap();
+        // First call is allowed
+        assert_eq!(engine.evaluate("api.call", None), PolicyDecision::Allow);
+        // Second call hits rate limit (within the 0s window)
+        assert!(matches!(
+            engine.evaluate("api.call", None),
+            PolicyDecision::RateLimited { .. }
+        ));
+        // Wait for the window to expire (0s window → needs >0 elapsed seconds)
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        // After window reset, call should be allowed again
+        assert_eq!(engine.evaluate("api.call", None), PolicyDecision::Allow);
+    }
+
+    #[test]
+    fn test_wildcard_matches_everything() {
+        let yaml = r#"
+version: "1.0"
+agent: test
+policies:
+  - name: deny-all
+    type: capability
+    denied_actions:
+      - "*"
+"#;
+        let engine = PolicyEngine::new();
+        engine.load_from_yaml(yaml).unwrap();
+        assert!(matches!(
+            engine.evaluate("anything", None),
+            PolicyDecision::Deny(_)
+        ));
+        assert!(matches!(
+            engine.evaluate("data.read", None),
+            PolicyDecision::Deny(_)
+        ));
+        assert!(matches!(
+            engine.evaluate("shell:ls", None),
+            PolicyDecision::Deny(_)
+        ));
+    }
+
+    #[test]
+    fn test_parse_duration_minutes() {
+        assert_eq!(parse_duration("5m").unwrap(), 300);
+    }
+
+    #[test]
+    fn test_parse_duration_seconds() {
+        assert_eq!(parse_duration("30s").unwrap(), 30);
+    }
+
+    #[test]
+    fn test_parse_duration_hours() {
+        assert_eq!(parse_duration("2h").unwrap(), 7200);
+    }
+
+    #[test]
+    fn test_parse_duration_bare_number() {
+        assert_eq!(parse_duration("120").unwrap(), 120);
+    }
+
+    #[test]
+    fn test_parse_duration_unknown_suffix_rejected() {
+        // "5x" previously silently fell through to the bare-number branch,
+        // failed to parse, and quietly became 60s. It must now error.
+        assert!(parse_duration("5x").is_err());
+    }
+
+    #[test]
+    fn test_parse_duration_garbage_with_known_suffix_rejected() {
+        // "abch" previously parsed to 1 * 3600 = 3600s, "abcm" to 60s, and
+        // "abcs" to 60s — three different silent defaults for the same kind
+        // of garbage. All three are now rejected.
+        assert!(parse_duration("abch").is_err());
+        assert!(parse_duration("abcm").is_err());
+        assert!(parse_duration("abcs").is_err());
+    }
+
+    #[test]
+    fn test_parse_duration_empty_rejected() {
+        assert!(parse_duration("").is_err());
+        assert!(parse_duration("   ").is_err());
+    }
+
+    #[test]
+    fn test_parse_duration_negative_rejected() {
+        assert!(parse_duration("-5s").is_err());
+    }
+
+    #[test]
+    fn test_parse_duration_overflow_rejected() {
+        // 18446744073709551615 is u64::MAX; multiplying by 3600 overflows.
+        assert!(parse_duration("18446744073709551615h").is_err());
+    }
+
+    #[test]
+    fn test_parse_duration_whitespace_tolerated() {
+        // Leading/trailing whitespace is normalised, but internal
+        // whitespace must still be rejected.
+        assert_eq!(parse_duration("  30s  ").unwrap(), 30);
+        assert!(parse_duration("3 0s").is_err());
+    }
+
+    #[test]
+    fn test_load_rejects_malformed_rate_limit_window() {
+        let yaml = r#"
+version: "1.0"
+agent: test-agent
+policies:
+  - name: bad-window
+    type: rate_limit
+    actions:
+      - "api.call"
+    max_calls: 3
+    window: "5x"
+"#;
+        let engine = PolicyEngine::new();
+        let err = engine.load_from_yaml(yaml).unwrap_err();
+        match err {
+            PolicyError::InvalidDuration {
+                rule,
+                window,
+                reason: _,
+            } => {
+                assert_eq!(rule, "bad-window");
+                assert_eq!(window, "5x");
+            }
+            other => panic!("expected InvalidDuration, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_load_rejects_empty_window_when_rate_limited() {
+        let yaml = r#"
+version: "1.0"
+agent: test-agent
+policies:
+  - name: missing-window
+    type: rate_limit
+    actions:
+      - "api.call"
+    max_calls: 3
+"#;
+        let engine = PolicyEngine::new();
+        assert!(matches!(
+            engine.load_from_yaml(yaml).unwrap_err(),
+            PolicyError::InvalidDuration { .. }
+        ));
+    }
+
+    #[test]
+    fn test_load_tolerates_disabled_rate_limit_with_empty_window() {
+        // max_calls: 0 disables the rule, so an empty window is allowed —
+        // this preserves serde-default ergonomics for non-rate-limit shapes.
+        let yaml = r#"
+version: "1.0"
+agent: test-agent
+policies:
+  - name: disabled
+    type: rate_limit
+    actions:
+      - "api.call"
+    max_calls: 0
+"#;
+        let engine = PolicyEngine::new();
+        assert!(engine.load_from_yaml(yaml).is_ok());
+    }
+
+    #[test]
+    fn test_is_loaded_false_initially() {
+        let engine = PolicyEngine::new();
+        assert!(!engine.is_loaded());
+    }
+
+    #[test]
+    fn test_is_loaded_true_after_load() {
+        let engine = PolicyEngine::new();
+        engine.load_from_yaml(POLICY_YAML).unwrap();
+        assert!(engine.is_loaded());
+    }
+
+    #[test]
+    fn test_rules_present_but_none_match_falls_through() {
+        let yaml = r#"
+version: "1.0"
+agent: test
+policies:
+  - name: gate
+    type: capability
+    denied_actions:
+      - "shell:*"
+"#;
+        let engine = PolicyEngine::new();
+        engine.load_from_yaml(yaml).unwrap();
+        // "data.read" doesn't match any denied actions — falls through to Allow
+        assert_eq!(engine.evaluate("data.read", None), PolicyDecision::Allow);
+    }
+
+    #[test]
+    fn test_action_matches_empty_strings() {
+        assert!(action_matches("", ""));
+        assert!(!action_matches("", "data.read"));
+        assert!(!action_matches("data.read", ""));
+    }
+
+    #[test]
+    fn test_action_matches_exact_match() {
+        assert!(action_matches("data.read", "data.read"));
+        assert!(!action_matches("data.read", "data.write"));
+    }
+
+    #[test]
+    fn test_action_matches_partial_non_match() {
+        // "data" does not match "data.read" (no wildcard)
+        assert!(!action_matches("data", "data.read"));
+        // "data.rea" does not match "data.read"
+        assert!(!action_matches("data.rea", "data.read"));
+    }
+
+    /// Regression: a panic in any thread holding the profile or
+    /// rate-counter lock previously poisoned the lock and cascaded
+    /// panics into every subsequent policy evaluation. The recovery
+    /// pattern (`unwrap_or_else(|e| e.into_inner())`) keeps the engine
+    /// usable after a poisoning event.
+    #[test]
+    fn test_evaluates_after_profile_lock_poisoned() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let engine = Arc::new(PolicyEngine::new());
+        engine.load_from_yaml(POLICY_YAML).unwrap();
+
+        // Poison the profile lock by panicking inside a write guard.
+        let engine_for_panic = Arc::clone(&engine);
+        let handle = thread::spawn(move || {
+            let _guard = engine_for_panic.profile.write().unwrap();
+            panic!("simulated thread death while holding profile lock");
+        });
+        let _ = handle.join();
+        assert!(engine.profile.is_poisoned());
+
+        // Public methods must remain usable after poisoning.
+        assert!(engine.is_loaded());
+        assert_eq!(engine.evaluate("data.read", None), PolicyDecision::Allow);
+        engine
+            .load_from_yaml(POLICY_YAML)
+            .expect("re-load after poison must succeed");
+    }
+
+    #[test]
+    fn test_evaluates_after_rate_counter_lock_poisoned() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let yaml = r#"
+version: "1.0"
+agent: test
+policies:
+  - name: api-rate-limit
+    type: rate_limit
+    actions:
+      - "api.call"
+    max_calls: 10
+    window: "60s"
+"#;
+        let engine = Arc::new(PolicyEngine::new());
+        engine.load_from_yaml(yaml).unwrap();
+
+        // Poison the rate-counter lock.
+        let engine_for_panic = Arc::clone(&engine);
+        let handle = thread::spawn(move || {
+            let _guard = engine_for_panic.rate_counters.lock().unwrap();
+            panic!("simulated thread death while holding rate counter lock");
+        });
+        let _ = handle.join();
+        assert!(engine.rate_counters.is_poisoned());
+
+        // Rate-limit evaluation must still produce a decision rather
+        // than propagating the poison.
+        let decision = engine.evaluate("api.call", None);
+        assert!(matches!(
+            decision,
+            PolicyDecision::Allow | PolicyDecision::Deny(_)
+        ));
+    }
+}

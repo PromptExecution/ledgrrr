@@ -1,0 +1,1086 @@
+{
+  "context": {
+    "project": "project-1",
+    "revision": "commit-1",
+    "parent": null,
+    "model_dialect": "SysML-v2",
+    "library_revisions": {
+      "ScalarValues": "git:library-1"
+    },
+    "source_revisions": {
+      "repo": "git:source-1"
+    },
+    "toolchain": {
+      "compiler": "rustc-1.98.0",
+      "parser": "sysml-v2-parser-0.54.0"
+    }
+  },
+  "model": {
+    "elements": {
+      "REQ-日本語": {
+        "id": "REQ-日本語",
+        "kind": "requirement_usage",
+        "name": "Control the actuator",
+        "properties": {},
+        "anchors": [],
+        "extensions": {
+          "reqif": {
+            "original_id": "REQ-日本語",
+            "unknown": {
+              "z": [
+                1,
+                false
+              ],
+              "a": "original"
+            }
+          }
+        }
+      },
+      "REQ-2": {
+        "id": "REQ-2",
+        "kind": "requirement_definition",
+        "name": "Return to idle",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "controller": {
+        "id": "controller",
+        "kind": "part_usage",
+        "name": "Controller",
+        "properties": {
+          "matrix": {
+            "type_ref": {
+              "kind": "list",
+              "value": {
+                "kind": "list",
+                "value": {
+                  "kind": "natural"
+                }
+              }
+            },
+            "multiplicity": {
+              "lower": 1,
+              "upper": 1
+            },
+            "values": [
+              {
+                "kind": "list",
+                "value": [
+                  {
+                    "kind": "list",
+                    "value": [
+                      {
+                        "kind": "natural",
+                        "value": 1
+                      },
+                      {
+                        "kind": "natural",
+                        "value": 2
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "observed": {
+            "type_ref": {
+              "kind": "timestamp"
+            },
+            "multiplicity": {
+              "lower": 1,
+              "upper": 1
+            },
+            "values": [
+              {
+                "kind": "timestamp",
+                "value": "2026-10-05T07:00:00+00:00"
+              }
+            ]
+          },
+          "label": {
+            "type_ref": {
+              "kind": "string"
+            },
+            "multiplicity": {
+              "lower": 0,
+              "upper": 1
+            },
+            "values": null
+          },
+          "boolean": {
+            "type_ref": {
+              "kind": "boolean"
+            },
+            "multiplicity": {
+              "lower": 1,
+              "upper": null
+            },
+            "values": [
+              {
+                "kind": "boolean",
+                "value": true
+              }
+            ]
+          },
+          "integer": {
+            "type_ref": {
+              "kind": "integer"
+            },
+            "multiplicity": {
+              "lower": 1,
+              "upper": null
+            },
+            "values": [
+              {
+                "kind": "integer",
+                "value": -42
+              }
+            ]
+          },
+          "natural": {
+            "type_ref": {
+              "kind": "natural"
+            },
+            "multiplicity": {
+              "lower": 1,
+              "upper": null
+            },
+            "values": [
+              {
+                "kind": "natural",
+                "value": 42
+              }
+            ]
+          },
+          "real": {
+            "type_ref": {
+              "kind": "real"
+            },
+            "multiplicity": {
+              "lower": 1,
+              "upper": null
+            },
+            "values": [
+              {
+                "kind": "real",
+                "value": "01.2300"
+              }
+            ]
+          },
+          "string": {
+            "type_ref": {
+              "kind": "string"
+            },
+            "multiplicity": {
+              "lower": 1,
+              "upper": null
+            },
+            "values": [
+              {
+                "kind": "string",
+                "value": "CRLF\r\n日本語"
+              }
+            ]
+          },
+          "timestamp": {
+            "type_ref": {
+              "kind": "timestamp"
+            },
+            "multiplicity": {
+              "lower": 1,
+              "upper": null
+            },
+            "values": [
+              {
+                "kind": "timestamp",
+                "value": "2026-10-05T07:00:00+00:00"
+              }
+            ]
+          },
+          "reference": {
+            "type_ref": {
+              "kind": "element",
+              "value": "REQ-2"
+            },
+            "multiplicity": {
+              "lower": 1,
+              "upper": null
+            },
+            "values": [
+              {
+                "kind": "reference",
+                "value": "REQ-2"
+              }
+            ]
+          },
+          "external": {
+            "type_ref": {
+              "kind": "external",
+              "value": {
+                "library": "ScalarValues",
+                "qualified_name": "ScalarValues::Ref"
+              }
+            },
+            "multiplicity": {
+              "lower": 1,
+              "upper": null
+            },
+            "values": [
+              {
+                "kind": "reference",
+                "value": "REQ-2"
+              }
+            ]
+          },
+          "empty": {
+            "type_ref": {
+              "kind": "string"
+            },
+            "multiplicity": {
+              "lower": 0,
+              "upper": null
+            },
+            "values": []
+          }
+        },
+        "anchors": [
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "rust_span": {
+                "file": "src/controller.rs",
+                "line": 1,
+                "col": 1
+              }
+            },
+            "source_revision": "git:source-1"
+          },
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "symbol_path": "crate::controller::control"
+            },
+            "source_revision": null
+          },
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "kerml_qualified_name": "Vehicle::Controller"
+            },
+            "source_revision": null
+          },
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "sysml_file": {
+                "path": "model/vehicle.sysml",
+                "line": null
+              }
+            },
+            "source_revision": null
+          },
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "k8s_object": {
+                "api_version": "v1",
+                "kind": "Pod",
+                "namespace": null,
+                "name": "controller",
+                "uid": "opaque-uid"
+              }
+            },
+            "source_revision": null
+          },
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "vcs": {
+                "repo": "repo",
+                "commit": "git:source-1",
+                "path": null
+              }
+            },
+            "source_revision": null
+          },
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "other": "REQIF:original-日本語"
+            },
+            "source_revision": null
+          }
+        ],
+        "extensions": {}
+      },
+      "test": {
+        "id": "test",
+        "kind": "verification_case_usage",
+        "name": "Controller test",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "platform": {
+        "id": "platform",
+        "kind": "part_usage",
+        "name": "Platform",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "verification-definition": {
+        "id": "verification-definition",
+        "kind": "verification_case_definition",
+        "name": "Controller Verification",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "controller-definition": {
+        "id": "controller-definition",
+        "kind": "part_definition",
+        "name": "Controller Part",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-package": {
+        "id": "kind-package",
+        "kind": "package",
+        "name": "package",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-part_definition": {
+        "id": "kind-part_definition",
+        "kind": "part_definition",
+        "name": "part_definition",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-part_usage": {
+        "id": "kind-part_usage",
+        "kind": "part_usage",
+        "name": "part_usage",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-attribute_usage": {
+        "id": "kind-attribute_usage",
+        "kind": "attribute_usage",
+        "name": "attribute_usage",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-port_definition": {
+        "id": "kind-port_definition",
+        "kind": "port_definition",
+        "name": "port_definition",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-port_usage": {
+        "id": "kind-port_usage",
+        "kind": "port_usage",
+        "name": "port_usage",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-connection_usage": {
+        "id": "kind-connection_usage",
+        "kind": "connection_usage",
+        "name": "connection_usage",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-interface_definition": {
+        "id": "kind-interface_definition",
+        "kind": "interface_definition",
+        "name": "interface_definition",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-interface_usage": {
+        "id": "kind-interface_usage",
+        "kind": "interface_usage",
+        "name": "interface_usage",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-item_definition": {
+        "id": "kind-item_definition",
+        "kind": "item_definition",
+        "name": "item_definition",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-item_usage": {
+        "id": "kind-item_usage",
+        "kind": "item_usage",
+        "name": "item_usage",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-action_definition": {
+        "id": "kind-action_definition",
+        "kind": "action_definition",
+        "name": "action_definition",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-action_usage": {
+        "id": "kind-action_usage",
+        "kind": "action_usage",
+        "name": "action_usage",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-state_definition": {
+        "id": "kind-state_definition",
+        "kind": "state_definition",
+        "name": "state_definition",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-state_usage": {
+        "id": "kind-state_usage",
+        "kind": "state_usage",
+        "name": "state_usage",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-requirement_definition": {
+        "id": "kind-requirement_definition",
+        "kind": "requirement_definition",
+        "name": "requirement_definition",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-requirement_usage": {
+        "id": "kind-requirement_usage",
+        "kind": "requirement_usage",
+        "name": "requirement_usage",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-verification_case_definition": {
+        "id": "kind-verification_case_definition",
+        "kind": "verification_case_definition",
+        "name": "verification_case_definition",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-verification_case_usage": {
+        "id": "kind-verification_case_usage",
+        "kind": "verification_case_usage",
+        "name": "verification_case_usage",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-constraint_definition": {
+        "id": "kind-constraint_definition",
+        "kind": "constraint_definition",
+        "name": "constraint_definition",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-constraint_usage": {
+        "id": "kind-constraint_usage",
+        "kind": "constraint_usage",
+        "name": "constraint_usage",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-allocation_usage": {
+        "id": "kind-allocation_usage",
+        "kind": "allocation_usage",
+        "name": "allocation_usage",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-view_definition": {
+        "id": "kind-view_definition",
+        "kind": "view_definition",
+        "name": "view_definition",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-view_usage": {
+        "id": "kind-view_usage",
+        "kind": "view_usage",
+        "name": "view_usage",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-viewpoint_definition": {
+        "id": "kind-viewpoint_definition",
+        "kind": "viewpoint_definition",
+        "name": "viewpoint_definition",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      },
+      "kind-rendering_usage": {
+        "id": "kind-rendering_usage",
+        "kind": "rendering_usage",
+        "name": "rendering_usage",
+        "properties": {},
+        "anchors": [],
+        "extensions": {}
+      }
+    },
+    "relations": {
+      "satisfy-1": {
+        "id": "satisfy-1",
+        "relation": {
+          "satisfy": {
+            "requirement": "REQ-日本語",
+            "subject": "controller"
+          }
+        },
+        "authority": "authored",
+        "anchors": [],
+        "rule": null,
+        "extensions": {}
+      },
+      "verify-1": {
+        "id": "verify-1",
+        "relation": {
+          "verify": {
+            "requirement": "REQ-日本語",
+            "by": "test"
+          }
+        },
+        "authority": "authored",
+        "anchors": [],
+        "rule": null,
+        "extensions": {}
+      },
+      "cycle-a": {
+        "id": "cycle-a",
+        "relation": {
+          "dependency": {
+            "client": "REQ-日本語",
+            "supplier": "REQ-2"
+          }
+        },
+        "authority": "compiler_proven",
+        "anchors": [
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "rust_span": {
+                "file": "src/controller.rs",
+                "line": 1,
+                "col": 1
+              }
+            },
+            "source_revision": "git:source-1"
+          }
+        ],
+        "rule": null,
+        "extensions": {}
+      },
+      "cycle-b": {
+        "id": "cycle-b",
+        "relation": {
+          "dependency": {
+            "client": "REQ-2",
+            "supplier": "REQ-日本語"
+          }
+        },
+        "authority": "authored",
+        "anchors": [],
+        "rule": null,
+        "extensions": {}
+      },
+      "allocate": {
+        "id": "allocate",
+        "relation": {
+          "allocation": {
+            "source": "controller",
+            "target": "platform"
+          }
+        },
+        "authority": "authored",
+        "anchors": [],
+        "rule": null,
+        "extensions": {}
+      },
+      "type-req": {
+        "id": "type-req",
+        "relation": {
+          "feature_typing": {
+            "feature": "REQ-日本語",
+            "type": "REQ-2"
+          }
+        },
+        "authority": "authored",
+        "anchors": [],
+        "rule": null,
+        "extensions": {}
+      },
+      "type-verification": {
+        "id": "type-verification",
+        "relation": {
+          "feature_typing": {
+            "feature": "test",
+            "type": "verification-definition"
+          }
+        },
+        "authority": "authored",
+        "anchors": [],
+        "rule": null,
+        "extensions": {}
+      },
+      "type-controller": {
+        "id": "type-controller",
+        "relation": {
+          "feature_typing": {
+            "feature": "controller",
+            "type": "controller-definition"
+          }
+        },
+        "authority": "authored",
+        "anchors": [],
+        "rule": null,
+        "extensions": {}
+      },
+      "relation-feature_membership": {
+        "id": "relation-feature_membership",
+        "relation": {
+          "feature_membership": {
+            "owner": "kind-package",
+            "member": "controller"
+          }
+        },
+        "authority": "compiler_proven",
+        "anchors": [
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "rust_span": {
+                "file": "src/controller.rs",
+                "line": 1,
+                "col": 1
+              }
+            },
+            "source_revision": "git:source-1"
+          },
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "symbol_path": "crate::controller::control"
+            },
+            "source_revision": null
+          }
+        ],
+        "rule": null,
+        "extensions": {
+          "original": "unknown\r\n"
+        }
+      },
+      "relation-specialization": {
+        "id": "relation-specialization",
+        "relation": {
+          "specialization": {
+            "specific": "kind-part_definition",
+            "general": "controller-definition"
+          }
+        },
+        "authority": "compiler_proven",
+        "anchors": [
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "rust_span": {
+                "file": "src/controller.rs",
+                "line": 1,
+                "col": 1
+              }
+            },
+            "source_revision": "git:source-1"
+          },
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "symbol_path": "crate::controller::control"
+            },
+            "source_revision": null
+          }
+        ],
+        "rule": null,
+        "extensions": {
+          "original": "unknown\r\n"
+        }
+      },
+      "relation-subsetting": {
+        "id": "relation-subsetting",
+        "relation": {
+          "subsetting": {
+            "subset": "controller",
+            "superset": "platform"
+          }
+        },
+        "authority": "compiler_proven",
+        "anchors": [
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "rust_span": {
+                "file": "src/controller.rs",
+                "line": 1,
+                "col": 1
+              }
+            },
+            "source_revision": "git:source-1"
+          },
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "symbol_path": "crate::controller::control"
+            },
+            "source_revision": null
+          }
+        ],
+        "rule": null,
+        "extensions": {
+          "original": "unknown\r\n"
+        }
+      },
+      "relation-redefinition": {
+        "id": "relation-redefinition",
+        "relation": {
+          "redefinition": {
+            "redefining": "controller",
+            "redefined": "platform"
+          }
+        },
+        "authority": "compiler_proven",
+        "anchors": [
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "rust_span": {
+                "file": "src/controller.rs",
+                "line": 1,
+                "col": 1
+              }
+            },
+            "source_revision": "git:source-1"
+          },
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "symbol_path": "crate::controller::control"
+            },
+            "source_revision": null
+          }
+        ],
+        "rule": null,
+        "extensions": {
+          "original": "unknown\r\n"
+        }
+      },
+      "relation-connection": {
+        "id": "relation-connection",
+        "relation": {
+          "connection": {
+            "ends": [
+              "controller",
+              "platform",
+              "REQ-2"
+            ]
+          }
+        },
+        "authority": "compiler_proven",
+        "anchors": [
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "rust_span": {
+                "file": "src/controller.rs",
+                "line": 1,
+                "col": 1
+              }
+            },
+            "source_revision": "git:source-1"
+          },
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "symbol_path": "crate::controller::control"
+            },
+            "source_revision": null
+          }
+        ],
+        "rule": null,
+        "extensions": {
+          "original": "unknown\r\n"
+        }
+      },
+      "relation-succession": {
+        "id": "relation-succession",
+        "relation": {
+          "succession": {
+            "source": "kind-state_usage",
+            "target": "kind-action_usage"
+          }
+        },
+        "authority": "compiler_proven",
+        "anchors": [
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "rust_span": {
+                "file": "src/controller.rs",
+                "line": 1,
+                "col": 1
+              }
+            },
+            "source_revision": "git:source-1"
+          },
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "symbol_path": "crate::controller::control"
+            },
+            "source_revision": null
+          }
+        ],
+        "rule": null,
+        "extensions": {
+          "original": "unknown\r\n"
+        }
+      },
+      "relation-refine": {
+        "id": "relation-refine",
+        "relation": {
+          "refine": {
+            "refined": "REQ-2",
+            "refining": "REQ-日本語"
+          }
+        },
+        "authority": "inferred",
+        "anchors": [
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "rust_span": {
+                "file": "src/controller.rs",
+                "line": 1,
+                "col": 1
+              }
+            },
+            "source_revision": "git:source-1"
+          },
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "symbol_path": "crate::controller::control"
+            },
+            "source_revision": null
+          }
+        ],
+        "rule": "documented-refinement-rule",
+        "extensions": {
+          "original": "unknown\r\n"
+        }
+      },
+      "relation-domain": {
+        "id": "relation-domain",
+        "relation": {
+          "domain": {
+            "source": "controller",
+            "target": "REQ-日本語",
+            "kind": "implements_trait"
+          }
+        },
+        "authority": "compiler_proven",
+        "anchors": [
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "rust_span": {
+                "file": "src/controller.rs",
+                "line": 1,
+                "col": 1
+              }
+            },
+            "source_revision": "git:source-1"
+          },
+          {
+            "artifact": "src/controller.rs",
+            "anchor": {
+              "symbol_path": "crate::controller::control"
+            },
+            "source_revision": null
+          }
+        ],
+        "rule": null,
+        "extensions": {
+          "original": "unknown\r\n"
+        }
+      }
+    }
+  },
+  "artifacts": {
+    "src/controller.rs": [
+      239,
+      187,
+      191,
+      112,
+      117,
+      98,
+      32,
+      102,
+      110,
+      32,
+      99,
+      111,
+      110,
+      116,
+      114,
+      111,
+      108,
+      40,
+      41,
+      32,
+      123,
+      125,
+      13,
+      10
+    ],
+    "model/vehicle.sysml": [
+      114,
+      101,
+      113,
+      117,
+      105,
+      114,
+      101,
+      109,
+      101,
+      110,
+      116,
+      32,
+      60,
+      39,
+      82,
+      69,
+      81,
+      45,
+      230,
+      151,
+      165,
+      230,
+      156,
+      172,
+      232,
+      170,
+      158,
+      39,
+      62,
+      32,
+      99,
+      111,
+      110,
+      116,
+      114,
+      111,
+      108,
+      59,
+      13,
+      10
+    ],
+    "attachments/evidence.bin": [
+      0,
+      255,
+      10,
+      13
+    ]
+  },
+  "expected_element_kinds": [
+    "package",
+    "part_definition",
+    "part_usage",
+    "attribute_usage",
+    "port_definition",
+    "port_usage",
+    "connection_usage",
+    "interface_definition",
+    "interface_usage",
+    "item_definition",
+    "item_usage",
+    "action_definition",
+    "action_usage",
+    "state_definition",
+    "state_usage",
+    "requirement_definition",
+    "requirement_usage",
+    "verification_case_definition",
+    "verification_case_usage",
+    "constraint_definition",
+    "constraint_usage",
+    "allocation_usage",
+    "view_definition",
+    "view_usage",
+    "viewpoint_definition",
+    "rendering_usage"
+  ],
+  "expected_relation_kinds": [
+    "feature_membership",
+    "specialization",
+    "subsetting",
+    "redefinition",
+    "connection",
+    "succession",
+    "refine",
+    "domain",
+    "feature_typing",
+    "dependency",
+    "allocation",
+    "verify",
+    "satisfy"
+  ],
+  "forbidden_queries": [
+    "CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }",
+    "DESCRIBE ?s WHERE { ?s ?p ?o }",
+    "INSERT DATA { <urn:s> <urn:p> <urn:o> }",
+    "SELECT * FROM <urn:other> WHERE { ?s ?p ?o }",
+    "ASK { SERVICE SILENT <http://127.0.0.1:1> {} }",
+    "SELECT ?s WHERE { ?s ?p ?o FILTER EXISTS { SERVICE ?endpoint {} } }",
+    "SELECT (IF(EXISTS { SERVICE <urn:remote> {} },1,0) AS ?x) WHERE {}",
+    "SELECT * WHERE { GRAPH <urn:other> {?s ?p ?o}}",
+    "SELECT * WHERE { GRAPH ?g {?s ?p ?o}}",
+    "SELECT (COUNT(*) AS ?count) WHERE {} HAVING(EXISTS { SERVICE <urn:remote> {} })",
+    "SELECT ?x WHERE {VALUES ?x {1}} ORDER BY(EXISTS { SERVICE <urn:remote> {} })"
+  ]
+}

@@ -290,6 +290,14 @@ impl LocalMistralRuntime {
                 ModelRole::System => TextMessageRole::System,
                 ModelRole::User => TextMessageRole::User,
                 ModelRole::Assistant => TextMessageRole::Assistant,
+                // mistralrs' `TextMessages` has no tool-call/tool-result
+                // support (unlike `RequestBuilder`, which this backend does
+                // not use) — fold a tool turn back in as plain user-visible
+                // text rather than failing to compile or panicking. In
+                // practice this branch is unreachable via the normal chat
+                // path: `chat::model_turn` already maps persisted tool
+                // history to `ModelRole::User` before it ever reaches here.
+                ModelRole::Tool => TextMessageRole::User,
             };
             msgs = msgs.add_message(role, turn.content.trim());
         }
@@ -352,9 +360,7 @@ impl LocalMistralRuntime {
             .and_then(|c| c.message.content)
             .ok_or_else(|| AgentRuntimeError::LocalLlm("mistralrs returned no content".into()))?;
 
-        Ok(ModelResponse {
-            assistant_text: text.trim().to_string(),
-        })
+        Ok(ModelResponse::text(text.trim()))
     }
 }
 

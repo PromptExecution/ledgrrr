@@ -62,15 +62,18 @@ fn main() {
     // opens for a normal end-user launch.
     let cli_timeout_secs: Option<u64> = {
         let args: Vec<String> = std::env::args().collect();
-        args.iter().position(|a| a == "--timeout").and_then(|i| {
-            args.get(i + 1).and_then(|v| v.parse::<u64>().ok())
-        })
+        args.iter()
+            .position(|a| a == "--timeout")
+            .and_then(|i| args.get(i + 1).and_then(|v| v.parse::<u64>().ok()))
     };
     let remote_pilot_state = std::sync::Arc::new(remote_pilot::RemotePilotState::default());
     if let Some(secs) = cli_timeout_secs {
         remote_pilot_state.arm_timeout(std::time::Duration::from_secs(secs));
         if let Err(e) = remote_pilot::spawn(remote_pilot_state.clone()) {
-            eprintln!("[remote-pilot] failed to start on {}: {e}", remote_pilot::REMOTE_PILOT_ADDR);
+            eprintln!(
+                "[remote-pilot] failed to start on {}: {e}",
+                remote_pilot::REMOTE_PILOT_ADDR
+            );
         } else {
             eprintln!(
                 "[remote-pilot] listening on {} — timeout {secs}s",
@@ -90,13 +93,17 @@ fn main() {
     let review_log: Arc<Mutex<ReviewLog>> = Arc::new(Mutex::new(ReviewLog::default()));
     let internal_endpoint: Arc<Mutex<Option<InternalOpenAiHandle>>> = Arc::new(Mutex::new(None));
     let evidence: Arc<Mutex<EvidenceState>> = Arc::new(Mutex::new(EvidenceState::new()));
+    let pending_tool_loop: Arc<Mutex<Option<state::PendingToolLoopSession>>> =
+        Arc::new(Mutex::new(None));
 
+    let startup_settings_client = Arc::clone(&store);
     let app_state = AppState {
         store,
         history,
         review_log,
         internal_endpoint,
         evidence,
+        pending_tool_loop,
     };
 
     // Enable CDP remote debugging port — the launcher should set WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
@@ -119,6 +126,7 @@ fn main() {
         commands::get_initial_state,
         commands::save_settings,
         commands::send_message,
+        commands::confirm_pending_tool_call,
         commands::load_rhai_rule_prompt,
         commands::use_internal_phi,
         commands::use_foundry_local,
@@ -136,6 +144,8 @@ fn main() {
         commands::stop_desktop_runtime,
         commands::open_desktop_logs,
         commands::get_desktop_repair_plan,
+        commands::get_foundry_local_install_plan,
+        commands::foundry_local_install_action,
     ]);
 
     #[cfg(debug_assertions)]
@@ -153,6 +163,18 @@ fn main() {
                 std::env::temp_dir().join("host-tauri-setup-ok.txt"),
                 format!("setup hook ran at {}\n", std::process::id()),
             );
+            // ledgrrr-service (the settings server) may not be running yet
+            // at first launch — default to visible rather than fail setup
+            // or leave the app with no window and no way to reach it.
+            let initial_visible = match startup_settings_client.load() {
+                Ok(s) => s.window_visible_on_start && !s.start_minimized_to_tray,
+                Err(e) => {
+                    eprintln!(
+                        "[startup] could not load settings ({e}); defaulting window to visible"
+                    );
+                    true
+                }
+            };
             let build = env!("TAURI_BUILD_NUMBER");
             let title = format!("ledgrrr v{}+b{}", env!("CARGO_PKG_VERSION"), build);
             let w = tauri::WebviewWindowBuilder::new(
@@ -166,14 +188,21 @@ fn main() {
             .center()
             .resizable(true)
             .decorations(true)
-            .visible(true)
+            .visible(initial_visible)
             .build()
             .expect("failed to build main window");
             let _: std::result::Result<(), _> = w.set_title(&title);
-            if let Ok(settings) = app.state::<AppState>().store.load() {
-                if settings.enable_tray {
-                    tray::setup_tray(app);
-                }
+            // A failed load here must not silently skip the tray entirely —
+            // ledgrrr-service being unreachable shouldn't disable the app's
+            // main affordance for controlling it. Default to enabled.
+            let enable_tray = app
+                .state::<AppState>()
+                .store
+                .load()
+                .map(|s| s.enable_tray)
+                .unwrap_or(true);
+            if enable_tray {
+                tray::setup_tray(app);
             }
 
             if setup_remote_pilot_state.remaining().is_some() {
@@ -181,7 +210,9 @@ fn main() {
                 let pilot_state = setup_remote_pilot_state.clone();
                 let base_title = title.clone();
                 std::thread::spawn(move || loop {
-                    let Some(remaining) = pilot_state.remaining() else { break };
+                    let Some(remaining) = pilot_state.remaining() else {
+                        break;
+                    };
                     let secs = remaining.as_secs();
                     if let Some(window) = app_handle.get_webview_window("main") {
                         let _ = window.set_title(&format!("{base_title} — closing in {secs}s"));
@@ -190,9 +221,15 @@ fn main() {
                         let state = app_handle.state::<AppState>();
                         let history_debug = format!("{:?}", state.history.lock().unwrap());
                         let review_log_debug = format!("{:?}", state.review_log.lock().unwrap());
-                        let dump_path =
-                            remote_pilot::dump_session_log(&pilot_state, &history_debug, &review_log_debug);
-                        eprintln!("[remote-pilot] timeout reached — session log dumped to {}", dump_path.display());
+                        let dump_path = remote_pilot::dump_session_log(
+                            &pilot_state,
+                            &history_debug,
+                            &review_log_debug,
+                        );
+                        eprintln!(
+                            "[remote-pilot] timeout reached — session log dumped to {}",
+                            dump_path.display()
+                        );
                         // Tauri (and its internal tokio runtime) don't tolerate `exit()`
                         // called from an arbitrary OS thread -- observed panic: "Cannot
                         // drop a runtime in a context where blocking is not allowed."

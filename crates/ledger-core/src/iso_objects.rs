@@ -11,16 +11,16 @@
 use crate::iso::{HasVisualization, RhaiDsl, SemanticType, VisualizationSpec, ZLayer};
 
 use crate::au_rd::{AuRdActivity, AuRdOffset};
-use crate::us_rdc::{QreActivity, UsRdcCredit};
-use crate::crypto::{CryptoTx, CryptoWallet};
 use crate::constraints::{
     ConstraintEvaluation, InvoiceConstraintSolver, InvoiceVerification, VendorConstraintSet,
 };
+use crate::crypto::{CryptoTx, CryptoWallet};
 use crate::legal::{Jurisdiction, LegalRule, LegalSolver, TransactionFacts, Z3Result};
 use crate::pipeline::{
     Classified, Committed, Ingested, KasuariSolver, NeedsReview, PipelineState, Reconciled,
     Validated,
 };
+use crate::us_rdc::{QreActivity, UsRdcCredit};
 use crate::validation::{CommitGate, Disposition, Issue, MetaCtx, MetaFlag, StageResult};
 
 // ============================================================================
@@ -371,7 +371,6 @@ let strength = solver.strength("required"); // Required | Strong | Medium | Weak
     }
 }
 
-
 // ============================================================================
 // TAX DOMAIN — AU R&D (z=2, Constraint layer)
 // ============================================================================
@@ -400,7 +399,8 @@ impl HasVisualization for AuRdOffset {
                 r#"let offset = rd_offset.calculate(eligible_expenditure, rate);
 emit_offset_claim(offset.amount, offset.tax_year);"#,
             ),
-            description: "ITAA 1997 s.355-305 R&D offset — calculated tax offset from eligible expenditure",
+            description:
+                "ITAA 1997 s.355-305 R&D offset — calculated tax offset from eligible expenditure",
         }
     }
 }
@@ -535,11 +535,7 @@ mod tests {
             ($t:ty) => {{
                 let spec = <$t as HasVisualization>::viz_spec();
                 engine.compile(spec.rhai_dsl.source()).unwrap_or_else(|e| {
-                    panic!(
-                        "Rhai DSL syntax error in {}: {}",
-                        stringify!($t),
-                        e
-                    )
+                    panic!("Rhai DSL syntax error in {}: {}", stringify!($t), e)
                 });
             }};
         }

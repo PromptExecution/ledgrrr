@@ -212,10 +212,9 @@ impl<'a> Classifier<'a> {
         }
 
         // Crypto hints → account type
-        if (fl.contains("coinbase") || fl.contains("kraken"))
-            && self.account_type.is_empty() {
-                self.account_type = "crypto".to_string();
-            }
+        if (fl.contains("coinbase") || fl.contains("kraken")) && self.account_type.is_empty() {
+            self.account_type = "crypto".to_string();
+        }
     }
 
     // -----------------------------------------------------------------------

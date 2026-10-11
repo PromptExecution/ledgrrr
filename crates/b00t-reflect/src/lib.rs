@@ -17,8 +17,8 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
-    parse_macro_input, Data, DeriveInput, Fields, Ident, LitStr, Token,
-    parse::Parse, parse::ParseStream,
+    parse::Parse, parse::ParseStream, parse_macro_input, Data, DeriveInput, Fields, Ident, LitStr,
+    Token,
 };
 
 /// A single `key = "value"` pair inside `#[holon(...)]`.
@@ -71,7 +71,13 @@ impl Parse for HolonAttr {
             let _ = input.parse::<Token![,]>();
         }
 
-        Ok(HolonAttr { id, label, kind, z_layer, semantic_type })
+        Ok(HolonAttr {
+            id,
+            label,
+            kind,
+            z_layer,
+            semantic_type,
+        })
     }
 }
 
@@ -139,25 +145,34 @@ pub fn holon_emit_derive(input: TokenStream) -> TokenStream {
         let id_str = match &attr.id {
             Some(s) => s.clone(),
             None => {
-                return syn::Error::new(v.ident.span(), "holon attribute is missing required key `id`")
-                    .to_compile_error()
-                    .into();
+                return syn::Error::new(
+                    v.ident.span(),
+                    "holon attribute is missing required key `id`",
+                )
+                .to_compile_error()
+                .into();
             }
         };
         let label_str = match &attr.label {
             Some(s) => s.clone(),
             None => {
-                return syn::Error::new(v.ident.span(), "holon attribute is missing required key `label`")
-                    .to_compile_error()
-                    .into();
+                return syn::Error::new(
+                    v.ident.span(),
+                    "holon attribute is missing required key `label`",
+                )
+                .to_compile_error()
+                .into();
             }
         };
         let kind_str = match &attr.kind {
             Some(s) => s.clone(),
             None => {
-                return syn::Error::new(v.ident.span(), "holon attribute is missing required key `kind`")
-                    .to_compile_error()
-                    .into();
+                return syn::Error::new(
+                    v.ident.span(),
+                    "holon attribute is missing required key `kind`",
+                )
+                .to_compile_error()
+                .into();
             }
         };
 

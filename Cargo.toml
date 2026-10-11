@@ -1,6 +1,8 @@
 [workspace]
 members = [
   "crates/ledger-core",
+  "crates/ledgrrr-revision-io",
+  "crates/ledgrrr-sysml-adapter",
   "crates/ledger-attest",
   "crates/ledgerr-focus",
   "crates/ledgrrr-settings",
@@ -26,9 +28,9 @@ members = [
   "crates/holon-viz-wasm",
   "crates/beankeeper-bridge",
   "crates/ledgerr-desktop-agent",
-  "crates/sysml-derive",
   "crates/reqif-mcp-spike",
   "crates/ledgerr-cloud",
+  "crates/ledgerr-gcp-billing",
 ]
 resolver = "2"
 
@@ -39,6 +41,8 @@ license = "MIT"
 repository = "https://github.com/PromptExecution/ledgrrr"
 
 [workspace.dependencies]
+ufo-types = { git = "https://github.com/promptexecution/ufo-types", rev = "5f8d0186947da376cfa17ad8b59cd280f2f85338" }
+rusqlite = { version = "=0.33.0", features = ["bundled", "hooks"] }
 rust_xlsxwriter = "0.94.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -69,11 +73,25 @@ ledger-core = { path = "crates/ledger-core" }
 ledgerr-focus = { path = "crates/ledgerr-focus" }
 ledgerr-mcp-core = { path = "crates/ledgerr-mcp-core" }
 msft-agent-gov-ledgrrr = { path = "crates/msft-agent-gov-ledgrrr" }
-agentmesh = "3.5.0"
-agentmesh-mcp = "3.5.0"
+# Exact-pinned (not a range) to match the vendor patch below precisely —
+# cargo's [patch] only intercepts the specific version it declares itself
+# as, so a version range here could let the resolver pick an unpatched
+# release instead (_b00t_#1177 P7). 4.0.0 is upstream's actual latest;
+# agentmesh 4.0.0 itself requires agentmesh-mcp ^4.0.0, so both are
+# pinned to the same version to stay a coherent, compatible pair.
+agentmesh = "=4.0.0"
+agentmesh-mcp = "=4.0.0"
 beankeeper = { git = "https://github.com/PromptExecution/beankeeper-b00t.git", branch = "feat/serde-feature", features = ["serde"] }
 ofx-rs = "0.2"
 
 [workspace.lints.rust]
 unsafe_code = "deny"
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
+
+[patch.crates-io]
+# 🤓 Temporary vendor patch (_b00t_#1177 P7): upstream agentmesh/
+# agentmesh-mcp exact-pin serde/serde_json (e.g. "=1.0.228"), which
+# conflicts with scxml's serde >=1.0.229 / serde_json >=1.0.150
+# requirements. See vendor/agentmesh-b00t/README.md.
+agentmesh = { path = "vendor/agentmesh-b00t" }
+agentmesh-mcp = { path = "vendor/agentmesh-mcp-b00t" }

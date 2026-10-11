@@ -7,10 +7,10 @@
 
 #![cfg(feature = "b00t")]
 
+use b00t_iface::core::ProcessSurface;
 use b00t_iface::handshake::{
     CapabilityKind, CapabilityOffer, HandshakeDocument, HandshakeResult, HandshakeSurface,
 };
-use b00t_iface::core::ProcessSurface;
 use serde_json;
 use std::collections::HashMap;
 use tempfile::TempDir;
@@ -121,14 +121,12 @@ fn capability_trade_model_endpoint() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let hs_dir = tmp.path().join("node_a").join("handshake");
-    let mut node_a = HandshakeSurface::new("node-a", variant, "host-a")
-        .with_offers(vec![offer]);
+    let mut node_a = HandshakeSurface::new("node-a", variant, "host-a").with_offers(vec![offer]);
     node_a.handshake_dir = hs_dir;
     node_a.write_doc()?;
     let a_doc_path = node_a.doc_path();
 
-    let mut node_b = HandshakeSurface::new("node-b", variant, "host-b")
-        .with_peer_path(a_doc_path);
+    let mut node_b = HandshakeSurface::new("node-b", variant, "host-b").with_peer_path(a_doc_path);
     node_b.handshake_dir = tmp.path().join("node_b").join("handshake");
 
     let handle = node_b.operate()?;
@@ -138,8 +136,14 @@ fn capability_trade_model_endpoint() -> Result<(), Box<dyn std::error::Error>> {
         !handle.acquired.is_empty(),
         "acquired must be non-empty after Matched handshake with offers"
     );
-    let model_offer = handle.acquired.iter().find(|o| o.name == "phi-4-mini-reasoning");
-    assert!(model_offer.is_some(), "acquired must contain the phi model offer");
+    let model_offer = handle
+        .acquired
+        .iter()
+        .find(|o| o.name == "phi-4-mini-reasoning");
+    assert!(
+        model_offer.is_some(),
+        "acquired must contain the phi model offer"
+    );
     assert_eq!(
         model_offer.unwrap().endpoint.as_deref(),
         Some(endpoint),
@@ -166,7 +170,10 @@ fn variant_mismatch_rejected() -> Result<(), Box<dyn std::error::Error>> {
 
     match &handle.result {
         HandshakeResult::VariantMismatch { expected, got } => {
-            assert_eq!(expected, "other-tool", "expected field should be B's variant");
+            assert_eq!(
+                expected, "other-tool",
+                "expected field should be B's variant"
+            );
             assert_eq!(got, "l3dg3rr", "got field should be A's variant");
         }
         other => panic!("expected VariantMismatch, got {:?}", other),
