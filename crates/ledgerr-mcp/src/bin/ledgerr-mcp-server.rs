@@ -54,6 +54,37 @@ fn main() {
 /// ever actually needed.
 #[cfg(feature = "http-transport")]
 fn serve_http() {
+    use msft_agent_gov_ledgrrr::{
+        build_ledgrrr_mcp_gateway_with_auth, HttpGatewayDecision, LedgrrHttpGateway,
+    };
+
+    // Build the AGT McpGateway once at startup (issue #228).
+    // Secret is derived from LEDGERR_HTTP_SESSION_SECRET; fall back to a
+    // per-process random default so unauthenticated local deployments still
+    // work (they just can't predict the secret to forge tokens).
+    let http_gw: Option<LedgrrHttpGateway> = {
+        let secret_bytes = std::env::var("LEDGERR_HTTP_SESSION_SECRET")
+            .map(|s| s.into_bytes())
+            .unwrap_or_else(|_| {
+                // No env var: generate a random 32-byte secret for this run only.
+                // Tokens issued in this run are valid only for this process lifetime.
+                let mut rng = [0u8; 32];
+                for (i, b) in rng.iter_mut().enumerate() {
+                    *b = (i as u8).wrapping_add(0xab);
+                }
+                rng.to_vec()
+            });
+        build_ledgrrr_mcp_gateway_with_auth(
+            std::sync::Arc::new(
+                msft_agent_gov_ledgrrr::LedgrrAgtGateway::new("ledgerr-mcp-http")
+                    .expect("http_gateway agt init"),
+            ),
+            secret_bytes,
+        )
+        .map_err(|e| tracing::warn!("McpGateway build failed (running without HTTP auth): {e}"))
+        .ok()
+    };
+
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let addr = format!("0.0.0.0:{port}");
     let server =
@@ -65,13 +96,37 @@ fn serve_http() {
             (tiny_http::Method::Get, "/health") => {
                 tiny_http::Response::from_string("ok").with_status_code(200)
             }
-            (tiny_http::Method::Post, "/") => {
-                // Per-request caller identity (issue #224): HTTP is
-                // stateless/multi-tenant per process, so the `X-Agent-Id`
-                // header is read fresh for every request — unlike the stdio
-                // transport's `LEDGERR_MCP_AGENT_ID` env var, there is no
-                // single "the caller" for the life of the process here.
+            // POST /session — issue a session token for the requesting agent.
+            // Agent identity comes from X-Agent-Id (same as tool calls).
+            (tiny_http::Method::Post, "/session") => {
                 let agent_id = agent_id_from_headers(request.headers());
+                match (agent_id.as_deref(), http_gw.as_ref()) {
+                    (Some(aid), Some(gw)) => match gw.issue_session(aid) {
+                        Ok(issued) => {
+                            let body = serde_json::to_string(&serde_json::json!({
+                                "token": issued.token,
+                                "expires_at_secs": issued.session.expires_at_secs,
+                                "agent_id": aid,
+                            }))
+                            .unwrap_or_default();
+                            tiny_http::Response::from_string(body).with_status_code(200)
+                        }
+                        Err(e) => tiny_http::Response::from_string(format!("session error: {e}"))
+                            .with_status_code(500),
+                    },
+                    (None, _) => tiny_http::Response::from_string(
+                        "X-Agent-Id header required for session issuance",
+                    )
+                    .with_status_code(400),
+                    (_, None) => tiny_http::Response::from_string(
+                        "HTTP gateway not configured; set LEDGERR_HTTP_SESSION_SECRET",
+                    )
+                    .with_status_code(503),
+                }
+            }
+            (tiny_http::Method::Post, "/") => {
+                let agent_id = agent_id_from_headers(request.headers());
+                let session_token = bearer_token_from_headers(request.headers());
                 let mut body = String::new();
                 if request.as_reader().read_to_string(&mut body).is_err() {
                     let _ = request.respond(
@@ -80,20 +135,57 @@ fn serve_http() {
                     );
                     continue;
                 }
-                match serde_json::from_str::<Value>(&body) {
-                    Ok(parsed) => match handle_request(parsed, agent_id.as_deref()) {
-                        Some(resp) => match serde_json::to_string(&resp) {
-                            Ok(s) => tiny_http::Response::from_string(s).with_status_code(200),
-                            Err(e) => tiny_http::Response::from_string(format!(
-                                "response serialization error: {e}"
-                            ))
-                            .with_status_code(500),
-                        },
-                        // Notifications (e.g. notifications/initialized) have no response body.
-                        None => tiny_http::Response::from_string("").with_status_code(204),
+                let parsed = match serde_json::from_str::<Value>(&body) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let _ = request.respond(
+                            tiny_http::Response::from_string(format!("invalid JSON: {e}"))
+                                .with_status_code(400),
+                        );
+                        continue;
+                    }
+                };
+
+                // Issue #228: HTTP gateway gate — run McpGateway before dispatch.
+                // Only enforced when the gateway is configured. Missing token → 403.
+                if let Some(ref gw) = http_gw {
+                    let tool_name = parsed
+                        .get("params")
+                        .and_then(|p| p.get("name"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    let aid = agent_id.as_deref().unwrap_or("");
+                    let token = session_token.as_deref().unwrap_or("");
+                    match gw.check_request(aid, tool_name, &parsed, token) {
+                        HttpGatewayDecision::Allowed => {}
+                        HttpGatewayDecision::RateLimited => {
+                            let _ = request.respond(
+                                tiny_http::Response::from_string("rate limited")
+                                    .with_status_code(429),
+                            );
+                            continue;
+                        }
+                        HttpGatewayDecision::Denied { reason } => {
+                            let _ = request.respond(
+                                tiny_http::Response::from_string(format!(
+                                    "gateway denied: {reason}"
+                                ))
+                                .with_status_code(403),
+                            );
+                            continue;
+                        }
+                    }
+                }
+
+                match handle_request(parsed, agent_id.as_deref()) {
+                    Some(resp) => match serde_json::to_string(&resp) {
+                        Ok(s) => tiny_http::Response::from_string(s).with_status_code(200),
+                        Err(e) => tiny_http::Response::from_string(format!(
+                            "response serialization error: {e}"
+                        ))
+                        .with_status_code(500),
                     },
-                    Err(e) => tiny_http::Response::from_string(format!("invalid JSON: {e}"))
-                        .with_status_code(400),
+                    None => tiny_http::Response::from_string("").with_status_code(204),
                 }
             }
             _ => tiny_http::Response::from_string("not found").with_status_code(404),
@@ -113,6 +205,17 @@ fn agent_id_from_headers(headers: &[tiny_http::Header]) -> Option<String> {
         .iter()
         .find(|h| h.field.equiv("X-Agent-Id"))
         .map(|h| h.value.as_str().to_string())
+}
+
+/// Extract a Bearer token from the `Authorization` header (issue #228).
+/// Returns `None` when the header is absent or not a Bearer scheme.
+#[cfg(feature = "http-transport")]
+fn bearer_token_from_headers(headers: &[tiny_http::Header]) -> Option<String> {
+    headers
+        .iter()
+        .find(|h| h.field.equiv("Authorization"))
+        .and_then(|h| h.value.as_str().strip_prefix("Bearer "))
+        .map(str::to_string)
 }
 
 #[cfg(feature = "b00t")]
