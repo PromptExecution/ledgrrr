@@ -43,10 +43,12 @@ sysinfo = { version = "0.33", default-features = false, features = ["system"] }
 reqwest = { version = "0.12", features = ["blocking", "json", "rustls-tls"], default-features = false, optional = true }
 semver = { version = "1", optional = true }
 
-# http-transport feature dep — minimal synchronous HTTP server, matches the
-# existing sync dispatch model (no tokio runtime pulled into the request
-# path). See src/bin/ledgerr-mcp-server.rs's serve_http().
-tiny_http = { version = "0.12", optional = true }
+# http-transport feature deps — axum-based Streamable HTTP + SSE transport.
+# tiny_http is removed; axum + tokio-stream replace it. Tokio is already a
+# workspace dep (for budget_reconcile); these add the router and stream
+# adapter needed for SSE server-initiated notifications (issue #227).
+axum = { version = "0.8", optional = true }
+tokio-stream = { version = "0.1", features = ["sync"], optional = true }
 
 # winreg — Windows-only, safe registry wrapper; gated at the cfg level in code
 [target.'cfg(windows)'.dependencies]
@@ -76,7 +78,7 @@ self-update = ["dep:reqwest", "dep:semver"]
 # stdio transport (never replaces it — see infrastructure#139/#141 for the
 # Azure Container Apps scale-to-zero deployment this exists for). Off by
 # default: opt in with --features http-transport.
-http-transport = ["dep:tiny_http"]
+http-transport = ["dep:axum", "dep:tokio-stream"]
 
 # Legacy: gates the old mcp_adapter.rs dispatch and the pre-actor server
 # match-statement path.  The new actor/gate channel system is the default;
