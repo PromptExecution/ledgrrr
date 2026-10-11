@@ -981,6 +981,14 @@ impl TurboLedgerService {
             hsm.last_valid_checkpoint = hsm::checkpoint_marker(requested);
             let response = hsm::transition_advanced_response(requested);
             drop(hsm);
+            // Phase 4: wire HsmMachine transitions into ProjectEventBus so
+            // statechart hooks and PM hooks observe every lifecycle change.
+            self.project_event_bus.fire(
+                &crate::event_bus::ProjectEvent::lifecycle_transition(
+                    &current.token(),
+                    &requested.token(),
+                ),
+            );
             self.persist_state()?;
             return Ok(response);
         }
