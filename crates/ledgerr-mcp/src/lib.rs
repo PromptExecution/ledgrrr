@@ -43,6 +43,7 @@ pub mod mcp_adapter;
 pub mod ontology;
 pub mod openmetadata;
 pub mod plugin_info;
+pub mod ooda_chart;
 pub mod pm_hooks;
 #[cfg(feature = "b00t")]
 pub mod provider;
