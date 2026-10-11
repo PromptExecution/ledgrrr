@@ -1,6 +1,6 @@
 # msft-agent-gov-ledgrrr — Spec-Driven Development
 
-> **Status**: Phase 1 complete — core governance gate wired.  
+> **Status**: Phase 3 complete — hardening, lifecycle, security scanner, and capability bridge wired.  
 > **Scope**: AGT integration contract, gap analysis, upstream proposals, and phased improvement roadmap.
 
 ---
@@ -275,17 +275,17 @@ The remaining gaps (1–3, 5–8, 11–12) are addressable on the ledgrrr side w
 - [x] 4-tier ring model mapped to `CommitGate`
 - [x] 7 unit tests covering allow/deny/approval/sandbox/admin/audit/DID
 
-### Phase 2 — Hardening (Gaps 1, 2, 8, 11, 12)
+### Phase 2 (done) — Hardening (Gaps 1, 2, 8, 11, 12)
 
 **Target**: Before Hermes agent mesh goes live.
 
-| Task | Gap | API change |
-|------|-----|------------|
-| Wire `CredentialRedactor` into audit pipeline | 1 | internal only |
-| Add `quarantine_agent` / `decommission_agent` | 2 | new public methods |
-| `with_policy_path` constructor | 8 | new constructor |
-| Ring + trust persistence via `TrustConfig.persist_path` + JSON sidecar | 11 | new constructor param |
-| Replace `trust_score(did)` with `trust_score_for_agent(id)` | 12 | API rename (non-breaking — add new, deprecate old) |
+| Task | Gap | API change | Status |
+|------|-----|------------|--------|
+| Wire `CredentialRedactor` into audit pipeline | 1 | internal only | ✅ done |
+| Add `quarantine_agent` / `decommission_agent` | 2 | new public methods | ✅ done |
+| `with_policy_path` constructor | 8 | new constructor | ✅ done |
+| Ring + trust persistence via `TrustConfig.persist_path` + JSON sidecar | 11 | new constructor param | ✅ done |
+| Replace `trust_score(did)` with `trust_score_for_agent(id)` | 12 | API rename (non-breaking — add new, deprecate old) | ✅ done |
 
 **New public API after Phase 2**:
 ```rust
@@ -311,15 +311,15 @@ pub fn check_tool_call_with_tx(
 ) -> ToolCallDecision;
 ```
 
-### Phase 3 — Security scanner + multi-agent (Gaps 3, 9, 10)
+### Phase 3 (done) — Security scanner + multi-agent (Gaps 3, 9, 10)
 
 **Target**: When Hermes sub-agents are spawned from `b00t-iface`.
 
-| Task | Gap | Dependency |
-|------|-----|------------|
-| Wire `McpSecurityScanner` with PUBLISHED_TOOL_NAMES baseline | 3 | Phase 2 done |
-| Upstream `fork_sub_agent` (or local workaround) | 9 | Upstream PR #3.1 |
-| `check_tool_call_with_tx` correlation IDs | 10 | Phase 2 `check_tool_call_with_tx` |
+| Task | Gap | Dependency | Status |
+|------|-----|------------|--------|
+| Wire `McpSecurityScanner` with PUBLISHED_TOOL_NAMES baseline | 3 | Phase 2 done | ✅ done |
+| Upstream `fork_sub_agent` (or local workaround) | 9 | Upstream PR #3.1 | ✅ done (local workaround) |
+| `check_tool_call_with_tx` correlation IDs | 10 | Phase 2 `check_tool_call_with_tx` | ✅ done |
 
 **`CapabilityBridge`** — new module `crates/msft-agent-gov-ledgrrr/src/capability_bridge.rs`:
 ```rust

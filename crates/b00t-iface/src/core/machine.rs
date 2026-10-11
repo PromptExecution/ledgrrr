@@ -35,6 +35,8 @@
 //!                         Terminated
 //! ```
 
+#[cfg(feature = "lazily")]
+use super::governance::GovernancePolicy;
 use super::surface::MaintenanceAction;
 use std::fmt;
 use std::time::Duration;
@@ -94,6 +96,7 @@ pub fn valid_transition(from: MachineState, to: MachineState) -> Option<&'static
 
 /// All states in `MachineState`, in the order they appear in the state
 /// diagram above.
+#[cfg(feature = "statechart")]
 const ALL_STATES: [MachineState; 6] = [
     MachineState::Idle,
     MachineState::Ready,
@@ -209,6 +212,100 @@ impl SurfaceMachine {
     }
 }
 
+/// Live lazily-backed execution layer for the surface lifecycle chart.
+///
+/// `SurfaceChart` wraps a `ThreadSafeStateChart` whose topology is derived
+/// directly from `valid_transition`. `GovernancePolicy` fields become named
+/// guards resolved at each `send` call — the topology never needs to change
+/// when policy changes.
+///
+/// # Guard names
+///
+/// | Guard name             | Allows transition when                                  |
+/// |------------------------|---------------------------------------------------------|
+/// | `auto_restart_allowed` | `policy.auto_restart && crash_count < policy.crash_budget` |
+/// | `ttl_ok`               | `elapsed < policy.max_ttl`                              |
+#[cfg(feature = "lazily")]
+pub struct SurfaceChart {
+    chart: lazily::statechart::ThreadSafeStateChart,
+    ctx: lazily::ThreadSafeContext,
+    pub policy: GovernancePolicy,
+}
+
+/// Build a `ChartDef` whose topology exactly mirrors `valid_transition`.
+/// Guarded edges use named guards resolved at `send` time.
+#[cfg(feature = "lazily")]
+pub fn surface_chart_def() -> Result<lazily::statechart::ChartDef, String> {
+    use lazily::statechart::{ChartBuilder, StateBuilder};
+
+    ChartBuilder::new()
+        // Single root compound state; initial child is idle
+        .state(StateBuilder::compound("surface", "idle"))
+        .state(StateBuilder::atomic("idle").parent("surface").on("init", "ready"))
+        .state(
+            StateBuilder::atomic("ready")
+                .parent("surface")
+                .on("operate", "running")
+                .on("terminate", "terminated"),
+        )
+        .state(
+            StateBuilder::atomic("running")
+                .parent("surface")
+                .on("maintain:noop", "healthy")
+                .on_guarded("maintain:restart", "ready", "auto_restart_allowed")
+                .on("maintain:quarantine", "quarantined")
+                .on("terminate", "terminated"),
+        )
+        .state(
+            StateBuilder::atomic("healthy")
+                .parent("surface")
+                .on_guarded("operate", "running", "ttl_ok")
+                .on_guarded("maintain:restart", "ready", "auto_restart_allowed")
+                .on("terminate", "terminated"),
+        )
+        .state(
+            StateBuilder::atomic("quarantined")
+                .parent("surface")
+                .on("terminate", "terminated"),
+        )
+        .state(StateBuilder::final_state("terminated").parent("surface"))
+        .build()
+}
+
+#[cfg(feature = "lazily")]
+impl SurfaceChart {
+    pub fn new(policy: GovernancePolicy) -> Result<Self, String> {
+        let def = surface_chart_def()?;
+        let ctx = lazily::ThreadSafeContext::new();
+        let chart = lazily::statechart::ThreadSafeStateChart::new(&ctx, def);
+        Ok(Self { chart, ctx, policy })
+    }
+
+    /// Current active leaf states.
+    pub fn active_leaves(&self) -> Vec<String> {
+        self.chart.active_leaves(&self.ctx)
+    }
+
+    /// Whether the chart is currently in the named state.
+    pub fn matches(&self, id: &str) -> bool {
+        self.chart.matches(&self.ctx, id)
+    }
+
+    /// Send an event, resolving guards from current `crash_count` and elapsed time.
+    /// Returns `true` if the transition fired.
+    pub fn send(&self, event: &str, crash_count: u32, elapsed: Duration) -> bool {
+        use std::collections::HashMap;
+        let guards = HashMap::from([
+            (
+                "auto_restart_allowed".to_string(),
+                self.policy.auto_restart && crash_count < self.policy.crash_budget,
+            ),
+            ("ttl_ok".to_string(), elapsed < self.policy.max_ttl),
+        ]);
+        self.chart.send(&self.ctx, event, &guards)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,6 +369,83 @@ mod tests {
     fn machine_display() {
         assert_eq!(MachineState::Running.to_string(), "running");
         assert_eq!(MachineState::Quarantined.to_string(), "quarantined");
+    }
+
+    #[cfg(feature = "lazily")]
+    #[test]
+    fn surface_chart_def_builds_without_error() {
+        surface_chart_def().expect("surface_chart_def should build");
+    }
+
+    #[cfg(feature = "lazily")]
+    #[test]
+    fn surface_chart_topology_matches_valid_transition() {
+        let policy = GovernancePolicy::default();
+        let sc = SurfaceChart::new(policy).expect("SurfaceChart::new");
+
+        // Starts in idle
+        assert!(sc.matches("idle"));
+
+        // Drive through the happy path: idle→ready→running→healthy
+        assert!(sc.send("init", 0, Duration::ZERO));
+        assert!(sc.matches("ready"));
+
+        assert!(sc.send("operate", 0, Duration::ZERO));
+        assert!(sc.matches("running"));
+
+        let short = Duration::from_secs(1);
+        // maintain:noop → healthy
+        assert!(sc.send("maintain:noop", 0, short));
+        assert!(sc.matches("healthy"));
+
+        // healthy → running (ttl_ok)
+        assert!(sc.send("operate", 0, short));
+        assert!(sc.matches("running"));
+
+        // terminate from running
+        assert!(sc.send("terminate", 0, Duration::ZERO));
+        assert!(sc.matches("terminated"));
+    }
+
+    #[cfg(feature = "lazily")]
+    #[test]
+    fn surface_chart_restart_blocked_when_crash_budget_exhausted() {
+        let policy = GovernancePolicy {
+            auto_restart: true,
+            crash_budget: 2,
+            ..GovernancePolicy::default()
+        };
+        let sc = SurfaceChart::new(policy).expect("SurfaceChart::new");
+
+        // Advance to running
+        sc.send("init", 0, Duration::ZERO);
+        sc.send("operate", 0, Duration::ZERO);
+        assert!(sc.matches("running"));
+
+        // crash_count=2 == crash_budget=2 → restart blocked (fail-closed)
+        let fired = sc.send("maintain:restart", 2, Duration::ZERO);
+        assert!(!fired, "restart should be blocked when crash_count >= crash_budget");
+        assert!(sc.matches("running"), "state must not change on blocked restart");
+    }
+
+    #[cfg(feature = "lazily")]
+    #[test]
+    fn surface_chart_restart_allowed_when_budget_remains() {
+        let policy = GovernancePolicy {
+            auto_restart: true,
+            crash_budget: 3,
+            ..GovernancePolicy::default()
+        };
+        let sc = SurfaceChart::new(policy).expect("SurfaceChart::new");
+
+        sc.send("init", 0, Duration::ZERO);
+        sc.send("operate", 0, Duration::ZERO);
+        assert!(sc.matches("running"));
+
+        // crash_count=2 < crash_budget=3 → restart allowed
+        let fired = sc.send("maintain:restart", 2, Duration::ZERO);
+        assert!(fired, "restart should be allowed when crash_count < crash_budget");
+        assert!(sc.matches("ready"));
     }
 
     #[cfg(feature = "statechart")]
