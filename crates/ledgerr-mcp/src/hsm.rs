@@ -387,7 +387,6 @@ pub fn status_response(node: LifecycleNode, mut blockers: Vec<String>) -> HsmSta
     }
 }
 
-<<<<<<< HEAD
 /// Map a lifecycle node to the number of "advance" events needed to reach it
 /// from the initial state (ingest.pending). Used to sync the HsmChart.
 pub fn advance_count_for(node: LifecycleNode) -> usize {

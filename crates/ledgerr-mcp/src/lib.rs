@@ -832,7 +832,23 @@ impl TurboLedgerService {
             ))
         })?;
         let fires_on = built_in.fires_on().to_string();
-        self.hsm_hooks.register(built_in.into_hook_fn());
+        // Adapt the legacy HookFn (takes &TransitionHookEvent) onto the
+        // ProjectEventBus (takes &ProjectEvent). Reconstruct LifecycleNode
+        // from the "from"/"to" attrs emitted by lifecycle_transition events.
+        let hook_fn = built_in.into_hook_fn();
+        self.project_event_bus.register(Arc::new(move |evt: &ProjectEvent| {
+            if evt.kind == "lifecycle_transition" {
+                let from_tok = evt.attr("from").unwrap_or("");
+                let to_tok = evt.attr("to").unwrap_or("");
+                let (fs, ft) = from_tok.split_once('.').unwrap_or(("", ""));
+                let (ts, tt) = to_tok.split_once('.').unwrap_or(("", ""));
+                if let (Some(from_node), Some(to_node)) =
+                    (hsm::parse_node(fs, ft), hsm::parse_node(ts, tt))
+                {
+                    hook_fn(&hsm::TransitionHookEvent { from: from_node, to: to_node });
+                }
+            }
+        }));
         Ok(hsm::RegisterHookResponse {
             registered: true,
             hook_name: request.hook_name,
@@ -1100,7 +1116,10 @@ impl TurboLedgerService {
         hsm.current = resume_node;
         let response = hsm::resume_response(hsm.current, true, Vec::new());
         drop(hsm);
-        self.hsm_hooks.fire(&hsm::TransitionHookEvent { from: from_node, to: resume_node });
+        self.project_event_bus.fire(&ProjectEvent::lifecycle_transition(
+            &from_node.token(),
+            &resume_node.token(),
+        ));
         self.persist_state()?;
         Ok(response)
     }
