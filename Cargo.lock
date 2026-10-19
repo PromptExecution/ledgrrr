@@ -11284,7 +11284,7 @@ dependencies = [
 [[package]]
 name = "ufo-types"
 version = "0.16.0"
-source = "git+https://github.com/promptexecution/ufo-types?rev=523837f#523837fd3d08094e5fa5399eda169498c4dcabf5"
+source = "git+https://github.com/promptexecution/ufo-types?rev=9f883e6#9f883e62762d51dcaf135fe841c9880ac0852ac7"
 dependencies = [
  "anyhow",
  "chrono",
