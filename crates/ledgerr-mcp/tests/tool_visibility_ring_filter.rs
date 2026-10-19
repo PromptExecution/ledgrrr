@@ -95,6 +95,55 @@ fn sandboxed_ring_sees_only_the_core_group() {
     );
 }
 
+// --- External provider tool visibility (issue #230) -----------------------
+
+#[test]
+fn external_tools_visible_to_standard_hidden_from_restricted() {
+    // Build a synthetic tool list that includes one ledgerr_ tool and one
+    // external (non-ledgerr_) tool to test the #230 decision in isolation.
+    let tools: Vec<Value> = vec![
+        json!({"name": "ledgerr_documents", "inputSchema": {}}),
+        json!({"name": "b00t_task_list", "inputSchema": {}}),
+        json!({"name": "ledgerr_reconciliation", "inputSchema": {}}),
+    ];
+
+    // Standard ring: ledgerr_documents is in standard patterns, b00t_task_list
+    // is external (non-ledgerr_), ledgerr_reconciliation is NOT in standard.
+    let standard = tool_names(&mcp_adapter::filter_tools_for_ring(
+        tools.clone(),
+        Some(Ring::Standard),
+    ));
+    assert!(standard.contains("ledgerr_documents"), "standard must see documents");
+    assert!(
+        standard.contains("b00t_task_list"),
+        "standard must see external provider tool"
+    );
+    assert!(
+        !standard.contains("ledgerr_reconciliation"),
+        "standard must not see reconciliation"
+    );
+
+    // Restricted ring: external tools are hidden (Standard+ only).
+    let restricted = tool_names(&mcp_adapter::filter_tools_for_ring(
+        tools.clone(),
+        Some(Ring::Restricted),
+    ));
+    assert!(
+        !restricted.contains("b00t_task_list"),
+        "restricted must NOT see external provider tool"
+    );
+
+    // Sandboxed ring: external tools hidden.
+    let sandboxed = tool_names(&mcp_adapter::filter_tools_for_ring(
+        tools.clone(),
+        Some(Ring::Sandboxed),
+    ));
+    assert!(
+        !sandboxed.contains("b00t_task_list"),
+        "sandboxed must NOT see external provider tool"
+    );
+}
+
 // --- E2E: real server binary over stdio -----------------------------------
 
 struct McpStdioClient {
