@@ -51,8 +51,7 @@ semver = { version = "1", optional = true }
 axum = { version = "0.8", optional = true }
 tokio-stream = { version = "0.1", features = ["sync"], optional = true }
 
-# statechart feature dep — lazily reactive statechart for HsmMachine migration (#259).
-lazily = { workspace = true, optional = true }
+
 
 # rmcp-transport: official MCP Rust SDK — progressive migration path (#222).
 rmcp = { workspace = true, optional = true }
@@ -88,7 +87,8 @@ self-update = ["dep:reqwest", "dep:semver"]
 http-transport = ["dep:axum", "dep:tokio-stream"]
 
 # statechart: enables lazily::StateChart-backed HsmMachine migration (#259).
-statechart = ["dep:lazily"]
+# lazily is always a dep (non-optional), so no dep: activation needed.
+statechart = []
 
 # rmcp-transport: use the official rmcp SDK for stdio + SSE transport.
 # Adds a second server binary (ledgerr-mcp-server-rmcp) alongside the

@@ -75,14 +75,44 @@ impl ReconcileRunner {
 
     /// Run all four providers. Never panics or short-circuits on a single
     /// provider's error — every provider gets its own [`ProviderStatus`].
+    ///
+    /// Each provider call is wrapped in a [`PROVIDER_TIMEOUT_SECS`]-second
+    /// timeout so a hanging CLI (e.g. `gcloud auth print-access-token` with
+    /// no credentials on a machine that has the SDK installed but no auth
+    /// context) maps to a `fail` entry rather than hanging the whole run.
     pub async fn run(&self) -> ReconcileReport {
         let providers = vec![
-            run_one("aws", &self.aws).await,
-            run_one("gcp", &self.gcp).await,
-            run_one("azure", &self.azure).await,
-            run_one("hf", &self.hf).await,
+            run_timed("aws", &self.aws).await,
+            run_timed("gcp", &self.gcp).await,
+            run_timed("azure", &self.azure).await,
+            run_timed("hf", &self.hf).await,
         ];
         ReconcileReport { providers }
+    }
+}
+
+/// Per-provider wall-clock timeout. CLI calls (`gcloud`, `az`) can hang
+/// indefinitely when installed but unconfigured; this bound keeps the run
+/// from blocking the MCP server.
+const PROVIDER_TIMEOUT_SECS: u64 = 8;
+
+async fn run_timed<P: BudgetProvider>(name: &str, provider: &P) -> ProviderStatus {
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(PROVIDER_TIMEOUT_SECS),
+        run_one(name, provider),
+    )
+    .await
+    {
+        Ok(status) => status,
+        Err(_elapsed) => ProviderStatus {
+            provider: name.to_string(),
+            status: ReconcileStatus::Fail,
+            cap_cake: None,
+            authoritative: false,
+            error: Some(format!(
+                "{name} budget check timed out after {PROVIDER_TIMEOUT_SECS}s"
+            )),
+        },
     }
 }
 

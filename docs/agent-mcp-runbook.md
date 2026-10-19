@@ -23,6 +23,7 @@ The default published surface is the `ledgerr_*` catalog generated from `PUBLISH
 - `ledgerr_budget`
 - `ledgerr_gcp_billing`
 - `ledgerr_scope`
+- `ledgerr_validate_process`
 
 Each tool requires an `action` argument.
 
