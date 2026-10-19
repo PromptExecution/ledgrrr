@@ -16,7 +16,10 @@
 
 pub mod capability_bridge;
 pub mod http_gateway;
-pub use http_gateway::build_ledgrrr_mcp_gateway;
+pub use http_gateway::{
+    build_ledgrrr_mcp_gateway, build_ledgrrr_mcp_gateway_with_auth, HttpGatewayDecision,
+    LedgrrHttpGateway,
+};
 pub mod compliance;
 pub mod policy;
 pub mod rings;
