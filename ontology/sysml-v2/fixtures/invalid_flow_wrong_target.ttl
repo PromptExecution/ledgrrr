@@ -1,0 +1,20 @@
+# Fixture: a SuccessionFlowUsage whose target is a PartUsage, not ActionUsage.
+# Expected violation: sh:focusNode = <urn:example:flow:bad>, sh:resultPath = sysml:target
+
+@prefix sysml: <https://sysml.org/v2#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+
+<urn:example:action:a>
+    a sysml:ActionUsage ;
+    sysml:name "ActionA" .
+
+# This is a PartUsage, not an ActionUsage — wrong target type
+<urn:example:part:b>
+    a sysml:PartUsage ;
+    sysml:name "PartB" .
+
+# 🚩 sysml:target points to a PartUsage — violates SuccessionFlowShape
+<urn:example:flow:bad>
+    a sysml:SuccessionFlowUsage ;
+    sysml:source <urn:example:action:a> ;
+    sysml:target <urn:example:part:b> .

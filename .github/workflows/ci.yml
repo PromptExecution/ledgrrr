@@ -101,6 +101,12 @@ jobs:
             libz3-dev \
             patchelf
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install pyshacl (required by ledgrrr_validate_process subprocess)
+        run: uv pip install --system pyshacl
+
       - name: Install cargo-nextest (binstall)
         run: |
           if ! command -v cargo-nextest &>/dev/null; then

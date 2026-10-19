@@ -436,6 +436,9 @@ fn handle_request(request: Value, agent_id: Option<&str>) -> Option<Value> {
                 mcp_adapter::GCP_BILLING_TOOL => {
                     let arguments = params.get("arguments").cloned().unwrap_or(Value::Null);
                     mcp_adapter::handle_gcp_billing_tool(&arguments)
+                mcp_adapter::VALIDATE_PROCESS_TOOL => {
+                    let arguments = params.get("arguments").cloned().unwrap_or(Value::Null);
+                    mcp_adapter::handle_validate_process_tool(&arguments)
                 }
                 "l3dg3rr_list_accounts" => mcp_adapter::handle_list_accounts(global_raw_service()),
                 "l3dg3rr_get_pipeline_status" => {

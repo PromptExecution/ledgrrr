@@ -1,0 +1,14 @@
+# Fixture: an ActionUsage without sysml:name — violates ActionUsageShape.
+# Expected violation: sh:focusNode = <urn:example:action:unnamed>, sh:resultPath = sysml:name
+
+@prefix sysml: <https://sysml.org/v2#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+
+<urn:example:process:bad-names>
+    a sysml:ProcessUsage ;
+    sysml:name "BadNamesProcess" ;
+    sysml:ownedMember <urn:example:action:unnamed> .
+
+# 🚩 Missing sysml:name — should fail ActionUsageShape
+<urn:example:action:unnamed>
+    a sysml:ActionUsage .

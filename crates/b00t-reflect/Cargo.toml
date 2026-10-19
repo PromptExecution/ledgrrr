@@ -3,13 +3,18 @@ name = "b00t-reflect"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Proc-macro: #[derive(HolonEmit)] — auto-emits TypeNode lists from annotated enums"
 
 [lib]
 proc-macro = true
 
 [dependencies]
-b00t-reflect-types.workspace = true
+# `version` alongside `path`: crates.io strips a bare path-only dependency
+# from the published package, which would break every external consumer.
+# Local workspace builds still resolve via `path`; a `cargo publish` build
+# resolves the same major.minor via the registry.
+b00t-reflect-types = { path = "../b00t-reflect-types", version = "1.10.0" }
 syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"
