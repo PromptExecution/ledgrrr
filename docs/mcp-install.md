@@ -111,10 +111,10 @@ cargo test -p ledgerr-mcp --test install_e2e -- --nocapture
 Expected output:
 
 ```
-initialize ok
-tools/list ok: 17 tools published
-ledgerr_documents/pipeline_status ok
-PASS: ledgerr-mcp-server install path verified
+running 1 test
+test install_path_binary_spawns_and_serves_full_catalog ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.57s
 ```
 
 For the full MCP stdio test suite:
