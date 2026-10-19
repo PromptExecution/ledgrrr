@@ -31,6 +31,7 @@ members = [
   "crates/reqif-mcp-spike",
   "crates/ledgerr-cloud",
   "crates/ledgerr-gcp-billing",
+  "crates/kr0ki-core",
 ]
 resolver = "2"
 
@@ -56,6 +57,7 @@ tempfile = "3"
 z3 = "0.8"
 kasuari = "0.4"
 statig = "0.4"
+lazily = { version = "0.59", features = ["statechart", "thread-safe"] }
 anyhow = "1"
 ordered-float = { version = "4", features = ["serde"] }
 syn = "2"

@@ -4976,6 +4976,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "kr0ki-core"
+version = "1.10.0"
+dependencies = [
+ "lazily",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "ufo-types",
+]
+
+[[package]]
 name = "lalrpop"
 version = "0.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
