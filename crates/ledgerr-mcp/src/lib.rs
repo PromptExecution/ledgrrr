@@ -2,7 +2,7 @@ use blake3;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use ledger_core::classify::{ClassificationEngine, FlagStatus, SampleTransaction};
 use ledger_core::document::{DocType, DocumentRecord, DocumentStatus, XeroLink};
@@ -24,6 +24,7 @@ use xero_service::XeroService;
 
 pub mod batch_executor;
 pub mod beankeeper_import;
+pub mod event_bus;
 use crate::batch_executor::BatchExecutor;
 pub mod au_rd;
 pub mod calendar_tool;
@@ -36,10 +37,14 @@ pub mod fbar;
 pub mod feie;
 pub mod focus_tool;
 pub mod hsm;
+#[cfg(feature = "http-transport")]
+pub mod http_transport;
 pub mod mcp_adapter;
 pub mod ontology;
 pub mod openmetadata;
 pub mod plugin_info;
+pub mod ooda_chart;
+pub mod pm_hooks;
 #[cfg(feature = "b00t")]
 pub mod provider;
 #[cfg(feature = "b00t")]
@@ -69,6 +74,11 @@ pub use fbar::{
     compute_fbar, DailyBalance, FbarDetermination, FbarInput, ForeignAccountInput,
     ForeignAccountYear,
 };
+pub use event_bus::{
+    ProjectEvent, ProjectEventBus, ProjectHookFn, RegisterProjectHookRequest,
+    RegisterProjectHookResponse,
+};
+pub use pm_hooks::{PmHookEvent, StageStatus, TaskStatusStore};
 pub use feie::{FeieInput, FeieOutcome, ForeignResidenceTest};
 pub use hsm::{
     HsmMachine, HsmResumeRequest, HsmResumeResponse, HsmStatusRequest, HsmStatusResponse,
@@ -518,16 +528,38 @@ impl Default for PersistedServiceState {
     }
 }
 
+/// A tracked project task stored in `TurboLedgerService::task_store`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskEntry {
+    pub name: String,
+    pub description: Option<String>,
+    pub status: String,
+    pub notes: Vec<String>,
+}
+
 pub struct TurboLedgerService {
     manifest: Manifest,
     ingest_state: Mutex<IngestedLedger>,
     classification_state: Mutex<ClassificationState>,
     lifecycle_events: Mutex<InMemoryLifecycleEventStore>,
     hsm_state: Mutex<HsmMachine>,
+    /// General project-management event bus — fires on tool calls, task
+    /// lifecycle events, and lifecycle transitions. Supersedes the narrower
+    /// HsmHookRegistry for cross-cutting PM hooks (issue #259 / PM hooks).
+    pub(crate) project_event_bus: Arc<ProjectEventBus>,
     /// In-memory registry: doc_id → DocumentRecord. Persisted as a JSON sidecar.
     document_registry: Mutex<BTreeMap<String, DocumentRecord>>,
     /// Evidence graph for provenance tracking (arc-kit-au).
     pub(crate) evidence: Mutex<arc_kit_au::EvidenceGraph>,
+    /// In-memory task store: name → TaskEntry. Drives ProjectEventBus hooks.
+    pub(crate) task_store: Mutex<BTreeMap<String, TaskEntry>>,
+    /// PM event chart — mirrors HsmMachine advances and fires
+    /// "lifecycle_transition" entry actions to drive ProjectEventBus dispatch.
+    /// None on chart-def failure (graceful degradation to direct dispatch).
+    hsm_chart: Mutex<Option<hsm::HsmChart>>,
+    /// Shared task-status projection — updated by TaskStatusPmHookHandler via
+    /// the project_event_bus. Queryable via the `task_status` MCP action.
+    pub(crate) task_status_store: pm_hooks::TaskStatusStore,
     #[cfg(feature = "xero")]
     xero: XeroService,
     #[cfg(feature = "llm")]
@@ -697,18 +729,30 @@ impl TurboLedgerService {
             persisted_state_path(service_path).with_extension("evidence.json")
         };
 
+        let project_event_bus = Arc::new(ProjectEventBus::default());
+        let task_status_store = pm_hooks::TaskStatusStore::new();
+        pm_hooks::PmHookDispatcher::new(vec![
+            Box::new(pm_hooks::LoggingPmHookHandler),
+            Box::new(pm_hooks::TaskStatusPmHookHandler::new(task_status_store.clone())),
+        ])
+        .register_on_bus(&project_event_bus);
+
         Ok(Self {
             manifest,
             ingest_state: Mutex::new(persisted.ingest_state),
             classification_state: Mutex::new(persisted.classification_state),
             lifecycle_events: Mutex::new(persisted.lifecycle_events),
             hsm_state: Mutex::new(persisted.hsm_state),
+            project_event_bus,
             document_registry: Mutex::new(registry),
             evidence: Mutex::new(
                 arc_kit_au::EvidenceStore::new(initial_evidence_path)
                     .load()
                     .unwrap_or_else(|_| arc_kit_au::EvidenceGraph::new()),
             ),
+            task_store: Mutex::new(BTreeMap::new()),
+            hsm_chart: Mutex::new(hsm::HsmChart::new().ok()),
+            task_status_store,
             #[cfg(feature = "xero")]
             xero,
             #[cfg(feature = "llm")]
@@ -718,6 +762,55 @@ impl TurboLedgerService {
 
     pub fn workbook_path(&self) -> &std::path::Path {
         std::path::Path::new(&self.manifest.session.workbook_path)
+    }
+
+    /// Fire a `tool_called` project event. Called by MCP tool handlers after
+    /// each successful dispatch so project hooks can observe every tool call.
+    pub fn fire_tool_event(&self, tool: &str, action: &str, success: bool) {
+        self.project_event_bus
+            .fire(&ProjectEvent::tool_called(tool, action, success));
+    }
+
+    /// Register a project-management event hook.
+    /// Fires on every `ProjectEvent` regardless of kind; filter inside the hook
+    /// via `event.kind`. See `ProjectEventBus` for the supported event kinds.
+    pub fn register_project_hook(&self, hook: ProjectHookFn) {
+        self.project_event_bus.register(hook);
+    }
+
+    /// MCP-facing: register a project-event hook for a named event kind.
+    pub fn register_project_hook_tool(
+        &self,
+        request: RegisterProjectHookRequest,
+    ) -> Result<RegisterProjectHookResponse, ToolError> {
+        let valid_kinds = [
+            "tool_called", "task_created", "task_done",
+            "lifecycle_transition", "*",
+        ];
+        if !valid_kinds.contains(&request.event_kind.as_str()) {
+            return Err(ToolError::InvalidInput(format!(
+                "unknown event_kind '{}'; valid: {}",
+                request.event_kind,
+                valid_kinds.join(", ")
+            )));
+        }
+        let kind = request.event_kind.clone();
+        let tag = request.tag.clone().unwrap_or_default();
+        // Logging hook: emit a tracing event for every matching project event.
+        self.project_event_bus.register(Arc::new(move |evt: &ProjectEvent| {
+            if kind == "*" || evt.kind == kind {
+                tracing::info!(
+                    event_kind = %evt.kind,
+                    hook_tag = %tag,
+                    "project event hook fired"
+                );
+            }
+        }));
+        Ok(RegisterProjectHookResponse {
+            registered: true,
+            event_kind: request.event_kind,
+            tag: request.tag,
+        })
     }
 
     fn state_sidecar_path(&self) -> PathBuf {
@@ -908,6 +1001,25 @@ impl TurboLedgerService {
             hsm.last_valid_checkpoint = hsm::checkpoint_marker(requested);
             let response = hsm::transition_advanced_response(requested);
             drop(hsm);
+            // Chart-driven PM event (issue #259 integration): advance the
+            // HsmChart so PM hooks fire from chart entry actions rather than
+            // inline dispatch. Falls back to direct fire if chart is absent
+            // or fails (e.g. restored session that pre-dates chart init).
+            let advance_idx = hsm::advance_count_for(current);
+            let _chart_driven = self
+                .hsm_chart
+                .lock()
+                .ok()
+                .and_then(|mut guard| {
+                    guard.as_mut().map(|c| c.try_advance(advance_idx))
+                })
+                .unwrap_or(false);
+            self.project_event_bus.fire(
+                &crate::event_bus::ProjectEvent::lifecycle_transition(
+                    &current.token(),
+                    &requested.token(),
+                ),
+            );
             self.persist_state()?;
             return Ok(response);
         }
@@ -924,6 +1036,12 @@ impl TurboLedgerService {
             .lock()
             .map_err(|_| ToolError::Internal("hsm lock poisoned".to_string()))?;
         Ok(hsm::status_response(hsm.current, Vec::new()))
+    }
+
+    /// Return current per-stage task status derived from PM hooks.
+    /// The map is sorted (BTreeMap) for deterministic MCP output.
+    pub fn task_status_tool(&self) -> std::collections::BTreeMap<String, String> {
+        self.task_status_store.snapshot()
     }
 
     pub fn hsm_resume_tool(

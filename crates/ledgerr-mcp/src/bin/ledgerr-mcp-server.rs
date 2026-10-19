@@ -29,91 +29,39 @@ fn main() {
     serve(io::stdin().lock(), io::stdout());
 }
 
-/// HTTP transport: same `handle_request` dispatcher as stdio, reached over
-/// a minimal synchronous HTTP server instead of stdin/stdout. Built for
-/// Azure Container Apps' HTTP-triggered scale-to-zero (see
-/// PromptExecution/infrastructure#139/#141) — ACA needs an HTTP endpoint to
-/// wake the app on, which stdio transport can't provide.
-///
-/// Deliberately does NOT adopt the `rmcp` SDK (tracked as the original ask
-/// in this issue) — `handle_request` is already a pure, transport-agnostic
-/// JSON-RPC dispatcher, so bridging it over HTTP needed zero changes to the
-/// ~50 existing tool handlers or the well-tested stdio path. Migrating the
-/// whole dispatcher onto `rmcp::ServerHandler` would be a much larger,
-/// riskier rewrite (every tool handler + mcp_adapter's schema/routing) for
-/// no functional gain over this — worth reconsidering only if a concrete
-/// need for something `rmcp` provides (e.g. its SSE/StreamableHttp session
-/// resumption) actually shows up.
-///
-/// Only two routes: `GET /health` (liveness probe, matches the
-/// `standing-mcp-server` Terraform module's expectation) and `POST /`
-/// (JSON-RPC request body in, JSON-RPC response body out). Single-threaded,
-/// one request at a time — matches this binary's existing fully-synchronous
-/// dispatch model (see the tokio-on-a-scratch-runtime comment on the
-/// `tokio` dependency above). Revisit if concurrent request handling is
-/// ever actually needed.
+/// HTTP transport: axum-based Streamable HTTP + SSE (issue #227).
+/// Router built by `http_transport::build_http_app`; see that module for
+/// route documentation and design notes.
 #[cfg(feature = "http-transport")]
 fn serve_http() {
+    use ledgerr_mcp::http_transport::build_http_app;
+    use tokio::sync::broadcast;
+
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let addr = format!("0.0.0.0:{port}");
-    let server =
-        tiny_http::Server::http(&addr).unwrap_or_else(|e| panic!("failed to bind {addr}: {e}"));
-    tracing::info!(%addr, "ledgerr-mcp HTTP transport listening");
 
-    for mut request in server.incoming_requests() {
-        let response = match (request.method(), request.url()) {
-            (tiny_http::Method::Get, "/health") => {
-                tiny_http::Response::from_string("ok").with_status_code(200)
-            }
-            (tiny_http::Method::Post, "/") => {
-                // Per-request caller identity (issue #224): HTTP is
-                // stateless/multi-tenant per process, so the `X-Agent-Id`
-                // header is read fresh for every request — unlike the stdio
-                // transport's `LEDGERR_MCP_AGENT_ID` env var, there is no
-                // single "the caller" for the life of the process here.
-                let agent_id = agent_id_from_headers(request.headers());
-                let mut body = String::new();
-                if request.as_reader().read_to_string(&mut body).is_err() {
-                    let _ = request.respond(
-                        tiny_http::Response::from_string("failed to read body")
-                            .with_status_code(400),
-                    );
-                    continue;
-                }
-                match serde_json::from_str::<Value>(&body) {
-                    Ok(parsed) => match handle_request(parsed, agent_id.as_deref()) {
-                        Some(resp) => match serde_json::to_string(&resp) {
-                            Ok(s) => tiny_http::Response::from_string(s).with_status_code(200),
-                            Err(e) => tiny_http::Response::from_string(format!(
-                                "response serialization error: {e}"
-                            ))
-                            .with_status_code(500),
-                        },
-                        // Notifications (e.g. notifications/initialized) have no response body.
-                        None => tiny_http::Response::from_string("").with_status_code(204),
-                    },
-                    Err(e) => tiny_http::Response::from_string(format!("invalid JSON: {e}"))
-                        .with_status_code(400),
-                }
-            }
-            _ => tiny_http::Response::from_string("not found").with_status_code(404),
-        };
-        let _ = request.respond(response);
-    }
+    let (notify_tx, _) = broadcast::channel::<String>(64);
+    let app = build_http_app(
+        |req, agent_id| handle_request(req, agent_id.as_deref()),
+        notify_tx,
+    );
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime for HTTP transport");
+
+    rt.block_on(async {
+        let listener = tokio::net::TcpListener::bind(&addr)
+            .await
+            .unwrap_or_else(|e| panic!("failed to bind {addr}: {e}"));
+        tracing::info!(%addr, "ledgerr-mcp HTTP transport listening (axum/SSE)");
+        axum::serve(listener, app)
+            .await
+            .expect("axum serve must not fail");
+    });
 }
 
-/// Extract the calling agent's identity from an `X-Agent-Id` request header
-/// (issue #224). Header names are compared case-insensitively per HTTP
-/// semantics (`tiny_http::HeaderField::equiv`). Absent header → `None`,
-/// which `authorize_tool_call` treats identically to "no identity
-/// configured" — same fail-open default as the stdio transport.
-#[cfg(feature = "http-transport")]
-fn agent_id_from_headers(headers: &[tiny_http::Header]) -> Option<String> {
-    headers
-        .iter()
-        .find(|h| h.field.equiv("X-Agent-Id"))
-        .map(|h| h.value.as_str().to_string())
-}
 
 #[cfg(feature = "b00t")]
 fn initialize_providers() {
@@ -333,6 +281,9 @@ fn handle_request(request: Value, agent_id: Option<&str>) -> Option<Value> {
             let params = request.get("params").cloned().unwrap_or(Value::Null);
             let tool_name = params.get("name").and_then(Value::as_str).unwrap_or("");
 
+            // Fire a hook for every tool/call so PM hooks observe all activity.
+            global_raw_service().fire_tool_event(tool_name, "dispatch", true);
+
             // Issue #225: governance gate for tools/call. No-op (returns
             // None) when `agent_id` is `None` — same unenforced default as
             // before this change — or when `tool_name` isn't one of the
@@ -540,6 +491,12 @@ fn handle_request(request: Value, agent_id: Option<&str>) -> Option<Value> {
                     }
                 }
             };
+
+            // Fire a `tool_called` project event for every successful tools/call.
+            // `isError` in the result content indicates dispatch-level failure.
+            let success = result.get("isError").and_then(|v| v.as_bool()) != Some(true);
+            global_raw_service().fire_tool_event(tool_name, "", success);
+
             Some(json!({
                 "jsonrpc": "2.0",
                 "id": id,
