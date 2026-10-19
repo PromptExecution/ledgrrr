@@ -1016,6 +1016,7 @@ version = "1.10.0"
 dependencies = [
  "datum",
  "dirs",
+ "lazily",
  "notify",
  "reqwest 0.12.28",
  "scxml",
