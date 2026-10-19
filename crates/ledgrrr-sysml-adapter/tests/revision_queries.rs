@@ -2,7 +2,7 @@ use ledgrrr_sysml_adapter::{
     projection::{project_bundle, source_requirement_query, unverified_requirements_query},
     query::{QueryEngine, QueryLimits},
 };
-use ufo_types::revision::*;
+use ledgrrr_revision_io::revision::*;
 fn engine(limits: QueryLimits) -> Result<QueryEngine, ledgrrr_sysml_adapter::query::QueryError> {
     QueryEngine::new(limits).map(|e| e.with_worker_path(env!("CARGO_BIN_EXE_revision-owner")))
 }

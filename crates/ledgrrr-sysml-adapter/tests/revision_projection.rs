@@ -1,7 +1,7 @@
 use ledgrrr_sysml_adapter::projection::{
     project_bundle, project_bundle_with_limits, ProjectionLimits, VOCAB,
 };
-use ufo_types::revision::{PortableBundle, PortableModel, RevisionContext, RevisionId};
+use ledgrrr_revision_io::revision::{PortableBundle, PortableModel, RevisionContext, RevisionId};
 fn fixture() -> (PortableBundle, serde_json::Value) {
     let f: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/revision_projection.json")).unwrap();
@@ -22,7 +22,7 @@ fn all_canonical_records_are_deterministic_queryable_and_bound_to_actual_accepta
     assert_eq!(p.descriptor.checkpoint.revision, revision);
     assert_eq!(
         p.descriptor.accepted_candidate_digest,
-        ufo_types::revision::ArtifactDigest::of(&b.to_bytes().unwrap())
+        ledgrrr_revision_io::revision::ArtifactDigest::of(&b.to_bytes().unwrap())
     );
     let text = String::from_utf8(p.nquads.clone()).unwrap();
     for kind in f["expected_element_kinds"]

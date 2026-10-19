@@ -317,7 +317,7 @@
       },
       "test": {
         "id": "test",
-        "kind": "verification_case_usage",
+        "kind": "part_usage",
         "name": "Controller test",
         "properties": {},
         "anchors": [],
@@ -333,7 +333,7 @@
       },
       "verification-definition": {
         "id": "verification-definition",
-        "kind": "verification_case_definition",
+        "kind": "part_definition",
         "name": "Controller Verification",
         "properties": {},
         "anchors": [],
@@ -485,7 +485,7 @@
       },
       "kind-verification_case_definition": {
         "id": "kind-verification_case_definition",
-        "kind": "verification_case_definition",
+        "kind": "part_definition",
         "name": "verification_case_definition",
         "properties": {},
         "anchors": [],
@@ -493,7 +493,7 @@
       },
       "kind-verification_case_usage": {
         "id": "kind-verification_case_usage",
-        "kind": "verification_case_usage",
+        "kind": "part_usage",
         "name": "verification_case_usage",
         "properties": {},
         "anchors": [],
@@ -627,45 +627,6 @@
           "allocation": {
             "source": "controller",
             "target": "platform"
-          }
-        },
-        "authority": "authored",
-        "anchors": [],
-        "rule": null,
-        "extensions": {}
-      },
-      "type-req": {
-        "id": "type-req",
-        "relation": {
-          "feature_typing": {
-            "feature": "REQ-日本語",
-            "type": "REQ-2"
-          }
-        },
-        "authority": "authored",
-        "anchors": [],
-        "rule": null,
-        "extensions": {}
-      },
-      "type-verification": {
-        "id": "type-verification",
-        "relation": {
-          "feature_typing": {
-            "feature": "test",
-            "type": "verification-definition"
-          }
-        },
-        "authority": "authored",
-        "anchors": [],
-        "rule": null,
-        "extensions": {}
-      },
-      "type-controller": {
-        "id": "type-controller",
-        "relation": {
-          "feature_typing": {
-            "feature": "controller",
-            "type": "controller-definition"
           }
         },
         "authority": "authored",
@@ -1045,8 +1006,6 @@
     "state_usage",
     "requirement_definition",
     "requirement_usage",
-    "verification_case_definition",
-    "verification_case_usage",
     "constraint_definition",
     "constraint_usage",
     "allocation_usage",
@@ -1064,7 +1023,6 @@
     "succession",
     "refine",
     "domain",
-    "feature_typing",
     "dependency",
     "allocation",
     "verify",

@@ -6,7 +6,7 @@ use ledgrrr_sysml_adapter::{
     server::{self, Credential, Host},
 };
 use std::sync::Arc;
-use ufo_types::revision::{
+use ledgrrr_revision_io::revision::{
     QueryUnavailableReason, RevisionQueryOutcome, RevisionQueryRequest, RevisionQueryResponse,
 };
 
