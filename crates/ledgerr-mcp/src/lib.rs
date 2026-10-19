@@ -81,8 +81,9 @@ pub use event_bus::{
 pub use pm_hooks::{PmHookEvent, StageStatus, TaskStatusStore};
 pub use feie::{FeieInput, FeieOutcome, ForeignResidenceTest};
 pub use hsm::{
-    HsmMachine, HsmResumeRequest, HsmResumeResponse, HsmStatusRequest, HsmStatusResponse,
-    HsmTransitionRequest, HsmTransitionResponse,
+    BuiltInHook, HookFn, HsmHookRegistry, HsmMachine, HsmResumeRequest, HsmResumeResponse,
+    HsmStatusRequest, HsmStatusResponse, HsmTransitionRequest, HsmTransitionResponse,
+    RegisterHookRequest, RegisterHookResponse, TransitionHookEvent,
 };
 pub use ontology::{
     content_hash, edge_content_hash, entity_content_hash, load_store, persist_store,
@@ -813,6 +814,28 @@ impl TurboLedgerService {
         })
     }
 
+    /// MCP-facing: register a named built-in hook (`on_ingest`, `on_validate`,
+    /// `on_commit`). Returns an error for unknown hook names.
+    pub fn register_hook_tool(
+        &self,
+        request: hsm::RegisterHookRequest,
+    ) -> Result<hsm::RegisterHookResponse, ToolError> {
+        let built_in = hsm::BuiltInHook::from_str(&request.hook_name).ok_or_else(|| {
+            ToolError::InvalidInput(format!(
+                "unknown hook '{}'; valid values: on_ingest, on_validate, on_commit",
+                request.hook_name
+            ))
+        })?;
+        let fires_on = built_in.fires_on().to_string();
+        self.hsm_hooks.register(built_in.into_hook_fn());
+        Ok(hsm::RegisterHookResponse {
+            registered: true,
+            hook_name: request.hook_name,
+            fires_on,
+            reason: None,
+        })
+    }
+
     fn state_sidecar_path(&self) -> PathBuf {
         persisted_state_path(self.workbook_path())
     }
@@ -1068,9 +1091,11 @@ impl TurboLedgerService {
             ));
         }
 
+        let from_node = hsm.current;
         hsm.current = resume_node;
         let response = hsm::resume_response(hsm.current, true, Vec::new());
         drop(hsm);
+        self.hsm_hooks.fire(&hsm::TransitionHookEvent { from: from_node, to: resume_node });
         self.persist_state()?;
         Ok(response)
     }
