@@ -42,6 +42,7 @@ fn admin_action_patterns() -> Vec<String> {
         "ledgerr_focus.*".to_string(),
         "ledgerr_gcp_billing.*".to_string(),
         "ledgerr_budget.*".to_string(),
+        "ledgerr_scope.*".to_string(),
     ]
 }
 
@@ -73,6 +74,9 @@ fn standard_action_patterns() -> Vec<String> {
         // Budget reconciliation is a write op — same trust class as
         // documents.ingest / gcp_billing.ingest_since.
         "ledgerr_budget.reconcile".to_string(),
+        // Scope introspection: any Standard agent can query identity and
+        // request a ring promotion (gateway decides whether to approve).
+        "ledgerr_scope.*".to_string(),
     ]
 }
 
@@ -90,6 +94,8 @@ fn restricted_action_patterns() -> Vec<String> {
         // subprocess and writes the sink, so Restricted does not get it.
         "ledgerr_gcp_billing.query_last_run".to_string(),
         "ledgerr_gcp_billing.dry_run_map_row".to_string(),
+        // Restricted ring can query its own identity; cannot request_increase.
+        "ledgerr_scope.whoami".to_string(),
     ]
 }
 
@@ -196,6 +202,7 @@ mod tests {
             "ledgerr_focus",
             "ledgerr_gcp_billing",
             "ledgerr_budget",
+            "ledgerr_scope",
         ]
         .into_iter()
         .map(String::from)
@@ -220,6 +227,7 @@ mod tests {
                 "ledgerr_evidence",
                 "ledgerr_focus",
                 "ledgerr_gcp_billing",
+                "ledgerr_scope",
             ]
             .into_iter()
             .map(String::from)
@@ -234,13 +242,14 @@ mod tests {
         // are CORE (outside the ring model).
         assert_eq!(
             families.len(),
-            12,
-            "expected all 12 ring-gated families: {families:?}"
+            13,
+            "expected all 13 ring-gated families: {families:?}"
         );
         assert!(families.contains("ledgerr_reconciliation"));
         assert!(families.contains("ledgerr_xero"));
         assert!(families.contains("ledgerr_gcp_billing"));
         assert!(families.contains("ledgerr_budget"));
+        assert!(families.contains("ledgerr_scope"));
     }
 
     #[test]

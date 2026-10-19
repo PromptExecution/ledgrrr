@@ -39,6 +39,7 @@ pub const SCHEMA_TOOL: &str = "ledgerr_schema";
 pub const MANIFEST_TOOL: &str = "ledgerr_manifest";
 pub const BUDGET_TOOL: &str = "ledgerr_budget";
 pub const GCP_BILLING_TOOL: &str = "ledgerr_gcp_billing";
+pub const SCOPE_TOOL: &str = "ledgerr_scope";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolContractSpec {
@@ -64,9 +65,10 @@ pub const TOOL_REGISTRY: &[&str] = &[
     MANIFEST_TOOL,
     BUDGET_TOOL,
     GCP_BILLING_TOOL,
+    SCOPE_TOOL,
 ];
 
-pub const PUBLISHED_TOOLS: [ToolContractSpec; 14] = [
+pub const PUBLISHED_TOOLS: [ToolContractSpec; 15] = [
     ToolContractSpec {
         name: DOCUMENTS_TOOL,
         purpose: "document intake (PDF, image, CSV), tagging, filesystem metadata sync",
@@ -206,6 +208,11 @@ pub const PUBLISHED_TOOLS: [ToolContractSpec; 14] = [
         name: GCP_BILLING_TOOL,
         purpose: "GCP BigQuery Billing Export (FOCUS-conformant) ingestion into ledgerr_focus::CostAndUsageRow",
         actions: &["ingest_since", "query_last_run", "dry_run_map_row"],
+    },
+    ToolContractSpec {
+        name: SCOPE_TOOL,
+        purpose: "runtime identity and scope-increase — whoami / request_increase (issue #226)",
+        actions: &["whoami", "request_increase"],
     },
 ];
 
