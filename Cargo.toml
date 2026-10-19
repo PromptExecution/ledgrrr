@@ -42,7 +42,7 @@ license = "MIT"
 repository = "https://github.com/PromptExecution/ledgrrr"
 
 [workspace.dependencies]
-ufo-types = { git = "https://github.com/promptexecution/ufo-types", rev = "1846e6f" }
+ufo-types = { git = "https://github.com/promptexecution/ufo-types", rev = "523837f" }
 rusqlite = { version = "=0.33.0", features = ["bundled", "hooks"] }
 rust_xlsxwriter = "0.94.0"
 serde = { version = "1", features = ["derive"] }
@@ -86,7 +86,6 @@ agentmesh = "=4.0.0"
 agentmesh-mcp = "=4.0.0"
 beankeeper = { git = "https://github.com/PromptExecution/beankeeper-b00t.git", branch = "feat/serde-feature", features = ["serde"] }
 ofx-rs = "0.2"
-lazily = { version = "0.59", features = ["statechart", "thread-safe"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"
