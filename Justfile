@@ -824,3 +824,11 @@ sysml-owner-live:
 sysml-p2-live:
     SYSML_API_URL="${SYSML_API_URL:-http://127.0.0.1:19000}" \
     cargo test -p ledgrrr-sysml-adapter --test live_roundtrip --locked -- --test-threads=1 --nocapture
+
+# Examples (issue #275; details in scripts/cargo-sweep/README.md):
+#   just sweep            report what --days 14 would delete
+#   just sweep 30         same, 30 days
+#   just sweep 14 --apply delete
+# Prune stale Cargo target/ artifacts via cargo-sweep in a container (dry run unless --apply)
+sweep days="14" *flags="":
+    bash scripts/cargo-sweep/sweep.sh --days {{days}} {{flags}}
