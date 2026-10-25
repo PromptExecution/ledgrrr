@@ -59,6 +59,16 @@ mount=ro
 if [ "$apply" = 1 ]; then dry=(); mount=rw; fi
 
 echo "cargo-sweep ${sweep_version} on ${root}: ${mode[*]} $([ "$apply" = 1 ] && echo '(APPLY: deleting)' || echo '(dry run; pass --apply to delete)')"
-exec "$engine" run --rm --security-opt label=disable \
+out="$(mktemp)"
+trap 'rm -f "$out"' EXIT
+rc=0
+"$engine" run --rm --security-opt label=disable \
   -v "$(hostpath "$root"):/work:${mount}" "$image" \
-  --recursive "${mode[@]}" ${dry[@]+"${dry[@]}"} /work
+  --recursive "${mode[@]}" ${dry[@]+"${dry[@]}"} /work 2>&1 | tee "$out" || rc="${PIPESTATUS[0]}"
+# cargo-sweep silently skips a workspace that `cargo metadata` cannot resolve (for example when a path
+# dependency or git submodule is not checked out). Say so instead of leaving an empty result.
+if ! grep -qE 'Would clean|Cleaned' "$out"; then
+  echo "sweep.sh: note: cargo-sweep reported no target directories under ${root}." >&2
+  echo "          If you expect one, check that the workspace resolves (e.g. 'git submodule update --init')." >&2
+fi
+exit "$rc"

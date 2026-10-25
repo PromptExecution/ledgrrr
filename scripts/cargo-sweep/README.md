@@ -17,3 +17,6 @@ scripts/cargo-sweep/sweep.sh --maxsize 20GB    # trim oldest until each target/ 
   different OS or toolchain (e.g. Windows-built output swept from WSL). `--installed` is intentionally
   not exposed: in the container it would compare against the container's Rust toolchain.
 * Deleted artifacts are simply rebuilt by the next `cargo build`.
+* cargo-sweep needs `cargo metadata` to succeed, so a workspace with an unresolved path dependency or an
+  uninitialised git submodule is silently skipped by the tool itself. `sweep.sh` prints a note when nothing
+  is reported; initialise submodules (`git submodule update --init`) and re-run.
